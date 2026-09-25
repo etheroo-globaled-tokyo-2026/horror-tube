@@ -20,18 +20,21 @@ env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
 
 The secret stays in the child process environment for that invocation; it is not written to disk and is not an `export` of a literal token.
 
-### Spaces API keys (apply time)
+### Spaces API keys (icon uploads)
 
-Spaces also needs access keys (control panel or `POST /v2/spaces/keys` with a `fullaccess` grant — a key with empty `grants` gets AccessDenied). Pass them for that command only the same way (from 1Password or another secret store — never as literals in an `export`):
+Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** from the environment. There are **no defaults** — if either is missing or blank, stop. Do not put real values in `.env` committed to git; `.env.example` lists only empty names.
+
+Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`):
 
 ```bash
-env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
-  SPACES_ACCESS_KEY_ID="$(op read 'op://…/spaces_access_key')" \
-  SPACES_SECRET_ACCESS_KEY="$(op read 'op://…/spaces_secret_key')" \
-  terraform apply
+env SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')" \
+  SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')" \
+  aws s3 cp ./icon.png "s3://${BUCKET}/${KEY}" \
+  --endpoint-url "https://${REGION}.digitaloceanspaces.com" \
+  --acl public-read
 ```
 
-Replace the Spaces `op://` paths with your items. Do not commit those values.
+Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publicly fetchable. Do not commit Spaces key values.
 
 ## Required tfvars (no defaults)
 
@@ -50,15 +53,7 @@ There is no Tokyo DO region. Pick the geographically closest region where **both
 
 ## Spaces icons: public read + CDN
 
-The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cdn_endpoint` output). If a later upload path only sets public-read per object, upload icons with an object ACL of `public-read`, for example:
-
-```bash
-aws s3 cp ./icon.png "s3://${BUCKET}/${KEY}" \
-  --endpoint-url "https://${REGION}.digitaloceanspaces.com" \
-  --acl public-read
-```
-
-Pass Spaces credentials via the same one-shot `env` pattern as above. Public icon URLs use `https://` + CDN endpoint + object key.
+The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cdn_endpoint` output). Uploads still must set each object’s ACL to **`public-read`** (see the Spaces API keys section above). Public icon URLs use `https://` + CDN endpoint + object key. Applied bucket: `horror-tube-icons-sgp1-m4k9` (CDN: `horror-tube-icons-sgp1-m4k9.sgp1.cdn.digitaloceanspaces.com`, region `sgp1`).
 
 ## Validate
 
