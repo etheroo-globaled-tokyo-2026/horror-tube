@@ -148,3 +148,10 @@ vite.config.ts.timestamp-*
 
 # ENS commit-reveal local state (contains secret)
 scripts/.ens-commit-state/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform/terraform.tfvars.example

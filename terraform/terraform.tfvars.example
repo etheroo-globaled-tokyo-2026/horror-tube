@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars only if you must; prefer env vars for the token.
+# Never commit terraform.tfvars.
+
+do_token           = ""
+region             = "nyc3"
+spaces_bucket_name = ""
+db_size            = "db-s-1vcpu-2gb"
