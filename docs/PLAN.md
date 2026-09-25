@@ -13,28 +13,50 @@ Based on *FAITH: The Unholy Trinity* (https://store.steampowered.com/app/1179080
 - Thin, glowing line art in one color per subject (blood red, cold blue, rust brown).
 - Rough, low-res, pixel look, like an old computer. No gradients, no glossy UI.
 
-## Core loop
+## Components
 
-1. **Enter**: the user proves with World ID (Orb) that they are a real human and 18+.
-2. **Campaign**: the user picks a video series, for example chainsaw, shotgun, evil doll, or spiders.
-3. **Reset**: all character ENS subnames go back to `alive`.
-4. **Vote (free)**: verified humans vote on the next two fighters. One vote per human per round.
-5. **Bet (paid)**: users bet on which of the two fighters wins.
-6. **Fight**: the LLM writes the chapter and a video model makes it:
-   `LLM_CALL_VIDEO(prompt, chapter, len_in_seconds, last_video_object)`.
-   The prompt uses the campaign, the living characters, and the battle rules.
-   The last video goes in so the story continues.
-7. **Parley screen**: the video streams, and the chapter ends on the face-off.
-8. **Payout**: `payout(winner_wallets, amount)` pays the users who bet on the winner.
-9. **Dead pool**: the loser's ENS subname moves to the dead pool (`status=dead`).
-10. Go back to step 4 until one character is left.
+- **ENS name**: character state (subnames and text records) on Sepolia.
+- **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
+- **Smart contract**: the betting pool.
+- **Frontend host**: Vercel or similar.
 
-## Battle rules
+## Flow
 
-- Heroes cannot kill heroes. ENSv2 Enhanced Access Control enforces this rule, not only the prompt.
-- Only living characters can fight.
-- The winner is locked **before** the video plays, so bets are fair and people can check them.
-  (Open: which source picks the winner. Options: commit-reveal of the LLM result, or onchain randomness.)
+1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+. The user can use a browser wallet.
+2. **Connect wallet**: `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
+3. **Main screen**:
+   - Top: the current battle. When no battle is live, the last battle plays again on a loop, with a very clear "REC" (camcorder recording) effect.
+   - Below: a panel of living and dead characters. The panel uses the app's art style.
+   - **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
+4. **Load characters**: the two fighters load from their ENS subnames.
+5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)
+6. **Story**: the LLM gets the story prompt, the character state, and lore text for each character (from the database or fandom.com).
+   The LLM picks the winner and the winner's damage, and writes them as the last line of the turn.
+   The server stores the winner and damage in the database, **not onchain**.
+7. **Open betting**: the contract state changes. Voting closes and betting opens for the next battle. (Open: see question 1.)
+8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends.
+   The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
+9. **Show video**: the fight video plays at the top of the main screen.
+10. **Update ENS**:
+    - The loser's subname moves to the dead pool. (Open: see question 3.)
+    - The winner takes damage. Its ENS text records update.
+    - The contract reads the loser's ENS status. If it is `dead`, bets on the other fighter win, and the winners can claim.
+11. Go back to the vote on the main screen (step 3), until one character is left.
+
+**Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
+
+## Damage
+
+- The database keeps the full damage history. ENS text records show only the current damage.
+- The next story prompt includes the damage, so the character fights worse and looks hurt in the video.
+- Damage can remove capabilities (step 5).
+
+## Open questions
+
+1. **What changes the contract state in step 7?** The diagram says "indexer", but an indexer usually only reads the chain.
+   Default until we decide: our backend sends the transaction when it stores the story. One backend, one wallet, no real indexer.
+2. **What is a "capability"?** A weapon, a body part, or a move? And can ENSv2 permissions describe it, or is it only a text record?
+3. **What is the dead-pool name?** The diagram has two versions: `character.dead` and a move to a dead-pool parent name.
 
 ## World: IDKit (prize "Best Use of IDKit", $5k, 2 × $2.5k)
 
@@ -70,10 +92,10 @@ ENS holds the game state of the characters. It is central to the game, not decor
 | Game concept | ENSv2 feature |
 |---|---|
 | Each character, e.g. `jason.horrortube.eth` | Subname in our own subname registry |
-| `status`, `side` (hero/villain), `kills`, `campaign` | Text records on a Permissioned Resolver |
-| Heroes cannot kill heroes | Enhanced Access Control roles: a hero role cannot edit another hero's `status` |
-| Loser goes to the dead pool | Move or alias the subname under `deadpool.horrortube.eth`, or revoke it |
-| New campaign resets everyone | Reset the `status` records to `alive` |
+| `status`, `kills`, `damage` | Text records on a Permissioned Resolver |
+| Capabilities lost to damage | Open: Enhanced Access Control roles, or a text record (open question 2) |
+| Loser goes to the dead pool | Move or alias the subname (open question 3) |
+| The contract pays out from ENS state | The betting contract reads the loser's `status` |
 | Bonus: fighters as AI agents | Each character is an agent namespace with its own permissions (ENSIP-25/26) |
 
 **Requirements:** ENSv2 on Sepolia, no hard-coded values, a live demo link, and open-source code.
@@ -89,7 +111,7 @@ Links:
 ## Betting
 
 - A simple pool contract on Sepolia with test ETH. Real money is not necessary for the demo.
-- The pool per fight closes when the video starts.
+- Betting opens when voting closes. It closes when the countdown ends.
 - Winners share the pool in proportion to their bets.
 
 ## Out of scope
@@ -101,3 +123,4 @@ Links:
 
 - Famous characters are protected by copyright. This is OK for a hackathon demo, but not for a public launch.
 - ENSv2 is in beta on Sepolia. Expect changes and bugs.
+- fandom.com text is CC BY-SA. If we use it, we must credit the source.
