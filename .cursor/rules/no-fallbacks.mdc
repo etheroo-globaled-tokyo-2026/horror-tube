@@ -1,0 +1,25 @@
+---
+description: Never substitute a fallback when a required value or call fails
+alwaysApply: true
+---
+
+# Never fall back
+
+When a required input is missing or a call fails, stop and print the error. Do not continue on a substitute.
+
+```typescript
+// Bad
+const rpc = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+const token = process.env.PAYMENT_TOKEN ?? "MockDAI";
+
+// Good
+const rpc = process.env.SEPOLIA_RPC_URL;
+if (rpc === undefined || rpc.trim() === "") {
+  throw new Error("SEPOLIA_RPC_URL is required. Set it in .env. See .env.example.");
+}
+```
+
+- Do not default a name, URL, duration, token, key, command, or address.
+- Do not catch an error and retry against a second RPC, token, or code path.
+- Do not mint, invent, or mock a missing balance, name, or record.
+- The error must name what was missing and the underlying failure.

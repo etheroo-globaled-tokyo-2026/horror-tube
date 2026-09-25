@@ -145,3 +145,7 @@ vite.config.ts.timestamp-*
 # misc
 .DS_Store
 .turbo
+
+# ENS commit-reveal local state (contains secret)
+scripts/.ens-commit-state.json
+scripts/.ens-commit-state/
