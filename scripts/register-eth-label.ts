@@ -1,0 +1,721 @@
+import { config as loadDotenv } from "dotenv";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  type Abi,
+  type Address,
+  type Hex,
+  createPublicClient,
+  createWalletClient,
+  formatEther,
+  formatUnits,
+  getAddress,
+  http,
+  isHex,
+  keccak256,
+  parseAbiItem,
+  stringToBytes,
+  toHex,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { sepolia } from "viem/chains";
+
+import {
+  CONTRACTS_V2_COMMIT,
+  PIN_DEPLOYED_AT,
+  PIN_DEPLOYMENT_JSON_BASE,
+  loadPinAddresses,
+  rejectBannedAddress,
+} from "./pin.js";
+
+loadDotenv();
+
+function parseLabel(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") {
+    fail(
+      "ENS_LABEL is required. Set it to the .eth label only, for example ENS_LABEL=horrortube. Refusing to default a name.",
+    );
+  }
+  const trimmed = value.trim();
+  if (trimmed.includes(".")) {
+    fail(
+      `ENS_LABEL must be one label, not a full name. Got: ${trimmed}. The script registers that label under .eth.`,
+    );
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(trimmed)) {
+    fail(
+      `ENS_LABEL must be a single lowercase DNS label (letters, digits, internal hyphens). Got: ${trimmed}`,
+    );
+  }
+  return trimmed;
+}
+
+const label = parseLabel(process.env.ENS_LABEL);
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const STATUS_NAMES = ["AVAILABLE", "RESERVED", "REGISTERED"] as const;
+
+type Command = "check" | "commit" | "register" | "full";
+
+type CommitState = {
+  label: string;
+  owner: Address;
+  secret: Hex;
+  subregistry: Address;
+  resolver: Address;
+  duration: string;
+  referrer: Hex;
+  paymentToken: Address;
+  commitment: Hex;
+  commitTxHash: Hex;
+  commitTime: number;
+};
+
+type EnvConfig = {
+  command: Command;
+  rpcUrl: string;
+  privateKey: Hex | null;
+  paymentTokenChoice: "MockDAI" | "MockUSDC";
+  durationSeconds: bigint;
+};
+
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+function loadAbi(name: string): Abi {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const path = join(here, "abis", `${name}.abi.json`);
+  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(raw)) {
+    fail(`ABI file is not an array: ${path}`);
+  }
+  return raw as Abi;
+}
+
+function parseCommand(argv: string[]): Command {
+  const arg = argv[2];
+  if (arg === undefined || arg.trim() === "") {
+    fail("Command is required. Use: check | commit | register | full. Refusing to default a command.");
+  }
+  if (arg === "check" || arg === "commit" || arg === "register" || arg === "full") {
+    return arg;
+  }
+  fail(`Unknown command "${arg}". Use: check | commit | register | full`);
+}
+
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value.trim() === "") {
+    fail(`${name} is required. Set it in .env. See .env.example. Refusing to fall back.`);
+  }
+  return value.trim();
+}
+
+function parsePrivateKey(value: string | undefined): Hex | null {
+  if (value === undefined || value === "") {
+    return null;
+  }
+  const normalized = value.startsWith("0x") ? value : `0x${value}`;
+  if (!isHex(normalized) || normalized.length !== 66) {
+    fail(
+      `PRIVATE_KEY must be a 32-byte hex string (0x + 64 hex chars). Got length ${normalized.length}`,
+    );
+  }
+  return normalized;
+}
+
+function parseDuration(value: string): bigint {
+  if (!/^[0-9]+$/u.test(value)) {
+    fail(`DURATION_SECONDS must be an integer. Got: ${value}`);
+  }
+  return BigInt(value);
+}
+
+function parsePaymentChoice(value: string): "MockDAI" | "MockUSDC" {
+  if (value === "MockDAI" || value === "MockUSDC") {
+    return value;
+  }
+  fail(`PAYMENT_TOKEN must be MockDAI or MockUSDC. Got: ${value}`);
+}
+
+function readEnv(): EnvConfig {
+  return {
+    command: parseCommand(process.argv),
+    rpcUrl: requiredEnv("SEPOLIA_RPC_URL"),
+    privateKey: parsePrivateKey(process.env.PRIVATE_KEY),
+    paymentTokenChoice: parsePaymentChoice(requiredEnv("PAYMENT_TOKEN")),
+    durationSeconds: parseDuration(requiredEnv("DURATION_SECONDS")),
+  };
+}
+
+function commitStatePath(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), ".ens-commit-state", `${label}.json`);
+}
+
+function writeCommitState(state: CommitState): void {
+  const path = commitStatePath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+}
+
+function readCommitState(): CommitState {
+  const path = commitStatePath();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    fail(`Missing commit state at ${path}. Run commit first. Underlying error: ${String(error)}`);
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    fail(`Commit state at ${path} is not an object`);
+  }
+  const record = raw as Record<string, unknown>;
+  const required = [
+    "label",
+    "owner",
+    "secret",
+    "subregistry",
+    "resolver",
+    "duration",
+    "referrer",
+    "paymentToken",
+    "commitment",
+    "commitTxHash",
+    "commitTime",
+  ] as const;
+  for (const key of required) {
+    if (!(key in record)) {
+      fail(`Commit state missing field ${key}`);
+    }
+  }
+  if (record.label !== label) {
+    fail(`Commit state label is ${String(record.label)}, expected ${label}`);
+  }
+  if (
+    typeof record.owner !== "string" ||
+    typeof record.secret !== "string" ||
+    typeof record.subregistry !== "string" ||
+    typeof record.resolver !== "string" ||
+    typeof record.duration !== "string" ||
+    typeof record.referrer !== "string" ||
+    typeof record.paymentToken !== "string" ||
+    typeof record.commitment !== "string" ||
+    typeof record.commitTxHash !== "string" ||
+    typeof record.commitTime !== "number"
+  ) {
+    fail(`Commit state field types are wrong in ${path}`);
+  }
+  if (
+    !isHex(record.secret) ||
+    !isHex(record.referrer) ||
+    !isHex(record.commitment) ||
+    !isHex(record.commitTxHash)
+  ) {
+    fail(`Commit state hex fields are invalid in ${path}`);
+  }
+  return {
+    label: record.label,
+    owner: getAddress(record.owner),
+    secret: record.secret,
+    subregistry: getAddress(record.subregistry),
+    resolver: getAddress(record.resolver),
+    duration: record.duration,
+    referrer: record.referrer,
+    paymentToken: getAddress(record.paymentToken),
+    commitment: record.commitment,
+    commitTxHash: record.commitTxHash,
+    commitTime: record.commitTime,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function main(): Promise<void> {
+  const env = readEnv();
+  const pin = loadPinAddresses();
+  const ethRegistrarAbi = loadAbi("ETHRegistrar");
+  const ethRegistryAbi = loadAbi("ETHRegistry");
+  const mockTokenAbi = loadAbi("MockDAI");
+  const oracleAbi = loadAbi("StandardRentPriceOracle");
+
+  rejectBannedAddress("ETHRegistrar", pin.ETHRegistrar);
+  rejectBannedAddress("ETHRegistry", pin.ETHRegistry);
+  rejectBannedAddress("MockDAI", pin.MockDAI);
+  rejectBannedAddress("MockUSDC", pin.MockUSDC);
+
+  console.log(
+    JSON.stringify(
+      {
+        pin: {
+          contractsV2Commit: CONTRACTS_V2_COMMIT,
+          deployedAt: PIN_DEPLOYED_AT,
+          abiSource: `${PIN_DEPLOYMENT_JSON_BASE}/ETHRegistrar.json`,
+          ETHRegistrar: pin.ETHRegistrar,
+          ETHRegistry: pin.ETHRegistry,
+          MockDAI: pin.MockDAI,
+          MockUSDC: pin.MockUSDC,
+        },
+        label: label,
+        name: `${label}.eth`,
+        command: env.command,
+        rpcUrl: env.rpcUrl,
+      },
+      null,
+      2,
+    ),
+  );
+
+  const publicClient = createPublicClient({
+    chain: sepolia,
+    transport: http(env.rpcUrl),
+  });
+
+  let blockNumber: bigint;
+  try {
+    blockNumber = await publicClient.getBlockNumber();
+  } catch (error) {
+    fail(
+      `Sepolia RPC failed at ${env.rpcUrl}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  console.log(`blockNumber=${blockNumber}`);
+
+  const labelhash = keccak256(stringToBytes(label));
+  let available: boolean;
+  let status: number;
+  let owner: Address;
+  let minCommitmentAge: bigint;
+  let maxCommitmentAge: bigint;
+  let minRegisterDuration: bigint;
+  try {
+    const results = await Promise.all([
+      publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "isAvailable",
+        args: [label],
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getStatus",
+        args: [BigInt(labelhash)],
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistry,
+        abi: ethRegistryAbi,
+        functionName: "findOwner",
+        args: [label],
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "MIN_COMMITMENT_AGE",
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "MAX_COMMITMENT_AGE",
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "MIN_REGISTER_DURATION",
+      }),
+    ]);
+    available = Boolean(results[0]);
+    status = Number(results[1]);
+    owner = getAddress(String(results[2]));
+    minCommitmentAge = BigInt(String(results[3]));
+    maxCommitmentAge = BigInt(String(results[4]));
+    minRegisterDuration = BigInt(String(results[5]));
+  } catch (error) {
+    fail(
+      `ETHRegistry/ETHRegistrar read failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const statusName =
+    status >= 0 && status < STATUS_NAMES.length ? STATUS_NAMES[status] : `UNKNOWN(${status})`;
+
+  console.log(
+    JSON.stringify(
+      {
+        labelhash,
+        isAvailable: available,
+        getStatus: statusName,
+        findOwner: owner,
+        MIN_COMMITMENT_AGE: minCommitmentAge.toString(),
+        MAX_COMMITMENT_AGE: maxCommitmentAge.toString(),
+        MIN_REGISTER_DURATION: minRegisterDuration.toString(),
+      },
+      null,
+      2,
+    ),
+  );
+
+  if (!available || statusName === "REGISTERED") {
+    console.log(
+      `TAKEN: ${label}.eth is not available on ETHRegistry ${pin.ETHRegistry} (status=${statusName}, owner=${owner})`,
+    );
+    if (env.command === "check") {
+      return;
+    }
+    fail(`Cannot ${env.command}: name is taken`);
+  }
+
+  if (env.command === "check") {
+    console.log(
+      `AVAILABLE: ${label}.eth can be registered. Fund a burner wallet, set ENS_LABEL and PRIVATE_KEY, then run: pnpm ens:register full`,
+    );
+    return;
+  }
+
+  if (env.privateKey === null) {
+    fail(
+      "PRIVATE_KEY is missing. Export a burner key in the environment (never commit it). See docs/ens-sepolia-parent.md",
+    );
+  }
+
+  if (env.durationSeconds < minRegisterDuration) {
+    fail(
+      `DURATION_SECONDS=${env.durationSeconds} is below MIN_REGISTER_DURATION=${minRegisterDuration}`,
+    );
+  }
+
+  const paymentToken = env.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
+  rejectBannedAddress("paymentToken", paymentToken);
+
+  const account = privateKeyToAccount(env.privateKey);
+  const walletClient = createWalletClient({
+    account,
+    chain: sepolia,
+    transport: http(env.rpcUrl),
+  });
+
+  console.log(`wallet=${account.address}`);
+
+  let ethBalance: bigint;
+  let tokenBalance: bigint;
+  let tokenDecimals: number;
+  let tokenSymbol: string;
+  let isPaymentToken: boolean;
+  let base: bigint;
+  let premium: bigint;
+  try {
+    const tokenMeta = await Promise.all([
+      publicClient.getBalance({ address: account.address }),
+      publicClient.readContract({
+        address: paymentToken,
+        abi: mockTokenAbi,
+        functionName: "balanceOf",
+        args: [account.address],
+      }),
+      publicClient.readContract({
+        address: paymentToken,
+        abi: mockTokenAbi,
+        functionName: "decimals",
+      }),
+      publicClient.readContract({
+        address: paymentToken,
+        abi: mockTokenAbi,
+        functionName: "symbol",
+      }),
+      publicClient.readContract({
+        address: pin.StandardRentPriceOracle,
+        abi: oracleAbi,
+        functionName: "isPaymentToken",
+        args: [paymentToken],
+      }),
+      publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "getRegisterPrice",
+        args: [label, env.durationSeconds, paymentToken],
+      }),
+    ]);
+    ethBalance = tokenMeta[0];
+    tokenBalance = BigInt(String(tokenMeta[1]));
+    tokenDecimals = Number(tokenMeta[2]);
+    tokenSymbol = String(tokenMeta[3]);
+    isPaymentToken = Boolean(tokenMeta[4]);
+    const price = tokenMeta[5];
+    if (!Array.isArray(price) || price.length < 2) {
+      fail(`getRegisterPrice returned unexpected value: ${String(price)}`);
+    }
+    base = BigInt(String(price[0]));
+    premium = BigInt(String(price[1]));
+  } catch (error) {
+    fail(`Balance/price read failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const totalCost = base + premium;
+  console.log(
+    JSON.stringify(
+      {
+        paymentToken,
+        paymentTokenChoice: env.paymentTokenChoice,
+        isPaymentToken,
+        tokenSymbol,
+        tokenDecimals,
+        ethBalanceWei: ethBalance.toString(),
+        ethBalanceEther: formatEther(ethBalance),
+        tokenBalance: tokenBalance.toString(),
+        tokenBalanceFormatted: formatUnits(tokenBalance, tokenDecimals),
+        registerPriceBase: base.toString(),
+        registerPricePremium: premium.toString(),
+        registerPriceTotal: totalCost.toString(),
+        registerPriceTotalFormatted: formatUnits(totalCost, tokenDecimals),
+        durationSeconds: env.durationSeconds.toString(),
+      },
+      null,
+      2,
+    ),
+  );
+
+  if (!isPaymentToken) {
+    fail(
+      `DISAGREEMENT: StandardRentPriceOracle.isPaymentToken(${paymentToken}) is false at pin ${CONTRACTS_V2_COMMIT}`,
+    );
+  }
+
+  if (ethBalance === 0n) {
+    fail(
+      [
+        "Missing Sepolia ETH for gas.",
+        `wallet=${account.address}`,
+        `balanceWei=0`,
+        "Fund Sepolia ETH first (ETHGlobal faucet https://ethglobal.com/faucet, Google Cloud https://cloud.google.com/application/web3/faucet/ethereum/sepolia, or PoW https://sepolia-faucet.pk910.de).",
+      ].join("\n"),
+    );
+  }
+
+  if (tokenBalance < totalCost) {
+    fail(
+      [
+        `Missing ${tokenSymbol} payment token balance for register.`,
+        `wallet=${account.address}`,
+        `token=${paymentToken} (${env.paymentTokenChoice})`,
+        `balance=${tokenBalance.toString()} (${formatUnits(tokenBalance, tokenDecimals)} ${tokenSymbol})`,
+        `required=${totalCost.toString()} (${formatUnits(totalCost, tokenDecimals)} ${tokenSymbol})`,
+        `shortfall=${(totalCost - tokenBalance).toString()}`,
+        "Quote: ETHRegistrar.register pulls IERC20 via safeTransferFrom (contracts/src/registrar/ETHRegistrar.sol at pin 71a3b733).",
+        `Mint publicly with MockERC20.mint(address,uint256) on ${paymentToken}:`,
+        `  cast send ${paymentToken} "mint(address,uint256)" ${account.address} ${totalCost.toString()} --rpc-url ${env.rpcUrl} --private-key $PRIVATE_KEY`,
+        "Or from this wallet after funding ETH, any account can call mint (pin MockERC20.sol).",
+      ].join("\n"),
+    );
+  }
+
+  if (env.command === "commit" || env.command === "full") {
+    const secret = keccak256(toHex(crypto.getRandomValues(new Uint8Array(32))));
+    const subregistry = ZERO_ADDRESS;
+    const resolver = ZERO_ADDRESS;
+    const referrer = ZERO_BYTES32;
+    const duration = env.durationSeconds;
+
+    let commitment: Hex;
+    try {
+      commitment = (await publicClient.readContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "makeCommitment",
+        args: [label, account.address, secret, subregistry, resolver, duration, referrer],
+      })) as Hex;
+    } catch (error) {
+      fail(`makeCommitment failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    console.log(`commitment=${commitment}`);
+
+    let commitTxHash: Hex;
+    try {
+      commitTxHash = await walletClient.writeContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "commit",
+        args: [commitment],
+      });
+    } catch (error) {
+      fail(`commit() failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    console.log(`commitTxHash=${commitTxHash}`);
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: commitTxHash,
+    });
+    if (receipt.status !== "success") {
+      fail(`commit tx reverted: ${commitTxHash}`);
+    }
+
+    const commitTime = Math.floor(Date.now() / 1000);
+    writeCommitState({
+      label: label,
+      owner: account.address,
+      secret,
+      subregistry,
+      resolver,
+      duration: duration.toString(),
+      referrer,
+      paymentToken,
+      commitment,
+      commitTxHash,
+      commitTime,
+    });
+    console.log(`wrote ${commitStatePath()}`);
+
+    if (env.command === "commit") {
+      console.log(
+        `Committed. Wait at least MIN_COMMITMENT_AGE=${minCommitmentAge}s then: pnpm ens:register register`,
+      );
+      return;
+    }
+
+    const waitMs = Number(minCommitmentAge) * 1000 + 2000;
+    console.log(`waiting ${waitMs}ms for MIN_COMMITMENT_AGE`);
+    await sleep(waitMs);
+  }
+
+  if (env.command === "register" || env.command === "full") {
+    const state = readCommitState();
+    if (getAddress(state.owner) !== getAddress(account.address)) {
+      fail(`Commit state owner ${state.owner} != wallet ${account.address}`);
+    }
+    if (getAddress(state.paymentToken) !== paymentToken) {
+      fail(
+        `Commit state paymentToken ${state.paymentToken} != selected ${paymentToken}. Re-run with matching PAYMENT_TOKEN or re-commit.`,
+      );
+    }
+
+    const age = Math.floor(Date.now() / 1000) - state.commitTime;
+    if (BigInt(age) < minCommitmentAge) {
+      fail(
+        `Commitment too new: age=${age}s MIN_COMMITMENT_AGE=${minCommitmentAge}s. Wait and retry register.`,
+      );
+    }
+    if (BigInt(age) > maxCommitmentAge) {
+      fail(
+        `Commitment too old: age=${age}s MAX_COMMITMENT_AGE=${maxCommitmentAge}s. Re-run commit.`,
+      );
+    }
+
+    let allowance: bigint;
+    try {
+      allowance = BigInt(
+        String(
+          await publicClient.readContract({
+            address: paymentToken,
+            abi: mockTokenAbi,
+            functionName: "allowance",
+            args: [account.address, pin.ETHRegistrar],
+          }),
+        ),
+      );
+    } catch (error) {
+      fail(`allowance read failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    if (allowance < totalCost) {
+      console.log(`approving ETHRegistrar for ${totalCost.toString()} ${tokenSymbol}`);
+      let approveHash: Hex;
+      try {
+        approveHash = await walletClient.writeContract({
+          address: paymentToken,
+          abi: [parseAbiItem("function approve(address spender, uint256 amount) returns (bool)")],
+          functionName: "approve",
+          args: [pin.ETHRegistrar, totalCost],
+        });
+      } catch (error) {
+        fail(`approve failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      console.log(`approveTxHash=${approveHash}`);
+      const approveReceipt = await publicClient.waitForTransactionReceipt({
+        hash: approveHash,
+      });
+      if (approveReceipt.status !== "success") {
+        fail(`approve tx reverted: ${approveHash}`);
+      }
+    }
+
+    let registerHash: Hex;
+    try {
+      registerHash = await walletClient.writeContract({
+        address: pin.ETHRegistrar,
+        abi: ethRegistrarAbi,
+        functionName: "register",
+        args: [
+          state.label,
+          state.owner,
+          state.secret,
+          state.subregistry,
+          state.resolver,
+          BigInt(state.duration),
+          state.paymentToken,
+          state.referrer,
+        ],
+      });
+    } catch (error) {
+      fail(`register() failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    console.log(`registerTxHash=${registerHash}`);
+    const registerReceipt = await publicClient.waitForTransactionReceipt({
+      hash: registerHash,
+    });
+    if (registerReceipt.status !== "success") {
+      fail(`register tx reverted: ${registerHash}`);
+    }
+
+    const postStatus = Number(
+      await publicClient.readContract({
+        address: pin.ETHRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getStatus",
+        args: [BigInt(labelhash)],
+      }),
+    );
+    const postOwner = getAddress(
+      String(
+        await publicClient.readContract({
+          address: pin.ETHRegistry,
+          abi: ethRegistryAbi,
+          functionName: "findOwner",
+          args: [label],
+        }),
+      ),
+    );
+    const postStatusName =
+      postStatus >= 0 && postStatus < STATUS_NAMES.length
+        ? STATUS_NAMES[postStatus]
+        : `UNKNOWN(${postStatus})`;
+
+    console.log(
+      JSON.stringify(
+        {
+          registered: true,
+          getStatus: postStatusName,
+          findOwner: postOwner,
+          registerTxHash: registerHash,
+        },
+        null,
+        2,
+      ),
+    );
+
+    if (postStatusName !== "REGISTERED") {
+      fail(`register tx succeeded but getStatus is ${postStatusName}, expected REGISTERED`);
+    }
+  }
+}
+
+main().catch((error: unknown) => {
+  fail(
+    `Unhandled error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+  );
+});
