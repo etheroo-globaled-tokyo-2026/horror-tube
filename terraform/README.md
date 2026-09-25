@@ -1,39 +1,69 @@
 # Horror Tube — DigitalOcean Terraform
 
-Provisions a Spaces bucket with CDN (character icons) and a Managed PostgreSQL cluster (battle state). This PR only adds the code; **do not run `terraform apply` from CI or as part of merging it.**
+Provisions a Spaces bucket with CDN (character icons) and a Managed PostgreSQL cluster (battle state) with a database firewall.
 
-## Auth (token never on disk)
+## Auth (token never on disk, never pasted into shell history)
 
-Terraform expects `var.do_token`. Export it at apply/plan time from 1Password into the process environment:
+Terraform’s DigitalOcean token is a **single** input: `var.do_token`, set only via `TF_VAR_do_token` (or the provider’s `DIGITALOCEAN_TOKEN` if you wire the provider that way). Do **not** put the token in `*.tfvars`, do **not** write it to a file in the repo, and do **not** `export` a pasted secret (that lands the secret in shell history).
 
-```bash
-export DIGITALOCEAN_TOKEN="$(op item get 'DigitalOcean IRC' --fields api_key --reveal)"
-export TF_VAR_do_token="$DIGITALOCEAN_TOKEN"
-```
-
-`TF_VAR_do_token` feeds the Terraform variable. `DIGITALOCEAN_TOKEN` is the provider’s native env name — keep them equal when you apply. Do not write the token into `*.tfvars` or commit it.
-
-Spaces API calls also need access keys at apply time (create in the DigitalOcean control panel):
-
-```bash
-export SPACES_ACCESS_KEY_ID="..."
-export SPACES_SECRET_ACCESS_KEY="..."
-```
-
-## Database size
-
-Default `db_size` is **`db-s-1vcpu-2gb`**.
-
-Verified with `GET https://api.digitalocean.com/v2/databases/options`: under `options.pg.layouts` for `num_nodes: 1`, the `sizes` list includes `db-s-*` plans. The slug encodes **1 vCPU** and **2 GB RAM**. That skips the smallest `db-s-1vcpu-1gb` plan for a snappier hackathon demo without jumping to multi-vCPU production sizes (`db-s-2vcpu-4gb` and up).
-
-Region default is **`nyc3`** so Spaces and Postgres share a Spaces-capable region from the same options list.
-
-## Validate only
+Load the token from 1Password item **DigitalOcean IRC** into the process environment for that one command only:
 
 ```bash
 cd terraform
-terraform init -backend=false
-terraform validate
+
+env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
+  terraform plan
+
+env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
+  terraform apply
 ```
 
-Set `TF_VAR_spaces_bucket_name` (or pass `-var`) to a unique bucket name before plan/apply. Apply is intentionally out of scope for this change.
+The secret stays in the child process environment for that invocation; it is not written to disk and is not an `export` of a literal token.
+
+### Spaces API keys (apply time)
+
+Spaces also needs access keys (control panel or `POST /v2/spaces/keys` with a `fullaccess` grant — a key with empty `grants` gets AccessDenied). Pass them for that command only the same way (from 1Password or another secret store — never as literals in an `export`):
+
+```bash
+env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
+  SPACES_ACCESS_KEY_ID="$(op read 'op://…/spaces_access_key')" \
+  SPACES_SECRET_ACCESS_KEY="$(op read 'op://…/spaces_secret_key')" \
+  terraform apply
+```
+
+Replace the Spaces `op://` paths with your items. Do not commit those values.
+
+## Required tfvars (no defaults)
+
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, bucket name, or database firewall CIDR:
+
+| Variable | Operator value for this project |
+| --- | --- |
+| `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
+| `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
+| `spaces_bucket_name` | globally unique name |
+| `db_firewall_cidr` | your public IP as `x.x.x.x/32` — never `0.0.0.0/0` |
+
+There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
+
+`db-s-1vcpu-2gb` was verified under `options.pg.layouts` for `num_nodes: 1`.
+
+## Spaces icons: public read + CDN
+
+The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cdn_endpoint` output). If a later upload path only sets public-read per object, upload icons with an object ACL of `public-read`, for example:
+
+```bash
+aws s3 cp ./icon.png "s3://${BUCKET}/${KEY}" \
+  --endpoint-url "https://${REGION}.digitaloceanspaces.com" \
+  --acl public-read
+```
+
+Pass Spaces credentials via the same one-shot `env` pattern as above. Public icon URLs use `https://` + CDN endpoint + object key.
+
+## Validate
+
+```bash
+cd terraform
+terraform init
+terraform validate
+```
