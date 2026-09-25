@@ -1,25 +1,24 @@
 # Register a label under `.eth` on Sepolia ENSv2 beta
 
-First milestone only: one second-level name, `<ENS_LABEL>.eth`. No character subnames in this draft. The label comes from `ENS_LABEL`. The script does not default it.
+First milestone only: one second-level name, `<ENS_LABEL>.eth`. No character
+subnames in this draft. The label comes from `ENS_LABEL`. The script does not
+default it.
 
 ## Pin (source of truth)
 
-| Item                    | Value                                                         |
-| ----------------------- | ------------------------------------------------------------- |
-| contracts-v2 commit     | `71a3b7339dbc55ab47667abdfe8303bac4f4c24e`                    |
-| Deployed at             | `2026-09-15T09:46:38.513Z`                                    |
-| Address table           | `scripts/pin/sepolia-addresses.md` (copy of the pin raw file) |
-| ETHRegistrar            | `0xabe76f6c8dfced81aa5a2bb8034202a7136b94ca`                  |
-| ETHRegistry             | `0x657ea849311d3d5823348dded7c2aaafb3ede09e`                  |
-| MockDAI                 | `0x278053acc97888e63ec81c80fec641bf0bf19664`                  |
-| MockUSDC                | `0x16f95d91dba7da3aca778ec053df0ff6c6a8aa8e`                  |
-| StandardRentPriceOracle | `0x9b0b9c65bdaf9794ff7697e4dcfb1f50581072bb`                  |
+| Item                | Value                                                      |
+| ------------------- | ---------------------------------------------------------- |
+| contracts-v2 commit | `71a3b7339dbc55ab47667abdfe8303bac4f4c24e`                 |
+| Deployed at         | `2026-09-15T09:46:38.513Z`                                 |
+| Address table       | `scripts/pin/sepolia-addresses.md` (copy of the pin raw)   |
 
-ABIs used by the script are extracted from
-`contracts/deployments/sepolia/{Contract}.json` at that commit (under
-`scripts/abis/*.abi.json`). Do not use older addresses
+Contract addresses used by the register script (`ETHRegistrar`, `ETHRegistry`,
+`MockDAI`, `MockUSDC`, `StandardRentPriceOracle`) live only in that address
+table. Do not paste them elsewhere. Do not use older addresses
 `0xdce5205a553573ffd47629327dddf36186022ffa` or
 `0x7e4b2d59938930168024201752ee5503df402303`.
+
+Minimal ABIs for the calls the script makes live in `scripts/abis.ts`.
 
 ## Registrar flow (from pin source)
 
@@ -30,9 +29,10 @@ ERC-20 via `safeTransferFrom` — not ETH rent. Quote:
 
 `StandardRentPriceOracle.isPaymentToken` accepts pin `MockDAI` and `MockUSDC`
 (verified on-chain against this deployment). On-chain reads for a 1-year term on
-`horrortube` returned about `8` units of either token (plus tiny dust). Price depends on the label. Premium
-was `0` while the name was freshly available. The script always re-queries
-`getRegisterPrice` and fails if the wallet cannot pay that exact total.
+`horrortube` returned about `8` units of either token (plus tiny dust). Price
+depends on the label. Premium was `0` while the name was freshly available. The
+script always re-queries `getRegisterPrice` and fails if the wallet cannot pay
+that exact total.
 
 `MIN_COMMITMENT_AGE` on this deployment is `60` seconds.
 `MAX_COMMITMENT_AGE` is `86400` seconds.
@@ -68,28 +68,32 @@ Working faucets researched for this draft:
 
 ## 3. Fund MockDAI or MockUSDC (registrar payment)
 
-Pick one payment token from the pin and set `PAYMENT_TOKEN` to `MockDAI` or `MockUSDC`. The script does not choose one for you.
+Pick one payment token from the pin and set `PAYMENT_TOKEN` to `MockDAI` or
+`MockUSDC`. The script does not choose one for you.
 
 Both are `MockERC20` at the pin (`contracts/test/mocks/MockERC20.sol`) with a
-public `mint(address to, uint256 amount)`.
+public `mint(address to, uint256 amount)`. Addresses are in
+`scripts/pin/sepolia-addresses.md`.
 
 ```bash
 # Example: mint 20 MockDAI (18 decimals) to your burner
-cast send 0x278053acc97888e63ec81c80fec641bf0bf19664 \
+# Replace MOCK_TOKEN with the MockDAI address from scripts/pin/sepolia-addresses.md
+cast send "$MOCK_TOKEN" \
   "mint(address,uint256)" \
   YOUR_ADDRESS \
   20000000000000000000 \
-  --rpc-url https://ethereum-sepolia-rpc.publicnode.com \
+  --rpc-url "$SEPOLIA_RPC_URL" \
   --private-key "$PRIVATE_KEY"
 ```
 
 ```bash
 # Or MockUSDC (6 decimals): mint 20 USDC
-cast send 0x16f95d91dba7da3aca778ec053df0ff6c6a8aa8e \
+# Replace MOCK_TOKEN with the MockUSDC address from scripts/pin/sepolia-addresses.md
+cast send "$MOCK_TOKEN" \
   "mint(address,uint256)" \
   YOUR_ADDRESS \
   20000000 \
-  --rpc-url https://ethereum-sepolia-rpc.publicnode.com \
+  --rpc-url "$SEPOLIA_RPC_URL" \
   --private-key "$PRIVATE_KEY"
 ```
 
@@ -105,13 +109,13 @@ cp .env.example .env
 
 Env vars (names only in `.env.example`):
 
-| Variable           | Role                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| `ENS_LABEL`        | Required. One lowercase label, not a full name. Registers `<ENS_LABEL>.eth`.        |
-| `PRIVATE_KEY`      | Required for `commit` / `register` / `full`. `0x` + 64 hex. Check does not use it.  |
-| `SEPOLIA_RPC_URL`  | Required. Sepolia HTTP RPC. No default.                                              |
-| `PAYMENT_TOKEN`    | Required. `MockDAI` or `MockUSDC`. No default.                                       |
-| `DURATION_SECONDS` | Required. Integer seconds. Must be `>= MIN_REGISTER_DURATION`. No default.           |
+| Variable           | Role                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `ENS_LABEL`        | Required. One lowercase label, not a full name. Registers `<ENS_LABEL>.eth`.       |
+| `PRIVATE_KEY`      | Required for `commit` / `register` / `full`. `0x` + 64 hex. Check does not use it. |
+| `SEPOLIA_RPC_URL`  | Required. Sepolia HTTP RPC. No default.                                            |
+| `PAYMENT_TOKEN`    | Required. `MockDAI` or `MockUSDC`. No default.                                     |
+| `DURATION_SECONDS` | Required. Integer seconds. Must be `>= MIN_REGISTER_DURATION`. No default.         |
 
 ## 5. Commands
 
@@ -120,8 +124,8 @@ pnpm install
 pnpm ens:check
 ```
 
-Check-only: reads ETHRegistry / ETHRegistrar for `$ENS_LABEL.eth`. Prints `AVAILABLE` or `TAKEN`.
-No private key required. `ENS_LABEL` is required.
+Check-only: reads ETHRegistry / ETHRegistrar for `$ENS_LABEL.eth`. Prints
+`AVAILABLE` or `TAKEN`. No private key required. `ENS_LABEL` is required.
 
 ```bash
 pnpm ens:register full
@@ -139,7 +143,8 @@ pnpm ens:register commit
 pnpm ens:register register
 ```
 
-To register a different parent, change `ENS_LABEL` and run the same commands. Each label keeps its own commit file.
+A different `ENS_LABEL` is a different label under `.eth`, not a different
+parent TLD. Each label keeps its own commit file.
 
 ## Out of scope for this draft
 
