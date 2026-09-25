@@ -1,4 +1,4 @@
-"""Roster JSON validation and import/removal plan generation."""
+"""Roster Fandom propose, JSON validation, and import/removal plan generation."""
 
 __all__ = ["STATUS_ALLOWED", "FORBIDDEN_KEYS"]
 

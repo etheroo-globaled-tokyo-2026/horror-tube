@@ -1,13 +1,12 @@
 # Roster JSON import and removal plans
 
-First slice of issue #4: validate character JSON and emit **plans**. This PR does
-**not** scrape Fandom, does **not** read ENS on-chain state, and does **not**
-send register/unregister transactions. Subname registry writes land in a later
-PR when the contracts path is safe to call.
+Issue #4 pipeline: propose character sheets from Fandom lore, validate JSON, and
+emit **plans**. This does **not** send register/unregister transactions. Subname
+registry writes land in a later PR when the contracts path is safe to call.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL` fails with an error that
-names the variable.
+names the variable. `propose` does not require `ENS_LABEL` and does not call ENS.
 
 ## Schemas
 
@@ -38,6 +37,9 @@ Import accepts either one character object or a bulk array.
 `roster/fixtures/sample-characters.json` is a **fixture** of two invented
 characters for local tests. It is not live Fandom lore.
 
+Saved Fandom-shaped HTML under `roster/fixtures/fandom-*.html` is used for
+offline propose unit tests. Those tests do not hit the network.
+
 ## Commands
 
 Install deps once:
@@ -45,6 +47,60 @@ Install deps once:
 ```bash
 python3 -m pip install -r roster/requirements.txt
 ```
+
+### propose
+
+Fetch N Fandom pages over real HTTP and write proposed roster JSON that matches
+the schemas above. `--n` must equal the number of sources. On HTTP failure the
+command prints the URL and the error, then exits non-zero. It does not invent
+lore or substitute another page.
+
+```bash
+# One character (full URL)
+python3 -m roster propose \
+  --n 1 \
+  --source 'https://horror.fandom.com/wiki/Dracula' \
+  --out /tmp/dracula.json
+
+# Bulk list of N (titles need --wiki)
+python3 -m roster propose \
+  --n 2 \
+  --wiki horror.fandom.com \
+  --source Dracula \
+  --source 'Wolf Man' \
+  --out /tmp/roster.json
+```
+
+Or put one URL/title per line in a file:
+
+```bash
+python3 -m roster propose \
+  --n 2 \
+  --wiki horror.fandom.com \
+  --sources-file sources.txt \
+  --out /tmp/roster.json
+```
+
+Field rules for proposed sheets:
+
+- `label`: one lowercase word from the page title
+- `look`: first usable lore sentence from the page text
+- `brief`: second usable lore sentence (fight-usable line from the same page)
+- `injuries` / `status`: always written as `""`
+- `icon`: `""` unless the HTML contained a direct `https://` image URL
+
+Duplicate labels across the N proposed characters are an error.
+
+Pass the output file straight into `import`:
+
+```bash
+ENS_LABEL=horrortube python3 -m roster import \
+  --input /tmp/roster.json \
+  --out /tmp/import-plan.json
+```
+
+Dead/injured restore behavior is owned by `import` (`--on-existing`); `propose`
+does not silently restore names.
 
 ### import
 
@@ -61,7 +117,7 @@ ENS_LABEL=horrortube python3 -m roster import \
 
 #### Existing dead / injured names
 
-Chain reads are **not** in this PR. To exercise dead/injured handling, pass an
+Chain reads are **not** implemented here. To exercise dead/injured handling, pass an
 optional second file with the same character schema:
 
 ```bash
