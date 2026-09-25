@@ -1,5 +1,7 @@
 # Character icons on Spaces + CDN (issue #5).
 # ENS stores only the HTTPS CDN URL; object keys should change when art changes.
+# Bucket ACL is public-read. If a specific object is not readable after upload,
+# set that object's ACL to public-read at upload time (see README).
 
 resource "digitalocean_spaces_bucket" "character_icons" {
   name   = var.spaces_bucket_name

@@ -1,7 +1,8 @@
-# Copy to terraform.tfvars only if you must; prefer env vars for the token.
-# Never commit terraform.tfvars.
+# Copy to terraform.tfvars (gitignored). Never commit terraform.tfvars.
+# DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
+# for that one terraform command only. See README.md.
 
-do_token           = ""
-region             = "nyc3"
-spaces_bucket_name = ""
+region             = "sgp1"
+spaces_bucket_name = "horror-tube-icons-REPLACE_ME"
 db_size            = "db-s-1vcpu-2gb"
+db_firewall_cidr   = "x.x.x.x/32"
