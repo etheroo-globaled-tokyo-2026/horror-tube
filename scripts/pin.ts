@@ -22,7 +22,7 @@ const REQUIRED_NAMES = [
   "StandardRentPriceOracle",
 ] as const;
 
-const BANNED_OLD_ADDRESSES = [
+export const BANNED_OLD_ADDRESSES = [
   "0xdce5205a553573ffd47629327dddf36186022ffa",
   "0x7e4b2d59938930168024201752ee5503df402303",
 ] as const;
@@ -47,29 +47,23 @@ function parsePinnedAddress(markdown: string, name: string): `0x${string}` {
   );
   const match = pattern.exec(markdown);
   if (match === null || match[1] === undefined) {
-    fail(
+    throw new Error(
       `DISAGREEMENT: pin address table at ${PIN_ADDRESS_DOC_URL} is missing ${name}`,
     );
   }
   return getAddress(match[1]);
 }
 
-export function loadPinAddresses(): PinAddresses {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const markdown = readFileSync(
-    join(here, "pin", "sepolia-addresses.md"),
-    "utf8",
-  );
-
+export function parsePinAddressesFromMarkdown(markdown: string): PinAddresses {
   if (!markdown.includes(`Deployed at:** ${PIN_DEPLOYED_AT}`)) {
-    fail(
+    throw new Error(
       `DISAGREEMENT: local pin markdown Deployed at does not equal ${PIN_DEPLOYED_AT}`,
     );
   }
 
   for (const banned of BANNED_OLD_ADDRESSES) {
     if (markdown.toLowerCase().includes(banned.toLowerCase())) {
-      fail(
+      throw new Error(
         `DISAGREEMENT: banned old address ${banned} appears in pin markdown`,
       );
     }
@@ -85,6 +79,19 @@ export function loadPinAddresses(): PinAddresses {
   return addresses;
 }
 
+export function loadPinAddresses(): PinAddresses {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const markdown = readFileSync(
+    join(here, "pin", "sepolia-addresses.md"),
+    "utf8",
+  );
+  try {
+    return parsePinAddressesFromMarkdown(markdown);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 export function rejectBannedAddress(
   label: string,
   address: `0x${string}`,
@@ -92,7 +99,7 @@ export function rejectBannedAddress(
   const normalized = getAddress(address);
   for (const banned of BANNED_OLD_ADDRESSES) {
     if (normalized === getAddress(banned)) {
-      fail(
+      throw new Error(
         `DISAGREEMENT: ${label}=${normalized} is a banned older deployment address`,
       );
     }

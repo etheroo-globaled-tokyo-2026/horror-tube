@@ -5,6 +5,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test scripts/ens-register.test.ts",
     "ens:check": "tsx scripts/register-eth-label.ts check",
     "ens:register": "tsx scripts/register-eth-label.ts"
   },
