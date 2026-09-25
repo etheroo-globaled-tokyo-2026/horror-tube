@@ -3,7 +3,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  type Abi,
   type Address,
   type Hex,
   createPublicClient,
@@ -14,13 +13,18 @@ import {
   http,
   isHex,
   keccak256,
-  parseAbiItem,
   stringToBytes,
   toHex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 
+import {
+  ethRegistrarAbi,
+  ethRegistryAbi,
+  mockErc20Abi,
+  standardRentPriceOracleAbi,
+} from "./abis.js";
 import {
   CONTRACTS_V2_COMMIT,
   PIN_DEPLOYED_AT,
@@ -53,7 +57,8 @@ function parseLabel(value: string | undefined): string {
 
 const label = parseLabel(process.env.ENS_LABEL);
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const ZERO_BYTES32 =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const STATUS_NAMES = ["AVAILABLE", "RESERVED", "REGISTERED"] as const;
 
 type Command = "check" | "commit" | "register" | "full";
@@ -85,22 +90,19 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function loadAbi(name: string): Abi {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const path = join(here, "abis", `${name}.abi.json`);
-  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!Array.isArray(raw)) {
-    fail(`ABI file is not an array: ${path}`);
-  }
-  return raw as Abi;
-}
-
 function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
-    fail("Command is required. Use: check | commit | register | full. Refusing to default a command.");
+    fail(
+      "Command is required. Use: check | commit | register | full. Refusing to default a command.",
+    );
   }
-  if (arg === "check" || arg === "commit" || arg === "register" || arg === "full") {
+  if (
+    arg === "check" ||
+    arg === "commit" ||
+    arg === "register" ||
+    arg === "full"
+  ) {
     return arg;
   }
   fail(`Unknown command "${arg}". Use: check | commit | register | full`);
@@ -109,7 +111,9 @@ function parseCommand(argv: string[]): Command {
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") {
-    fail(`${name} is required. Set it in .env. See .env.example. Refusing to fall back.`);
+    fail(
+      `${name} is required. Set it in .env. See .env.example. Refusing to fall back.`,
+    );
   }
   return value.trim();
 }
@@ -152,7 +156,11 @@ function readEnv(): EnvConfig {
 }
 
 function commitStatePath(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), ".ens-commit-state", `${label}.json`);
+  return join(
+    dirname(fileURLToPath(import.meta.url)),
+    ".ens-commit-state",
+    `${label}.json`,
+  );
 }
 
 function writeCommitState(state: CommitState): void {
@@ -167,7 +175,9 @@ function readCommitState(): CommitState {
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
   } catch (error) {
-    fail(`Missing commit state at ${path}. Run commit first. Underlying error: ${String(error)}`);
+    fail(
+      `Missing commit state at ${path}. Run commit first. Underlying error: ${String(error)}`,
+    );
   }
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     fail(`Commit state at ${path} is not an object`);
@@ -240,15 +250,12 @@ function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   const env = readEnv();
   const pin = loadPinAddresses();
-  const ethRegistrarAbi = loadAbi("ETHRegistrar");
-  const ethRegistryAbi = loadAbi("ETHRegistry");
-  const mockTokenAbi = loadAbi("MockDAI");
-  const oracleAbi = loadAbi("StandardRentPriceOracle");
 
   rejectBannedAddress("ETHRegistrar", pin.ETHRegistrar);
   rejectBannedAddress("ETHRegistry", pin.ETHRegistry);
   rejectBannedAddress("MockDAI", pin.MockDAI);
   rejectBannedAddress("MockUSDC", pin.MockUSDC);
+  rejectBannedAddress("StandardRentPriceOracle", pin.StandardRentPriceOracle);
 
   console.log(
     JSON.stringify(
@@ -261,6 +268,7 @@ async function main(): Promise<void> {
           ETHRegistry: pin.ETHRegistry,
           MockDAI: pin.MockDAI,
           MockUSDC: pin.MockUSDC,
+          StandardRentPriceOracle: pin.StandardRentPriceOracle,
         },
         label: label,
         name: `${label}.eth`,
@@ -343,7 +351,9 @@ async function main(): Promise<void> {
   }
 
   const statusName =
-    status >= 0 && status < STATUS_NAMES.length ? STATUS_NAMES[status] : `UNKNOWN(${status})`;
+    status >= 0 && status < STATUS_NAMES.length
+      ? STATUS_NAMES[status]
+      : `UNKNOWN(${status})`;
 
   console.log(
     JSON.stringify(
@@ -373,7 +383,7 @@ async function main(): Promise<void> {
 
   if (env.command === "check") {
     console.log(
-      `AVAILABLE: ${label}.eth can be registered. Fund a burner wallet, set ENS_LABEL and PRIVATE_KEY, then run: pnpm ens:register full`,
+      `AVAILABLE: ${label}.eth can be registered. Required before pnpm ens:register full: ENS_LABEL, SEPOLIA_RPC_URL, PAYMENT_TOKEN, DURATION_SECONDS, PRIVATE_KEY.`,
     );
     return;
   }
@@ -390,7 +400,8 @@ async function main(): Promise<void> {
     );
   }
 
-  const paymentToken = env.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
+  const paymentToken =
+    env.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
   rejectBannedAddress("paymentToken", paymentToken);
 
   const account = privateKeyToAccount(env.privateKey);
@@ -414,23 +425,23 @@ async function main(): Promise<void> {
       publicClient.getBalance({ address: account.address }),
       publicClient.readContract({
         address: paymentToken,
-        abi: mockTokenAbi,
+        abi: mockErc20Abi,
         functionName: "balanceOf",
         args: [account.address],
       }),
       publicClient.readContract({
         address: paymentToken,
-        abi: mockTokenAbi,
+        abi: mockErc20Abi,
         functionName: "decimals",
       }),
       publicClient.readContract({
         address: paymentToken,
-        abi: mockTokenAbi,
+        abi: mockErc20Abi,
         functionName: "symbol",
       }),
       publicClient.readContract({
         address: pin.StandardRentPriceOracle,
-        abi: oracleAbi,
+        abi: standardRentPriceOracleAbi,
         functionName: "isPaymentToken",
         args: [paymentToken],
       }),
@@ -453,7 +464,9 @@ async function main(): Promise<void> {
     base = BigInt(String(price[0]));
     premium = BigInt(String(price[1]));
   } catch (error) {
-    fail(`Balance/price read failed: ${error instanceof Error ? error.message : String(error)}`);
+    fail(
+      `Balance/price read failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const totalCost = base + premium;
@@ -527,10 +540,20 @@ async function main(): Promise<void> {
         address: pin.ETHRegistrar,
         abi: ethRegistrarAbi,
         functionName: "makeCommitment",
-        args: [label, account.address, secret, subregistry, resolver, duration, referrer],
+        args: [
+          label,
+          account.address,
+          secret,
+          subregistry,
+          resolver,
+          duration,
+          referrer,
+        ],
       })) as Hex;
     } catch (error) {
-      fail(`makeCommitment failed: ${error instanceof Error ? error.message : String(error)}`);
+      fail(
+        `makeCommitment failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     console.log(`commitment=${commitment}`);
@@ -544,7 +567,9 @@ async function main(): Promise<void> {
         args: [commitment],
       });
     } catch (error) {
-      fail(`commit() failed: ${error instanceof Error ? error.message : String(error)}`);
+      fail(
+        `commit() failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     console.log(`commitTxHash=${commitTxHash}`);
@@ -612,28 +637,34 @@ async function main(): Promise<void> {
         String(
           await publicClient.readContract({
             address: paymentToken,
-            abi: mockTokenAbi,
+            abi: mockErc20Abi,
             functionName: "allowance",
             args: [account.address, pin.ETHRegistrar],
           }),
         ),
       );
     } catch (error) {
-      fail(`allowance read failed: ${error instanceof Error ? error.message : String(error)}`);
+      fail(
+        `allowance read failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     if (allowance < totalCost) {
-      console.log(`approving ETHRegistrar for ${totalCost.toString()} ${tokenSymbol}`);
+      console.log(
+        `approving ETHRegistrar for ${totalCost.toString()} ${tokenSymbol}`,
+      );
       let approveHash: Hex;
       try {
         approveHash = await walletClient.writeContract({
           address: paymentToken,
-          abi: [parseAbiItem("function approve(address spender, uint256 amount) returns (bool)")],
+          abi: mockErc20Abi,
           functionName: "approve",
           args: [pin.ETHRegistrar, totalCost],
         });
       } catch (error) {
-        fail(`approve failed: ${error instanceof Error ? error.message : String(error)}`);
+        fail(
+          `approve failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
       console.log(`approveTxHash=${approveHash}`);
       const approveReceipt = await publicClient.waitForTransactionReceipt({
@@ -662,7 +693,9 @@ async function main(): Promise<void> {
         ],
       });
     } catch (error) {
-      fail(`register() failed: ${error instanceof Error ? error.message : String(error)}`);
+      fail(
+        `register() failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     console.log(`registerTxHash=${registerHash}`);
     const registerReceipt = await publicClient.waitForTransactionReceipt({
@@ -709,7 +742,9 @@ async function main(): Promise<void> {
     );
 
     if (postStatusName !== "REGISTERED") {
-      fail(`register tx succeeded but getStatus is ${postStatusName}, expected REGISTERED`);
+      fail(
+        `register tx succeeded but getStatus is ${postStatusName}, expected REGISTERED`,
+      );
     }
   }
 }
