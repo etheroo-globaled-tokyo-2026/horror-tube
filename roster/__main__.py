@@ -1,4 +1,4 @@
-"""CLI: validate roster JSON and emit import/removal plans (no chain I/O)."""
+"""CLI: validate roster JSON, propose sheets from Fandom, emit import/removal plans."""
 
 from __future__ import annotations
 
@@ -9,7 +9,15 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
+from roster.fandom import (
+    FandomError,
+    fetch_html,
+    parse_page_html,
+    require_source_count,
+    resolve_source_url,
+)
 from roster.plan import ON_EXISTING_VALUES, build_import_plan, build_removal_plan
+from roster.propose import propose_sheets, sheets_payload
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -47,6 +55,71 @@ def _require_flag(value: Optional[str], *, name: str) -> str:
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+
+def _load_sources_file(path: Path) -> list[str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise FandomError(f"Failed to read sources file {path}: {exc}") from exc
+    lines = []
+    for index, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if line == "" or line.startswith("#"):
+            continue
+        lines.append(line)
+    if len(lines) == 0:
+        raise FandomError(f"{path}: sources file has no URLs or page titles.")
+    return lines
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    out_path = Path(_require_flag(args.out, name="--out"))
+    sources: list[str] = list(args.source or [])
+    if args.sources_file is not None:
+        if args.sources_file.strip() == "":
+            raise FandomError("--sources-file was passed blank.")
+        sources.extend(_load_sources_file(Path(args.sources_file)))
+    if len(sources) == 0:
+        raise FandomError(
+            "Provide at least one --source URL/title, or a --sources-file list."
+        )
+    sources = require_source_count(sources, n=args.n)
+    wiki = args.wiki
+    if wiki is not None and wiki.strip() == "":
+        raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
+
+    lores = []
+    for source in sources:
+        url = resolve_source_url(source, wiki=wiki)
+        try:
+            html = fetch_html(url)
+            lore = parse_page_html(html, url=url)
+        except FandomError as exc:
+            print(f"error: {url}: {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"error: {url}: {exc}", file=sys.stderr)
+            return 1
+        lores.append(lore)
+
+    try:
+        characters = propose_sheets(lores)
+    except (FandomError, RosterValidationError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    payload = sheets_payload(characters)
+    _write_json(out_path, payload)
+    print(f"Wrote proposed roster JSON: {out_path}")
+    print(f"characters={len(characters)}")
+    for character in characters:
+        print(f"  {character['label']}")
+    print(
+        "Pass this file to `python -m roster import --input ...` to build an import plan. "
+        "This command does not call ENS."
+    )
+    return 0
 
 
 def cmd_import(args: argparse.Namespace) -> int:
@@ -108,11 +181,52 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m roster",
         description=(
-            "Validate character roster JSON and write normalized import/removal plans. "
-            "Does not read or write ENS chain state in this PR."
+            "Propose character sheets from Fandom lore, validate roster JSON, and write "
+            "normalized import/removal plans. Does not read or write ENS chain state."
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    propose_p = sub.add_parser(
+        "propose",
+        help=(
+            "Fetch Fandom pages over HTTP and write proposed roster JSON "
+            "(ready for `import`)."
+        ),
+    )
+    propose_p.add_argument(
+        "--n",
+        type=int,
+        required=True,
+        help="Exact number of characters to propose. Must equal the number of sources.",
+    )
+    propose_p.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        help=(
+            "Fandom page URL or wiki page title. Repeat for each character. "
+            "Titles require --wiki."
+        ),
+    )
+    propose_p.add_argument(
+        "--sources-file",
+        required=False,
+        default=None,
+        help="Optional text file: one URL or page title per line (# comments allowed).",
+    )
+    propose_p.add_argument(
+        "--wiki",
+        required=False,
+        default=None,
+        help="Fandom host for page titles, e.g. horror.fandom.com. Not used for full URLs.",
+    )
+    propose_p.add_argument(
+        "--out",
+        required=True,
+        help="Path to write proposed character JSON (single object or bulk array).",
+    )
+    propose_p.set_defaults(func=cmd_propose)
 
     import_p = sub.add_parser(
         "import",
@@ -134,7 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Optional JSON of already-known characters (same schema as import). "
-            "Used only for dead/injured detection. Chain reads are not in this PR."
+            "Used only for dead/injured detection. Chain reads are not implemented."
         ),
     )
     import_p.add_argument(
@@ -173,6 +287,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except FandomError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     except RosterValidationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -1,4 +1,4 @@
-"""Tests for roster JSON validation and plan generation."""
+"""Tests for roster JSON validation, Fandom propose, and plan generation."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest import mock
 
 from roster import __main__ as cli
+from roster.fandom import FandomError, parse_page_html
 from roster.plan import build_import_plan, build_removal_plan
+from roster.propose import propose_sheets, sheet_from_lore, sheets_payload
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -21,6 +23,10 @@ from roster.validate import (
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "roster" / "fixtures" / "sample-characters.json"
+FANDOM_DRACULA = ROOT / "roster" / "fixtures" / "fandom-dracula.html"
+FANDOM_WOLFMAN = ROOT / "roster" / "fixtures" / "fandom-wolfman.html"
+FANDOM_MISSING = ROOT / "roster" / "fixtures" / "fandom-missing-text.html"
+FANDOM_DRACULA_FILM = ROOT / "roster" / "fixtures" / "fandom-dracula-film.html"
 
 
 def _char(**overrides):
@@ -149,6 +155,65 @@ class RemovalPlanTests(unittest.TestCase):
         self.assertIn("unregister", plan["labels"][0]["ens_action"].lower())
 
 
+class ProposeTests(unittest.TestCase):
+    def test_fixture_html_becomes_sheet(self):
+        html = FANDOM_DRACULA.read_text(encoding="utf-8")
+        lore = parse_page_html(html, url="https://horror.fandom.com/wiki/Dracula")
+        sheet = sheet_from_lore(lore)
+        self.assertEqual(sheet["label"], "dracula")
+        self.assertIn("cloak", sheet["look"].lower())
+        self.assertIn("throat", sheet["brief"].lower())
+        self.assertEqual(sheet["injuries"], "")
+        self.assertEqual(sheet["status"], "")
+        self.assertTrue(sheet["icon"].startswith("https://"))
+        self.assertNotIn("strength", sheet)
+        self.assertNotIn("role", sheet)
+
+    def test_missing_lore_text_fails(self):
+        html = FANDOM_MISSING.read_text(encoding="utf-8")
+        lore = parse_page_html(html, url="https://horror.fandom.com/wiki/Empty_Page")
+        with self.assertRaises(FandomError) as ctx:
+            sheet_from_lore(lore)
+        self.assertIn("two sentences", str(ctx.exception).lower())
+
+    def test_duplicate_labels_fail(self):
+        lore_a = parse_page_html(
+            FANDOM_DRACULA.read_text(encoding="utf-8"),
+            url="https://horror.fandom.com/wiki/Dracula",
+        )
+        lore_b = parse_page_html(
+            FANDOM_DRACULA_FILM.read_text(encoding="utf-8"),
+            url="https://horror.fandom.com/wiki/Dracula_(film)",
+        )
+        with self.assertRaises(RosterValidationError) as ctx:
+            propose_sheets([lore_a, lore_b])
+        self.assertIn("duplicate", str(ctx.exception).lower())
+        self.assertIn("dracula", str(ctx.exception))
+
+    def test_bulk_propose_then_import_plan(self):
+        lores = [
+            parse_page_html(
+                FANDOM_DRACULA.read_text(encoding="utf-8"),
+                url="https://horror.fandom.com/wiki/Dracula",
+            ),
+            parse_page_html(
+                FANDOM_WOLFMAN.read_text(encoding="utf-8"),
+                url="https://horror.fandom.com/wiki/Wolf_Man",
+            ),
+        ]
+        characters = propose_sheets(lores)
+        self.assertEqual([c["label"] for c in characters], ["dracula", "wolf"])
+        payload = sheets_payload(characters)
+        self.assertIsInstance(payload, list)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proposed.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            loaded = load_characters(path)
+            plan = build_import_plan(loaded, ens_label="horrortube")
+            self.assertEqual(plan["plan"], "import")
+            self.assertEqual(len(plan["characters"]), 2)
+
+
 class CliTests(unittest.TestCase):
     def test_import_cli_writes_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,6 +267,28 @@ class CliTests(unittest.TestCase):
                     ["remove", "--input", str(labels), "--out", str(out)]
                 )
             self.assertEqual(code, 1)
+
+    def test_propose_cli_prints_url_on_fetch_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out.json"
+            url = "https://horror.fandom.com/wiki/Missing"
+            with mock.patch(
+                "roster.__main__.fetch_html",
+                side_effect=FandomError("connection refused"),
+            ):
+                code = cli.main(
+                    [
+                        "propose",
+                        "--n",
+                        "1",
+                        "--source",
+                        url,
+                        "--out",
+                        str(out),
+                    ]
+                )
+            self.assertEqual(code, 1)
+            self.assertFalse(out.exists())
 
 
 if __name__ == "__main__":
