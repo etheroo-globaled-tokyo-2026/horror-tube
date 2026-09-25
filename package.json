@@ -1,0 +1,19 @@
+{
+  "name": "horror-tube",
+  "private": true,
+  "packageManager": "pnpm@11.6.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.85.0",
+    "oxlint": "1.85.0",
+    "oxfmt": "0.70.0",
+    "typescript": "7.0.2"
+  }
+}
