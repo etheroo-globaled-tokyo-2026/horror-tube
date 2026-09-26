@@ -12,6 +12,7 @@ import {
   readGamePort,
   readSkipBattleSettlement,
   readStaticDir,
+  requiredEnv,
 } from "./env.js";
 import {
   readGameLoopConfig,
@@ -19,7 +20,7 @@ import {
 } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
 import { createGameServer, listenGameServer } from "./server.js";
-import { createWalletHandlerFromEnv, failingWalletHandler } from "./wallet-handler.js";
+import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 loadRepoDotenv(join(repoRoot, ".env"));
@@ -49,26 +50,8 @@ const game = new GameLoop({
   skipSettlement,
 });
 
-let wallet;
-try {
-  wallet = createWalletHandlerFromEnv(process.env);
-} catch (err) {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`Wallet API is off. ${message}`);
-  wallet = failingWalletHandler(message);
-}
-
-// Same pepper as the wallet session. Missing pepper fails POST /vote by name.
-const pepperRaw = process.env.WALLET_SECRET_PEPPER;
-const sessionPepper =
-  pepperRaw !== undefined && pepperRaw.trim() !== ""
-    ? pepperRaw.trim()
-    : undefined;
-if (sessionPepper === undefined) {
-  console.error(
-    "POST /vote will fail: WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
-  );
-}
+const wallet = createWalletHandlerFromEnv(process.env);
+const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
 
 const server = createGameServer({
   port,
