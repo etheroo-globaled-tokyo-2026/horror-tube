@@ -49,6 +49,10 @@ winner stays on until one fighter is left.
   and logged by id.
 - A season ends when one character is left (champion recorded) or when a video failure leaves `over`. A failed end
   write is logged and the next start ends that season as a leftover.
+- Deaths carry over between seasons while two or more characters are alive on ENS. With fewer than two, the programme
+  is finished: every character is offered, and the server writes `status=alive` for each dead one before the new
+  season opens. It starts the revival as the last season ends, after that bout's `status=dead` write lands, and
+  `POST /start` waits on it. A failed revival write fails the start by name and the next start tries again.
 
 ### Bet
 
@@ -105,7 +109,7 @@ winner stays on until one fighter is left.
   fight or settle with an error.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and OK starts a new season through
-  `POST /start`. A failed video also ends at `over`; it does not start another season by itself.
+  `POST /start` with every character revived. A failed video also ends at `over`; it does not start another season by itself.
 
 ## Video continuity
 

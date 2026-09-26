@@ -48,6 +48,9 @@ function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): Ga
       async writeLoserStatusDead() {
         throw new Error("session tests must not write status.");
       },
+      async writeStatusAlive() {
+        throw new Error("session tests must not revive a character.");
+      },
       async settleBattle(_battleId, _side) {
         throw new Error("session tests must not settle a battle.");
       },
@@ -137,7 +140,12 @@ describe("session routes", () => {
     assert.deepEqual(started.fighters, [0, 1]);
     assert.equal(started.battleId, null);
 
-    const second = await post(base, "/start", JSON.stringify({ fighter: 0 }), issueSession("222", PEPPER));
+    const second = await post(
+      base,
+      "/start",
+      JSON.stringify({ fighter: 0 }),
+      issueSession("222", PEPPER),
+    );
     assert.equal(second.status, 409);
     const refused = v.parse(ErrorJson, await second.json());
     assert.equal(refused.code, "bout_open");
@@ -152,7 +160,12 @@ describe("session routes", () => {
     };
     const game = testLoop(roundStore);
     const base = await listen(game, PEPPER);
-    const res = await post(base, "/start", JSON.stringify({ fighter: 0 }), issueSession("111", PEPPER));
+    const res = await post(
+      base,
+      "/start",
+      JSON.stringify({ fighter: 0 }),
+      issueSession("111", PEPPER),
+    );
     assert.equal(res.status, 500);
     const body = v.parse(ErrorJson, await res.json());
     assert.equal(body.code, "start_failed");
