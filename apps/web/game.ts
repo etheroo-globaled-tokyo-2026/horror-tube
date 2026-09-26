@@ -19,6 +19,7 @@ import {
   connectRoundEvents,
   fetchRoundState,
   postVote,
+  withServerIds,
   type ServerRoundState,
 } from "./round-client.ts";
 import { formatPoolOdds } from "./odds.ts";
@@ -65,6 +66,7 @@ type Place = (typeof PLACES)[number];
 
 export type Character = {
   id: number;
+  label: string;
   name: string;
   short: string;
   ens: string;
@@ -296,7 +298,31 @@ function logHouseBots(prev: GameState["bots"], next: GameState["bots"]): void {
   }
 }
 
+function castInServerOrder(chars: ServerRoundState["chars"]): Character[] {
+  return withServerIds(rosterSheets, chars).map((s) => ({
+    id: s.id,
+    label: s.label,
+    name: s.label.toUpperCase(),
+    short: s.label.toUpperCase(),
+    ens: s.name,
+    hue: HUES[s.id % 3],
+    brief: s.brief,
+    injuries: s.injuries.join(", "),
+    icon: s.img,
+    fights: 0,
+    alive: s.alive,
+    kills: 0,
+    damage: 0,
+  }));
+}
+
 export function applyRoundState(state: ServerRoundState): void {
+  if (
+    S.chars.length !== state.chars.length ||
+    state.chars.some((c) => S.chars[c.id]?.label !== c.label)
+  ) {
+    S.chars = castInServerOrder(state.chars);
+  }
   const prevPhase = S.phase;
   const prevRound = S.round;
   S.round = state.round;
@@ -431,6 +457,7 @@ const ROSTER = (async () => {
     ),
   };
 })();
+let rosterSheets: Awaited<typeof ROSTER>["sheets"] = [];
 export async function newSeason(): Promise<void> {
   let roster: Awaited<typeof ROSTER>;
   try {
@@ -442,26 +469,18 @@ export async function newSeason(): Promise<void> {
     );
     throw error;
   }
-  S.chars = roster.sheets.map((s, id) => ({
-    id,
-    name: s.label.toUpperCase(),
-    short: s.label.toUpperCase(),
-    ens: s.name,
-    hue: HUES[id % 3],
-    brief: s.brief,
-    injuries: s.injuries.join(", "),
-    icon: s.img,
-    fights: 0,
-    alive: s.alive,
-    kills: 0,
-    damage: 0,
-  }));
+  rosterSheets = roster.sheets;
   Object.assign(S, { round: 1, focus: 0, last: null, view: 1, picks: [], cast: null, bet: null });
   log(
-    `RESIDENT REGISTER · ${S.chars.length} records received from ${roster.parentName}`,
+    `RESIDENT REGISTER · ${roster.sheets.length} records received from ${roster.parentName}`,
     "t-house",
   );
-  await connectToServerRound();
+  try {
+    await connectToServerRound();
+  } catch (error) {
+    note(`BROADCAST UNAVAILABLE. ${error instanceof Error ? error.message : String(error)}`, "bad");
+    throw error;
+  }
 }
 const faces = new Map<string, HTMLCanvasElement>();
 export function face(ch: Character): HTMLCanvasElement {

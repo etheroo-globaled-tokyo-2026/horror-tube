@@ -257,6 +257,7 @@ export class GameLoop {
       })),
       chars: this.chars.map((c) => ({
         id: c.id,
+        label: c.ensLabel,
         alive: c.alive,
         kills: c.kills,
         damage: c.damage,

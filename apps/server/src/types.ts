@@ -26,5 +26,5 @@ export type RoundState = {
     bet: { side: 0 | 1; units: number; digest: string } | null;
     error: string | null;
   }[];
-  chars: { id: number; alive: boolean; kills: number; damage: number }[];
+  chars: { id: number; label: string; alive: boolean; kills: number; damage: number }[];
 };
