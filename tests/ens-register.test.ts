@@ -1,11 +1,3 @@
-/*
- * Unit: no network. Always run.
- * Smoke: Sepolia `check` only. Skips unless ENS_LABEL and SEPOLIA_RPC_URL are set.
- * E2E: ENS_E2E=1 plus ENS_LABEL, SEPOLIA_RPC_URL, PAYMENT_TOKEN, DURATION_SECONDS,
- *   PRIVATE_KEY. Leaves the name registered: ETHRegistrar at this pin has no
- *   unregister for a second-level .eth name.
- */
-
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -19,7 +11,7 @@ import {
   PIN_DEPLOYED_AT,
   parsePinAddressesFromMarkdown,
   rejectBannedAddress,
-} from "./pin.js";
+} from "../scripts/pin.js";
 import {
   type CommitState,
   parseCommand,
@@ -29,21 +21,13 @@ import {
   parsePaymentChoice,
   readEnv,
   requiredEnv,
-} from "./register-eth-label.js";
+} from "../scripts/register-eth-label.js";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const goodPinMarkdown = readFileSync(join(here, "pin", "sepolia-addresses.md"), "utf8");
-
-function assertThrowsNamed(run: () => void, named: string): void {
-  let caught: unknown;
-  try {
-    run();
-  } catch (error) {
-    caught = error;
-  }
-  assert.ok(caught instanceof Error, `expected Error mentioning ${named}`);
-  assert.match(caught.message, new RegExp(named, "u"));
-}
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const goodPinMarkdown = readFileSync(
+  join(repoRoot, "scripts", "pin", "sepolia-addresses.md"),
+  "utf8",
+);
 
 describe("pin loader (unit, no network)", () => {
   it("loads the checked-in pin address table", () => {
@@ -53,7 +37,7 @@ describe("pin loader (unit, no network)", () => {
 
   it("rejects a mismatched Deployed at timestamp", () => {
     const mismatched = goodPinMarkdown.replace(PIN_DEPLOYED_AT, "2000-01-01T00:00:00.000Z");
-    assertThrowsNamed(() => parsePinAddressesFromMarkdown(mismatched), "DISAGREEMENT");
+    assert.throws(() => parsePinAddressesFromMarkdown(mismatched), /DISAGREEMENT/u);
   });
 
   it("rejects banned older registrar addresses in the markdown", () => {
@@ -62,31 +46,31 @@ describe("pin loader (unit, no network)", () => {
         "0xabe76f6c8dfced81aa5a2bb8034202a7136b94ca",
         banned,
       );
-      assertThrowsNamed(() => parsePinAddressesFromMarkdown(poisoned), "banned");
+      assert.throws(() => parsePinAddressesFromMarkdown(poisoned), /banned/u);
     }
   });
 
   it("rejectBannedAddress rejects banned older registrar addresses", () => {
     for (const banned of BANNED_OLD_ADDRESSES) {
-      assertThrowsNamed(() => rejectBannedAddress("ETHRegistrar", getAddress(banned)), "banned");
+      assert.throws(() => rejectBannedAddress("ETHRegistrar", getAddress(banned)), /banned/u);
     }
   });
 });
 
 describe("label parser (unit, no network)", () => {
   it("rejects blank ENS_LABEL", () => {
-    assertThrowsNamed(() => parseLabel(undefined), "ENS_LABEL");
-    assertThrowsNamed(() => parseLabel(""), "ENS_LABEL");
-    assertThrowsNamed(() => parseLabel("   "), "ENS_LABEL");
+    assert.throws(() => parseLabel(undefined), /ENS_LABEL/u);
+    assert.throws(() => parseLabel(""), /ENS_LABEL/u);
+    assert.throws(() => parseLabel("   "), /ENS_LABEL/u);
   });
 
   it("rejects a full name like foo.eth", () => {
-    assertThrowsNamed(() => parseLabel("foo.eth"), "ENS_LABEL");
+    assert.throws(() => parseLabel("foo.eth"), /ENS_LABEL/u);
   });
 
   it("rejects uppercase", () => {
-    assertThrowsNamed(() => parseLabel("Foo"), "ENS_LABEL");
-    assertThrowsNamed(() => parseLabel("HORRORTUBE"), "ENS_LABEL");
+    assert.throws(() => parseLabel("Foo"), /ENS_LABEL/u);
+    assert.throws(() => parseLabel("HORRORTUBE"), /ENS_LABEL/u);
   });
 
   it("accepts a lowercase label", () => {
@@ -96,26 +80,26 @@ describe("label parser (unit, no network)", () => {
 
 describe("required env and command (unit, no network)", () => {
   it("missing or blank SEPOLIA_RPC_URL fails and names the variable", () => {
-    assertThrowsNamed(() => requiredEnv("SEPOLIA_RPC_URL", {}), "SEPOLIA_RPC_URL");
-    assertThrowsNamed(
+    assert.throws(() => requiredEnv("SEPOLIA_RPC_URL", {}), /SEPOLIA_RPC_URL/u);
+    assert.throws(
       () => requiredEnv("SEPOLIA_RPC_URL", { SEPOLIA_RPC_URL: "  " }),
-      "SEPOLIA_RPC_URL",
+      /SEPOLIA_RPC_URL/u,
     );
   });
 
   it("missing or blank PAYMENT_TOKEN fails and names the variable", () => {
-    assertThrowsNamed(() => requiredEnv("PAYMENT_TOKEN", {}), "PAYMENT_TOKEN");
-    assertThrowsNamed(() => requiredEnv("PAYMENT_TOKEN", { PAYMENT_TOKEN: "" }), "PAYMENT_TOKEN");
-    assertThrowsNamed(() => parsePaymentChoice("ETH"), "PAYMENT_TOKEN");
+    assert.throws(() => requiredEnv("PAYMENT_TOKEN", {}), /PAYMENT_TOKEN/u);
+    assert.throws(() => requiredEnv("PAYMENT_TOKEN", { PAYMENT_TOKEN: "" }), /PAYMENT_TOKEN/u);
+    assert.throws(() => parsePaymentChoice("ETH"), /PAYMENT_TOKEN/u);
   });
 
   it("missing or blank DURATION_SECONDS fails and names the variable", () => {
-    assertThrowsNamed(() => requiredEnv("DURATION_SECONDS", {}), "DURATION_SECONDS");
-    assertThrowsNamed(
+    assert.throws(() => requiredEnv("DURATION_SECONDS", {}), /DURATION_SECONDS/u);
+    assert.throws(
       () => requiredEnv("DURATION_SECONDS", { DURATION_SECONDS: " " }),
-      "DURATION_SECONDS",
+      /DURATION_SECONDS/u,
     );
-    assertThrowsNamed(() => parseDuration("not-a-number"), "DURATION_SECONDS");
+    assert.throws(() => parseDuration("not-a-number"), /DURATION_SECONDS/u);
   });
 
   it("check needs only SEPOLIA_RPC_URL", () => {
@@ -126,20 +110,20 @@ describe("required env and command (unit, no network)", () => {
   });
 
   it("write commands fail by name without PRIVATE_KEY", () => {
-    assertThrowsNamed(
+    assert.throws(
       () =>
         readEnv(["tsx", "script.ts", "full"], {
           SEPOLIA_RPC_URL: "http://rpc.invalid",
           PAYMENT_TOKEN: "MockDAI",
           DURATION_SECONDS: "2419200",
         }),
-      "PRIVATE_KEY",
+      /PRIVATE_KEY/u,
     );
   });
 
   it("missing or blank command fails and names the requirement", () => {
-    assertThrowsNamed(() => parseCommand(["tsx", "script.ts"]), "Command");
-    assertThrowsNamed(() => parseCommand(["tsx", "script.ts", "  "]), "Command");
+    assert.throws(() => parseCommand(["tsx", "script.ts"]), /Command/u);
+    assert.throws(() => parseCommand(["tsx", "script.ts", "  "]), /Command/u);
   });
 });
 
@@ -158,20 +142,18 @@ describe("commit-state label mismatch (unit, no network)", () => {
       commitTxHash: "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       commitTime: 1,
     };
-    assertThrowsNamed(
+    assert.throws(
       () => parseCommitState(state, "expectedlabel", "/tmp/fake-commit-state.json"),
-      "expectedlabel",
+      /expectedlabel/u,
     );
   });
 });
 
-function envPresent(name: string): boolean {
-  const value = process.env[name];
-  return value !== undefined && value.trim() !== "";
+function missingEnv(names: readonly string[]): string[] {
+  return names.filter((name) => (process.env[name] ?? "").trim() === "");
 }
 
-// Help text names the PRIVATE_KEY variable; only the key value is a leak.
-function assertNoKeyLeak(output: string): void {
+function assertNoKeyValueLeak(output: string): void {
   const key = process.env.PRIVATE_KEY?.trim().replace(/^0x/u, "").toLowerCase();
   if (key === undefined || key === "") {
     return;
@@ -187,13 +169,12 @@ function parseStatus(stdout: string): string {
 
 function runRegisterScript(
   command: string,
-  env: NodeJS.ProcessEnv,
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const tsxBin = join(here, "..", "node_modules", ".bin", "tsx");
-    const child = spawn(tsxBin, [join(here, "register-eth-label.ts"), command], {
-      cwd: join(here, ".."),
-      env: env,
+    const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
+    const child = spawn(tsxBin, [join(repoRoot, "scripts", "register-eth-label.ts"), command], {
+      cwd: repoRoot,
+      env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -213,16 +194,15 @@ function runRegisterScript(
 
 describe("smoke: Sepolia check only", () => {
   it("returns AVAILABLE or REGISTERED for ENS_LABEL and prints the pin commit", async (t) => {
-    if (!envPresent("ENS_LABEL") || !envPresent("SEPOLIA_RPC_URL")) {
-      t.skip(
-        "Skip unless ENS_LABEL and SEPOLIA_RPC_URL are set. Smoke hits Sepolia check only; does not mint or register.",
-      );
+    const missing = missingEnv(["ENS_LABEL", "SEPOLIA_RPC_URL"]);
+    if (missing.length > 0) {
+      t.skip(`Smoke needs ${missing.join(", ")}. Runs Sepolia check only.`);
       return;
     }
 
-    const result = await runRegisterScript("check", { ...process.env });
+    const result = await runRegisterScript("check");
     assert.equal(result.code, 0, `check failed:\nstdout=${result.stdout}\nstderr=${result.stderr}`);
-    assertNoKeyLeak(result.stdout + result.stderr);
+    assertNoKeyValueLeak(result.stdout + result.stderr);
     assert.match(result.stdout, /71a3b7339dbc55ab47667abdfe8303bac4f4c24e/u);
     const status = parseStatus(result.stdout);
     assert.ok(
@@ -235,41 +215,30 @@ describe("smoke: Sepolia check only", () => {
 
 describe("e2e: commit, wait, approve, register, check REGISTERED", () => {
   it("registers ENS_LABEL on Sepolia when ENS_E2E=1 and secrets are set", async (t) => {
-    const required = [
-      "ENS_E2E",
+    if (process.env.ENS_E2E !== "1") {
+      t.skip("E2E needs ENS_E2E=1. Leaves the name registered.");
+      return;
+    }
+    const missing = missingEnv([
       "ENS_LABEL",
       "SEPOLIA_RPC_URL",
       "PAYMENT_TOKEN",
       "DURATION_SECONDS",
       "PRIVATE_KEY",
-    ] as const;
-    for (const name of required) {
-      if (!envPresent(name)) {
-        t.skip(
-          `E2E gated behind ENS_E2E=1 plus ENS_LABEL, SEPOLIA_RPC_URL, PAYMENT_TOKEN, DURATION_SECONDS, PRIVATE_KEY. Missing ${name}. ETHRegistrar has no safe unregister for a .eth name; a successful e2e leaves the name registered.`,
-        );
-        return;
-      }
-    }
-    if (process.env.ENS_E2E !== "1") {
-      t.skip(
-        "E2E gated behind ENS_E2E=1. Set ENS_E2E=1 plus secrets to run. Leaves the name registered (no safe unregister on this pin).",
-      );
-      return;
-    }
+    ]);
+    assert.deepEqual(missing, [], `ENS_E2E=1 but ${missing.join(", ")} not set`);
 
-    const env: NodeJS.ProcessEnv = { ...process.env };
-    const full = await runRegisterScript("full", env);
+    const full = await runRegisterScript("full");
     assert.equal(full.code, 0, `full failed:\nstdout=${full.stdout}\nstderr=${full.stderr}`);
-    assertNoKeyLeak(full.stdout + full.stderr);
+    assertNoKeyValueLeak(full.stdout + full.stderr);
 
-    const check = await runRegisterScript("check", env);
+    const check = await runRegisterScript("check");
     assert.equal(
       check.code,
       0,
       `post-register check failed:\nstdout=${check.stdout}\nstderr=${check.stderr}`,
     );
-    assertNoKeyLeak(check.stdout + check.stderr);
+    assertNoKeyValueLeak(check.stdout + check.stderr);
     assert.equal(parseStatus(check.stdout), "REGISTERED");
   });
 });

@@ -1,7 +1,7 @@
 # Register a label under `.eth` on Sepolia ENSv2 beta
 
-First milestone only: one second-level name, `<ENS_LABEL>.eth`. No character
-subnames in this draft. The label comes from `ENS_LABEL`. The script does not
+One second-level name, `<ENS_LABEL>.eth`. Character subnames are in
+`docs/roster-json.md`. The label comes from `ENS_LABEL`. The script does not
 default it.
 
 ## Pin (source of truth)
@@ -153,10 +153,11 @@ parent TLD. Each label keeps its own commit file.
 pnpm test
 ```
 
-Unit tests always run. The smoke test runs `check` when `ENS_LABEL` and
-`SEPOLIA_RPC_URL` are set and fails if output contains the `PRIVATE_KEY` value.
-The e2e runs `full` only with `ENS_E2E=1` and leaves the name registered; this
-pin has no unregister for a second-level `.eth` name.
+Runs `tests/ens-register.test.ts`. Unit tests always run. The smoke test runs
+`check` when `ENS_LABEL` and `SEPOLIA_RPC_URL` are set and fails if output
+contains the `PRIVATE_KEY` value. The e2e runs `full` only with `ENS_E2E=1`,
+fails if any write variable is missing, and leaves the name registered; this pin
+has no unregister for a second-level `.eth` name.
 
 ## Out of scope for this draft
 

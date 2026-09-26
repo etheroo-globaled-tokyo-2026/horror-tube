@@ -29,8 +29,8 @@ import {
   CONTRACTS_V2_COMMIT,
   PIN_DEPLOYED_AT,
   PIN_DEPLOYMENT_JSON_BASE,
+  type PinAddresses,
   loadPinAddresses,
-  rejectBannedAddress,
 } from "./pin.js";
 
 loadDotenv();
@@ -70,14 +70,6 @@ type EnvConfig = {
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
-}
-
-function exitOnThrow(run: () => void): void {
-  try {
-    run();
-  } catch (error) {
-    fail(error instanceof Error ? error.message : String(error));
-  }
 }
 
 export function parseLabel(value: string | undefined): string {
@@ -261,21 +253,14 @@ function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   let label: string;
   let env: EnvConfig;
+  let pin: PinAddresses;
   try {
     label = parseLabel(process.env.ENS_LABEL);
     env = readEnv(process.argv, process.env);
+    pin = loadPinAddresses();
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
-  const pin = loadPinAddresses();
-
-  exitOnThrow(() => {
-    rejectBannedAddress("ETHRegistrar", pin.ETHRegistrar);
-    rejectBannedAddress("ETHRegistry", pin.ETHRegistry);
-    rejectBannedAddress("MockDAI", pin.MockDAI);
-    rejectBannedAddress("MockUSDC", pin.MockUSDC);
-    rejectBannedAddress("StandardRentPriceOracle", pin.StandardRentPriceOracle);
-  });
 
   console.log(
     JSON.stringify(
@@ -414,9 +399,6 @@ async function main(): Promise<void> {
   }
 
   const paymentToken = write.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
-  exitOnThrow(() => {
-    rejectBannedAddress("paymentToken", paymentToken);
-  });
 
   const account = privateKeyToAccount(write.privateKey);
   const walletClient = createWalletClient({
