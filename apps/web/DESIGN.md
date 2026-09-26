@@ -30,14 +30,12 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 `VITE_SEPOLIA_RPC_URL` in the repo-root `.env`. The RPC URL ships in the page, so use a public keyless one.
 
 - Name: the `display_name` record. A blank `display_name` stops the page load.
-- Face: the `icon` PNG, everywhere (tape, spine, case file, fight figures).
+- Face: the `icon` PNG, everywhere (bout tapes, case file, fight figures).
 - Case file: `brief` and current `injuries`. `injury_places` is the list of places that character can be injured. `look` is for the video model only.
 - `status=dead` shows the character crossed off and in black and white.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
 - A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
-- **Limit:** the shelf has 10 slots. Characters after the tenth do not show. The layout must
-  change before the roster batches (issues 11–13) go on chain.
 
 ## The flow (game.ts)
 
@@ -133,9 +131,10 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
   says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.
   1. The TV receives one channel.
-  2. The shelf holds the residents' records, kept up to date.
-  3. Watching is free; the meter funds optional bets.
-  4. Hold A or B to bet on the survivor.
+  2. Every bout is taped; the shelf keeps them.
+  3. Pull a tape and play it on the VCR.
+  4. Watching is free; the meter funds optional bets.
+  5. Hold A or B to bet on the survivor.
 - **Demo refusal:** the TV switches off, the lights go out, the waiver burns from the bottom up. Then
   NO VIEWER REGISTERED stays in the dark. ENTER cuts back to a new waiver.
 - **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (3 to 4 s on
@@ -168,23 +167,27 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
     light makes the room look flat.
   - The bulb casts hard shadows (`BasicShadowMap`). Ambient occlusion (`GTAOPass`) darkens the places where things
     touch. Exponential fog makes far things darker. The TV picture has no fog.
-  - The tapes are real VHS cases (6 × 25 cm spines) in the room palette, never the resident's hue: black plastic,
-    a `--sulfur` number sticker (the same colour as the case file number), an aged paper label with the short
-    name, and the face at the bottom, tinted with the same warm ramp as the fight video. Plain dark tapes fill the
-    rest of the shelf. A dead resident's tape stays, with a grey sticker and label and the name struck out. The
-    spines are lit, with a little glow to stay readable.
-  - The tape in your hand is the case: a black frame, a faint plastic shine, a `--rust` header, and the spine on its
-    side.
+  - **Bout tapes:** the shelf holds only bout tapes. Every finished bout with a video is one VHS case (6 × 25 cm
+    spine, black plastic, lit so it stays readable), lying flat in piles, spine out. The newest tape is always on top
+    of the eye-level left pile; when the piles are full, only the newest show. The spine is worn like the room: scratched plastic, a faded `--sulfur` bout number sticker, and a yellowed, stained, slightly crooked paper label with two typed lines: the winner, then V and the loser in `--blood-deep`. The spines glow only a little. The cover in your hand has a `--blood` header, both faces
+    (the loser crossed out, the winner framed), who walked out, the winner's injuries, the narration, and the REC
+    date. The server hides the live bout's tape until betting is over, because its cover names the winner.
+  - **The VCR** sits on the TV's left shoulder: a black deck with a cassette door, a red LED, and a `--cold`
+    display that blinks 12:00 when empty and counts when it plays. While you hold a tape, the hint says to click the VCR. Click it with a bout tape in your hand to play
+    it; click again to eject the tape into your hand. Click the tape in your hand to put it back. Bet and fight phases take
+    the TV back and put the tape on the pile; so does the end of the tape.
   - The camera moves a little with the mouse (parallax).
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
   - Waiting and the next bout: the living roster and TYPE THE NUMBER · OK. Two digits show that resident's file. OK books them. On a fresh game the other fighter is drawn at random. A failed booking shows the server's reason.
   - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
-  - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
-    injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
+  - Typing a number: the resident's case file: face, name, kills and damage, `brief`, injuries. Typing puts down a
+    held tape, so the TV stays in view. CLR goes back.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the deceased
     resident, the winner, and OK to collect.
+  - A tape in the VCR: the bout video with the same filter, PLAY and a play mark top left, the bout number and the
+    counter at the bottom. A typed case file still shows over it.
 - **The remote:** the only thing you use for the game. Digits for a case file, or for the stake during a bet.
   Press A or B to choose a side, type the amount, then OK. OK also collects or starts again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.

@@ -547,8 +547,6 @@ const fighters = (): Pair => {
 };
 export { char, fighters };
 
-export const replaying = (): boolean =>
-  (S.phase === "vote" || S.phase === "countdown" || S.phase === "over") && S.round > 1;
 setInterval(() => {
   refreshTimer();
   if (S.phase === "fight") S.frame++;
@@ -754,10 +752,7 @@ export function pick(id: number): void {
     render();
     postVote(id).then(applyRoundState, (cause: unknown) => {
       S.votedFor = null;
-      note(
-        `VOTE REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`,
-        "bad",
-      );
+      note(`VOTE REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`, "bad");
     });
     return;
   }
