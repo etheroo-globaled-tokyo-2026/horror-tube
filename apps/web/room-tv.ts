@@ -753,8 +753,9 @@ function drawRoomChoice(now: number): void {
       fx = cx - face / 2,
       chosen = typed?.id === resident.id,
       staysOn = resident.id === champion?.id,
+      alive = resident.alive || S.selectable.includes(resident.id),
       frame = chosen && !staysOn ? COL.sulfur : featured === resident.id ? COL.bone : null;
-    g.globalAlpha = staysOn ? 0.35 : resident.alive ? 1 : 0.55;
+    g.globalAlpha = staysOn ? 0.35 : alive ? 1 : 0.55;
     g.drawImage(tinted(resident), fx, top, face, face);
     g.globalAlpha = 1;
     if (frame !== null) {
@@ -766,11 +767,11 @@ function drawRoomChoice(now: number): void {
     g.font = "15px DotGothic16";
     const labelW = Math.min(g.measureText(label).width, cellW - 8);
     g.textAlign = "center";
-    g.fillStyle = chosen ? COL.sulfur : resident.alive ? COL.bone : COL.rust;
+    g.fillStyle = chosen ? COL.sulfur : alive ? COL.bone : COL.rust;
     g.globalAlpha = staysOn ? 0.35 : 1;
     g.fillText(label, cx, top + face + 18, cellW - 8);
     g.globalAlpha = 1;
-    if (!resident.alive) {
+    if (!alive) {
       g.strokeStyle = COL.blood;
       g.lineWidth = 3;
       g.beginPath();
