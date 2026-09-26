@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatShotList, renderEnsLines, videoPromptFromTurn } from "../src/render.js";
+import { ARENA_VIDEO_PROMPT_PREFIX, formatShotList, renderEnsLines, videoPromptFromTurn } from "../src/render.js";
 import { validateFightInput, validateNarrationTurn } from "../src/validate.js";
 import { sampleFightInput, validTurn } from "./fixtures.js";
 
@@ -129,9 +129,14 @@ describe("renderEnsLines", () => {
 });
 
 describe("videoPromptFromTurn", () => {
-  it("includes the shot list and omits rationale and ENS lines", () => {
+  it("starts with the arena prefix, then the shot list, and omits rationale and ENS lines", () => {
     const turn = validTurn();
     const prompt = videoPromptFromTurn(turn);
+    assert.equal(prompt.startsWith(ARENA_VIDEO_PROMPT_PREFIX), true);
+    assert.equal(
+      prompt,
+      `${ARENA_VIDEO_PROMPT_PREFIX}\n\n${formatShotList(turn.shots)}`,
+    );
     assert.match(prompt, /0-4s/);
     assert.match(prompt, /machete/);
     assert.doesNotMatch(prompt, /Dream demon who kills/);
@@ -139,6 +144,12 @@ describe("videoPromptFromTurn", () => {
     assert.doesNotMatch(prompt, /\|injuries=/);
     assert.doesNotMatch(prompt, /overpower Freddy/);
     assert.equal(prompt.includes(turn.rationale), false);
+  });
+
+  it("keeps the arena prefix out of ENS lines", () => {
+    const [loser, winner] = renderEnsLines(validTurn());
+    assert.equal(loser.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
+    assert.equal(winner.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
   });
 
   it("formats shots with look, timed beat, camera, and style", () => {

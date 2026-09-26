@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 
 import { FightError, type NarrationConfig } from "./env.js";
 import {
+  ARENA_VIDEO_PROMPT_PREFIX,
   assertEnsLinesLegal,
   renderEnsLines,
   videoPromptFromTurn,
@@ -235,6 +236,9 @@ function buildSystemPrompt(fightVideoSeconds: number): string {
     `Target clip length is about ${fightVideoSeconds} seconds.`,
     "Pick exactly one winner from the two living fighters using their cards and what you already know about those horror characters.",
     "Do not fetch external lore. Do not invent a draw. One fighter dies on camera.",
+    `The fight happens in this fixed arena: ${ARENA_VIDEO_PROMPT_PREFIX}`,
+    "Every shot description must stay in that arena. Do not invent a different location (no boiler room, street, house, forest, or other setting).",
+    "The two fighters start on opposite sides of the arena.",
     "The winner may take visible damage. Winner injuries must be a JSON array of phrases that also appear in the shot list (carried injuries plus any new damage).",
     "Each shot needs: character looks, a timed beat (time_range), action, camera move, and style.",
     "No readable on-screen text. No extra people.",

@@ -56,13 +56,23 @@ describe("assertTurnContractText", () => {
 describe("narrateFight", () => {
   it("validates structured provider output and returns rendered lines", async () => {
     const turn = validTurn();
+    let systemPrompt = "";
     const result = await narrateFight(sampleFightInput(), narrationCfg, {
-      complete: async () => turn,
+      complete: async ({ system }) => {
+        systemPrompt = system;
+        return turn;
+      },
     });
     assert.equal(result.turn.winner_subname, "jason");
     assert.deepEqual(result.ensLines, renderEnsLines(turn));
     assert.equal(result.nextOpponentSubname, "leatherface");
     assert.equal(result.rationale, turn.rationale);
+    assert.match(
+      systemPrompt,
+      /Use a terrifying battle royale arena for the battle, each fighter starting on opposite sides\./,
+    );
+    assert.match(systemPrompt, /Do not invent a different location/);
+    assert.match(systemPrompt, /opposite sides/);
   });
 
   it("rejects a bad structured turn from the provider", async () => {

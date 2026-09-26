@@ -23,9 +23,13 @@ export function renderEnsLines(turn: NarrationTurn): [string, string] {
   return [loser, winner];
 }
 
+/** Fixed arena sentence prepended to every fal video prompt. Not written to ENS. */
+export const ARENA_VIDEO_PROMPT_PREFIX =
+  "Use a terrifying battle royale arena for the battle, each fighter starting on opposite sides.";
+
 /** Prompt sent to fal. Omits rationale and ENS update lines. */
 export function videoPromptFromTurn(turn: NarrationTurn): string {
-  return formatShotList(turn.shots);
+  return `${ARENA_VIDEO_PROMPT_PREFIX}\n\n${formatShotList(turn.shots)}`;
 }
 
 const FORBIDDEN_ENS_KEYS = ["look", "brief", "icon"] as const;
