@@ -114,7 +114,7 @@ function panel(): HTMLDialogElement {
 export function createCoinBox(
   wallet: GameWallet,
   onCredit: (usdc: number) => void,
-  say: (text: string) => void,
+  say: (text: string, ms?: number) => void,
 ): CoinBox {
   const colors = {
     soot: cssVar("soot"),
@@ -216,6 +216,9 @@ export function createCoinBox(
   async function deposit(dollars: number): Promise<void> {
     const payer = await connectBrowserWallet();
     if (payer === null) return say("No wallet. The slot stays shut.");
+    const gas = await dAppKit.getClient().core.getBalance({ owner: payer });
+    if (BigInt(gas.balance.balance) === 0n)
+      return say("No SUI for gas. Get some at faucet.sui.io.", 8000);
     setStatus("INSERTING");
     const result = await dAppKit.signAndExecuteTransaction({
       transaction: usdcTransfer(wallet.address, toUsdcUnits(dollars)),
@@ -231,7 +234,7 @@ export function createCoinBox(
     const units = await getUsdcBalance(wallet);
     if (units === 0n) return say("Nothing to give back.");
     if ((await getSuiBalance(wallet)) === 0n)
-      return say("The coin return is jammed. The box needs a little SUI for gas.");
+      return say("Coin return jammed. The box has no SUI for gas.");
     const to = storedPayout() ?? (await connectBrowserWallet());
     if (to === null) return say("No wallet to pay back to.");
     setStatus("RETURNING");
