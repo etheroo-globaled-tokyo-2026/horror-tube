@@ -6,16 +6,13 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import {
   $,
-  DUR,
   S,
   char,
-  countdown,
   face,
   usd,
   film,
   hooks,
   living,
-  mmss,
   newSeason,
   odds,
   pick,
@@ -33,11 +30,7 @@ import {
 } from "./coinbox.ts";
 import QRCode from "qrcode";
 import { getGameWallet, hasWalletSession, openGameWallet } from "./wallet.ts";
-import {
-  fetchEnterRoomRequest,
-  startEnterRoomProof,
-  verifyEnterRoomProof,
-} from "./world-id.ts";
+import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -1248,10 +1241,6 @@ function drawTape(ch: Character): void {
 }
 function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
-  if (S.phase === "vote" && !S.cast) {
-    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
-    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
-  }
   return S.chars[T.held] ?? null;
 }
 
@@ -1613,10 +1602,11 @@ function drawGuide(now: number): void {
     g.fillText(num(ch.id + 1), x + 44, y + 28);
     g.font = "22px DotGothic16";
     g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28);
+    const nameW = W / 2 - 110;
+    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28, nameW);
     if (!ch.alive) {
       g.fillStyle = COL.rust;
-      g.fillRect(x + 86, y + 20, g.measureText(ch.name).width + 4, 2);
+      g.fillRect(x + 86, y + 20, Math.min(g.measureText(ch.name).width, nameW) + 4, 2);
     }
     if (mine) {
       g.font = "700 12px Silkscreen";
@@ -1645,6 +1635,58 @@ const say = (text: string, ms = 3600): void => {
 };
 
 let tvNoise = 0;
+function drawCaseFile(ch: Character): void {
+  const g = tvCtx,
+    W = TW,
+    x = 232,
+    seen = ch.fights > 0;
+  g.fillStyle = COL.rust;
+  g.font = "700 18px Silkscreen";
+  g.textAlign = "left";
+  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(ch), 32, 64, 176, 176);
+  if (!ch.alive) {
+    g.save();
+    g.translate(120, 152);
+    g.rotate(-0.2);
+    g.strokeStyle = g.fillStyle = COL.blood;
+    g.lineWidth = 4;
+    g.textAlign = "center";
+    g.strokeRect(-92, -24, 184, 40);
+    g.font = "700 24px Silkscreen";
+    g.fillText("DECEASED", 0, 6);
+    g.restore();
+  }
+  g.textAlign = "left";
+  g.fillStyle = COL.bone;
+  g.font = "30px DotGothic16";
+  let y = wrap(g, ch.name, x, 92, W - x - 32, 34);
+  g.fillStyle = COL.sulfur;
+  g.font = "700 16px Silkscreen";
+  g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("CASE FILE", x, y + 34);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("INJURIES", 32, y);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  wrap(g, ch.injuries || "None.", 32, y + 26, W - 64, 26);
+  const [footer, color] = !ch.alive
+    ? ["THIS ROOM IS EMPTY", COL.rust]
+    : S.picks.includes(ch.id)
+      ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
+      : ["PRESS OK TO REQUEST", COL.sulfur];
+  g.textAlign = "center";
+  g.fillStyle = color;
+  g.font = "700 22px Silkscreen";
+  g.fillText(footer, W / 2, 456);
+}
 function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -1665,6 +1707,9 @@ function drawTV(): void {
     weight = 700,
   ): void => {
     g.font = `${weight} ${size}px ${face}`;
+    const width = g.measureText(t).width,
+      max = W - 64;
+    if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -1693,10 +1738,16 @@ function drawTV(): void {
         g.fillStyle = COL.soot;
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
-            if (modules.get(row, col))
-              g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
+            if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
         text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
-        text("Orb only. We check it on our side.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+        text(
+          "Orb only. We check it on our side.",
+          oy + side + 68,
+          22,
+          COL.bone,
+          "DotGothic16",
+          400,
+        );
       } else {
         text("STARTING WORLD ID…", 210, 36, COL.sulfur);
         text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
@@ -1769,18 +1820,12 @@ function drawTV(): void {
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
       text(S.picks.length === 2 ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
     } else {
-      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-      const n = +T.buf,
-        ch = T.buf.length === 2 ? S.chars[n - 1] : null;
-      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-      else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
-      else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
-      else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
+      const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+      if (ch) drawCaseFile(ch);
       else {
-        g.font = "24px DotGothic16";
-        g.fillStyle = COL.bone;
-        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
-        text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
+        text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+        if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+        else text("NO SUCH RESIDENT", 280, 28, COL.rust);
       }
     }
   } else {
@@ -1832,7 +1877,6 @@ function drawTV(): void {
           COL.bloodDeep,
         );
       }
-      text(`closes in ${mmss(S.t)}`, 450, 20, COL.rustDeep, "DotGothic16", 400);
     } else if (S.phase === "fight") {
       if (!vidMode && S.frame % 28 >= 22) {
         fill(COL.soot);
@@ -1939,7 +1983,7 @@ function hintText(): void {
             ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
             : W8.step === "done"
               ? "WARMING UP"
-              : ""
+              : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK TWO · NUMBER ${b("OK")}`
         : S.phase === "bet" && !S.bet && S.credit > 0
@@ -1949,8 +1993,8 @@ function hintText(): void {
             : S.phase === "over"
               ? `AGAIN ${b("OK")}`
               : S.credit <= 0
-                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")}`
-                : "";
+                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -1966,6 +2010,7 @@ function press(id: string): void {
   if (/^\d$/.test(id)) {
     if (S.phase === "vote" && !S.cast) {
       T.reveal = -1;
+      T.held = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
     }
   } else if (id === "clr") {
@@ -2104,14 +2149,16 @@ async function beginWorldIdScan(): Promise<void> {
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
-  setTimeout(
-    () =>
-      cut(() => {
-        enterRoom();
-        walkTo(0);
-      }),
-    1400,
-  );
+}
+function nextGateStep(): void {
+  if (W8.step === "signed")
+    cut(() => {
+      enterRoom();
+      walkTo(0);
+    });
+  else if (W8.step === "off") step("burn");
+  else if (W8.step === "burn") step("dark");
+  else if (W8.step === "dark") retry();
 }
 function enterRoom(): void {
   step("done");
@@ -2145,9 +2192,7 @@ async function mountCoinBox(): Promise<void> {
 }
 if (hasWalletSession()) {
   void mountCoinBox().catch((err: Error) => {
-    console.error(
-      `Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    console.error(`Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 }
 const cable = new THREE.Mesh(
@@ -2220,7 +2265,6 @@ const WALK: WalkStep[] = [
 ];
 function walkTo(n: number): void {
   walk = n < WALK.length ? n : -1;
-  countdown.hold = walk >= 0;
   hintText();
 }
 function zoom(at: CoinBoxView | null, pick = false): void {
@@ -2258,8 +2302,6 @@ function noOrb(): void {
   scanAbort = null;
   W8.qrUri = "";
   step("off");
-  setTimeout(() => step("burn"), LOW ? 0 : 500);
-  setTimeout(() => step("dark"), LOW ? 0 : 3100);
 }
 function retry(): void {
   cut(() => {
@@ -2340,7 +2382,7 @@ addEventListener(
     if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
-      else if (k === "enter" && W8.step === "dark") retry();
+      else if (k === "enter") nextGateStep();
       else if (k === "x") noOrb();
       else return;
       e.preventDefault();
@@ -2480,9 +2522,8 @@ renderer.setAnimationLoop(() => {
   ambience(tvNoise, flick, lightsOut);
   const ms = performance.now();
   if (S.phase === "bet" && ms >= nextBeat) {
-    const k = Math.max(0, Math.min(1, 1 - S.t / DUR.bet));
-    sfx.beat(0.5 + 0.5 * k);
-    nextBeat = ms + 1000 - 520 * k;
+    sfx.beat(0.75);
+    nextBeat = ms + 740;
   }
   if (S.phase === "fight" && !vidMode && S.frame !== lastFrame && S.frame % 12 === 9) sfx.hit();
   lastFrame = S.frame;
@@ -2495,7 +2536,7 @@ renderer.setAnimationLoop(() => {
 
 const PHASE_SOUND = new Map<Phase, () => void>([
   ["vote", sfx.bell],
-  ["story", () => sfx.type(DUR.story)],
+  ["story", () => sfx.type(4)],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
