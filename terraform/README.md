@@ -211,7 +211,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 
 The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
-`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; this service does not read them. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
+`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; this service does not read them. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `BATTLE_BETTING_ADDRESS`, `SEPOLIA_RPC_URL`, and `AGENT_PRIVATE_KEY` are runtime env because the game opens battles and places bets, and settle writes ENS text.
 
 Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for the backend and the provider Spaces env, and keeps icons `SPACES_*` on `TF_VAR_spaces_*`:
 
