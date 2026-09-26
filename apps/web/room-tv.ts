@@ -619,6 +619,35 @@ function drawCaseFile(ch: Character): void {
   g.font = "700 22px Silkscreen";
   g.fillText(footer, W / 2, 456);
 }
+function drawWorldMark(
+  g: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+): void {
+  const w = r * 0.19,
+    ring = r - w / 2,
+    e = r * 0.46;
+  g.save();
+  g.strokeStyle = color;
+  g.lineWidth = w;
+  g.beginPath();
+  g.arc(cx, cy, ring, 0, Math.PI * 2);
+  g.stroke();
+  g.beginPath();
+  g.arc(cx, cy, ring, 0, Math.PI * 2);
+  g.clip();
+  g.beginPath();
+  g.moveTo(cx + r, cy - e);
+  g.lineTo(cx, cy - e);
+  g.arc(cx, cy, e, -Math.PI / 2, Math.PI / 2, true);
+  g.lineTo(cx + r, cy + e);
+  g.moveTo(cx - r, cy);
+  g.lineTo(cx + r, cy);
+  g.stroke();
+  g.restore();
+}
 export function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -663,21 +692,24 @@ export function drawTV(): void {
       fill(COL.soot);
       if (W8.qrUri !== "") {
         const { modules } = QRCode.create(W8.qrUri, { errorCorrectionLevel: "M" });
-        const pad = 36;
-        const cell = Math.floor(Math.min(W - pad * 2, 280) / modules.size);
+        const pad = 36,
+          gap = 32;
+        const cell = Math.floor(Math.min(W - pad * 2, 230) / modules.size);
         const side = cell * modules.size;
-        const ox = Math.floor((W - side) / 2);
-        const oy = 28;
+        const mark = Math.round((side + 16) / 4);
+        const ox = Math.floor((W + mark * 2 + gap - side) / 2);
+        const oy = Math.floor((H - side - 94) / 2);
+        drawWorldMark(g, ox - 8 - gap - mark, oy + side / 2, mark, COL.bone);
         g.fillStyle = COL.bone;
         g.fillRect(ox - 8, oy - 8, side + 16, side + 16);
         g.fillStyle = COL.soot;
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("CONFIRM SOMEONE IS WATCHING", oy + side + 36, 28, COL.sulfur);
+        text("CONFIRM SOMEONE IS WATCHING", oy + side + 64, 28, COL.sulfur);
         text(
           "We've had trouble with unattended sets.",
-          oy + side + 68,
+          oy + side + 96,
           22,
           COL.bone,
           "DotGothic16",
@@ -762,7 +794,12 @@ export function drawTV(): void {
     });
     if (S.startError !== null) {
       noise = 0.2;
-      text(S.phase === "pick" ? "THAT FIGHTER WAS REFUSED" : "THE PROGRAMME DID NOT START", 130, 34, COL.blood);
+      text(
+        S.phase === "pick" ? "THAT FIGHTER WAS REFUSED" : "THE PROGRAMME DID NOT START",
+        130,
+        34,
+        COL.blood,
+      );
       g.font = "400 22px DotGothic16";
       g.fillStyle = COL.bone;
       const end = wrap(g, S.startError, W / 2, 190, W - 64, 28);
@@ -788,11 +825,7 @@ export function drawTV(): void {
           if (resident === undefined) return;
           const chosen = T.buf.length === 2 && Number(T.buf) - 1 === id;
           g.fillStyle = chosen ? COL.sulfur : COL.bone;
-          g.fillText(
-            `${num(id + 1)}  ${resident.short}`,
-            i < 8 ? 36 : 340,
-            150 + (i % 8) * 32,
-          );
+          g.fillText(`${num(id + 1)}  ${resident.short}`, i < 8 ? 36 : 340, 150 + (i % 8) * 32);
         });
       }
     }
