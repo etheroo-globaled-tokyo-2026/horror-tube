@@ -5,12 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
 from io import BytesIO
 from pathlib import Path
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 from urllib.parse import urlparse
 
 import boto3
@@ -112,13 +113,28 @@ def should_skip_generation(*, object_exists: bool, override: bool) -> bool:
 
 
 def image_request_body(look: str, model: str) -> dict[str, object]:
+    return image_request_body_from_prompt(face_prompt(look), model)
+
+
+def image_request_body_from_prompt(prompt: str, model: str) -> dict[str, object]:
+    text = prompt.strip()
+    if text == "":
+        raise IconGenerationError(
+            "image_prompt is empty. Refusing to generate an icon without the saved prompt."
+        )
     return {
         "model": model,
-        "prompt": face_prompt(look),
+        "prompt": text,
         "width": GENERATE_PX,
         "height": GENERATE_PX,
         "response_format": "base64",
     }
+
+
+_IMAGE_DROP = re.compile(
+    r"\b(?:massacre|chainsaws?|chain saw|machetes?|kill(?:er|ing)?|murders?|blood|gore|wounds?|weapons?)\b",
+    re.IGNORECASE,
+)
 
 
 def face_prompt(look: str) -> str:
@@ -127,11 +143,145 @@ def face_prompt(look: str) -> str:
         raise IconGenerationError(
             "look is empty. Refusing to generate a face icon without a character description."
         )
+    visual = " ".join(_IMAGE_DROP.sub(" ", text).split())
+    if visual == "":
+        raise IconGenerationError(
+            f"look has no portrait words left after removing violent terms. Got: {text!r}"
+        )
     return (
         "Square character portrait icon, head and shoulders, centered, "
-        "facing the camera, plain dark background, no text. "
-        + text
+        "facing the camera, plain dark background, no text, no blood, "
+        "no gore, no wounds, no weapons. "
+        + visual
     )
+
+
+def _required_cache_string(
+    value: object,
+    *,
+    field: str,
+    source: str,
+) -> str:
+    if not isinstance(value, str) or value.strip() == "":
+        raise IconGenerationError(
+            f"{source}: {field} must be a non-empty string. "
+            f"Got {type(value).__name__}."
+        )
+    return value
+
+
+def build_icon_prompt_cache(
+    characters: Sequence[Mapping[str, str]],
+    cast_entries: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    """Build deterministic text/prompt records from live proposed sheets."""
+    if len(characters) != len(cast_entries):
+        raise IconGenerationError(
+            "Cannot cache cast prompts: proposed character count "
+            f"{len(characters)} does not match cast source count {len(cast_entries)}."
+        )
+    cached: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for index, (character, cast_entry) in enumerate(zip(characters, cast_entries)):
+        source = f"cast entry {index + 1}"
+        label = _required_cache_string(
+            character.get("label"), field="label", source=source
+        )
+        if label in seen:
+            raise IconGenerationError(
+                f"Cannot cache duplicate cast label {label!r} from {source}."
+            )
+        seen.add(label)
+        display_name = _required_cache_string(
+            character.get("display_name"), field="display_name", source=source
+        )
+        look = _required_cache_string(
+            character.get("look"), field="look", source=source
+        )
+        brief = _required_cache_string(
+            character.get("brief"), field="brief", source=source
+        )
+
+        raw_source = cast_entry.get("source")
+        if isinstance(raw_source, str) and raw_source.strip() != "":
+            look_source = raw_source
+            brief_source = raw_source
+        else:
+            look_source = _required_cache_string(
+                cast_entry.get("look_source"),
+                field="look_source",
+                source=source,
+            )
+            brief_source = _required_cache_string(
+                cast_entry.get("brief_source"),
+                field="brief_source",
+                source=source,
+            )
+        cached.append(
+            {
+                "label": label,
+                "display_name": display_name,
+                "look": look,
+                "brief": brief,
+                "image_prompt": face_prompt(look),
+                "sources": {
+                    "look": look_source,
+                    "brief": brief_source,
+                },
+            }
+        )
+    if len(cached) == 0:
+        raise IconGenerationError("Cannot write an empty icon prompt cache.")
+    return {"version": 1, "characters": cached}
+
+
+def load_icon_prompt_cache(path: Path) -> list[dict[str, object]]:
+    """Load cache records without recomputing text or image prompts."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise IconGenerationError(f"Failed to read icon prompt cache {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise IconGenerationError(
+            f"Icon prompt cache {path} is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        raise IconGenerationError(
+            f"Icon prompt cache {path} must be an object with version 1."
+        )
+    raw_characters = payload.get("characters")
+    if not isinstance(raw_characters, list) or len(raw_characters) == 0:
+        raise IconGenerationError(
+            f"Icon prompt cache {path} must contain a non-empty characters array."
+        )
+    characters: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(raw_characters):
+        source = f"{path}: characters[{index}]"
+        if not isinstance(raw, dict):
+            raise IconGenerationError(f"{source} must be an object.")
+        record: dict[str, object] = {}
+        for field in ("label", "display_name", "look", "brief", "image_prompt"):
+            record[field] = _required_cache_string(
+                raw.get(field), field=field, source=source
+            )
+        label = str(record["label"])
+        if label in seen:
+            raise IconGenerationError(f"{path}: duplicate cached label {label!r}.")
+        seen.add(label)
+        raw_sources = raw.get("sources")
+        if not isinstance(raw_sources, dict):
+            raise IconGenerationError(f"{source}: sources must be an object.")
+        record["sources"] = {
+            "look": _required_cache_string(
+                raw_sources.get("look"), field="sources.look", source=source
+            ),
+            "brief": _required_cache_string(
+                raw_sources.get("brief"), field="sources.brief", source=source
+            ),
+        }
+        characters.append(record)
+    return characters
 
 
 def image_b64(payload: object) -> str:
@@ -239,6 +389,22 @@ def generate_face_png(
     model: str,
     api_url: str,
 ) -> bytes:
+    return generate_face_png_from_prompt(
+        face_prompt(look),
+        api_key=api_key,
+        model=model,
+        api_url=api_url,
+    )
+
+
+def generate_face_png_from_prompt(
+    prompt: str,
+    *,
+    api_key: str,
+    model: str,
+    api_url: str,
+) -> bytes:
+    body = image_request_body_from_prompt(prompt, model)
     logger.info(
         "requesting face icon model=%s size=%sx%s url=%s",
         model,
@@ -246,8 +412,8 @@ def generate_face_png(
         GENERATE_PX,
         api_url,
     )
-    logger.info("prompt=%s", face_prompt(look))
-    payload = _post_json(api_url, image_request_body(look, model), api_key)
+    logger.info("prompt=%s", body["prompt"])
+    payload = _post_json(api_url, body, api_key)
     return png_icon(decode_image(image_b64(payload)))
 
 
@@ -492,6 +658,7 @@ def write_face_icons(
     cdn_host: str,
     override: bool,
     clock: Callable[[], int] | None = None,
+    image_prompts: Mapping[str, str] | None = None,
 ) -> tuple[list[Path], list[dict[str, str]]]:
     """Generate and/or upload face icons; return written paths and updated sheets."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -532,12 +699,24 @@ def write_face_icons(
             object_key = canonical_key
 
         try:
-            png = generate_face_png(
-                character["look"],
-                api_key=api_key,
-                model=model,
-                api_url=api_url,
-            )
+            if image_prompts is None:
+                png = generate_face_png(
+                    character["look"],
+                    api_key=api_key,
+                    model=model,
+                    api_url=api_url,
+                )
+            else:
+                if label not in image_prompts:
+                    raise IconGenerationError(
+                        f"{label}: no saved image_prompt exists in the icon prompt cache."
+                    )
+                png = generate_face_png_from_prompt(
+                    image_prompts[label],
+                    api_key=api_key,
+                    model=model,
+                    api_url=api_url,
+                )
             spaces.put_public_png(object_key, png)
         except IconGenerationError as exc:
             raise IconGenerationError(
@@ -557,4 +736,58 @@ def write_face_icons(
         logger.info("uploaded %s -> %s", label, url)
         updated.append(sheet)
 
+    return written, updated
+
+
+def write_cached_face_icons(
+    cached_characters: Sequence[Mapping[str, object]],
+    out_dir: Path,
+    *,
+    api_key: str,
+    model: str,
+    api_url: str,
+    spaces: IconObjectStore,
+    cdn_host: str,
+    override: bool,
+    clock: Callable[[], int] | None = None,
+) -> tuple[list[Path], list[dict[str, object]]]:
+    """Generate icons from exact cached prompts, without rebuilding from look."""
+    characters: list[dict[str, str]] = []
+    prompts: dict[str, str] = {}
+    originals: dict[str, dict[str, object]] = {}
+    for index, raw in enumerate(cached_characters):
+        source = f"cached character {index + 1}"
+        label = _required_cache_string(raw.get("label"), field="label", source=source)
+        if label in prompts:
+            raise IconGenerationError(f"Duplicate cached label {label!r}.")
+        prompts[label] = _required_cache_string(
+            raw.get("image_prompt"), field="image_prompt", source=source
+        )
+        characters.append(
+            {
+                "label": label,
+                "look": _required_cache_string(
+                    raw.get("look"), field="look", source=source
+                ),
+                "icon": "",
+            }
+        )
+        originals[label] = dict(raw)
+    written, icon_rows = write_face_icons(
+        characters,
+        out_dir,
+        api_key=api_key,
+        model=model,
+        api_url=api_url,
+        spaces=spaces,
+        cdn_host=cdn_host,
+        override=override,
+        clock=clock,
+        image_prompts=prompts,
+    )
+    updated: list[dict[str, object]] = []
+    for row in icon_rows:
+        merged = originals[row["label"]]
+        merged["icon"] = row["icon"]
+        updated.append(merged)
     return written, updated
