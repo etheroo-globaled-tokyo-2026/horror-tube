@@ -1,8 +1,31 @@
 # Copy to terraform.tfvars (gitignored). Never commit terraform.tfvars.
 # DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
 # for that one terraform command only. See README.md.
+#
+# App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*) and BUILD_TIME Vite env
+# (ENS_LABEL, VITE_SEPOLIA_RPC_URL) are also NOT set here. Pass them as TF_VAR_*
+# for that one apply, sourced from the repo .env. DATABASE_URL for the app is
+# wired from the Managed Postgres public uri in Terraform (no VPC). See README.md.
 
-region                          = "sgp1"
-spaces_bucket_name              = "horror-tube-icons-REPLACE_ME"
-spaces_fight_media_bucket_name  = "horror-tube-fight-media-REPLACE_ME"
-db_size                         = "db-s-1vcpu-2gb"
+region                         = "sgp1"
+spaces_bucket_name             = "horror-tube-icons-REPLACE_ME"
+spaces_fight_media_bucket_name = "horror-tube-fight-media-REPLACE_ME"
+db_size                        = "db-s-1vcpu-2gb"
+
+app_name = "horror-tube"
+# App Platform region slug (GET /v2/apps/regions). Singapore is sgp; datacenter is sgp1.
+# Source: https://docs.digitalocean.com/reference/pydo/reference/apps/list_regions/
+app_region    = "sgp"
+github_repo   = "etheroo-globaled-tokyo-2026/horror-tube"
+github_branch = "main"
+# From https://docs.digitalocean.com/products/app-platform/details/pricing/ (Current Plans).
+# 1 GiB shared CPU — enough for Node 22 plus ffmpeg last-frame extract.
+instance_size_slug = "apps-s-1vcpu-1gb"
+game_port          = 8080
+
+# Game-loop timings (docs/game-loop.md). Prod values shown; use quorum_votes = 1 on a laptop server.
+quorum_votes           = 2
+vote_countdown_seconds = 15
+bet_min_seconds        = 10
+video_timeout_seconds  = 300
+settle_seconds         = 8

@@ -21,8 +21,27 @@ importers:
         specifier: ^2.11.4
         version: 2.11.4
 
+  apps/server:
+    dependencies:
+      dotenv:
+        specifier: ^18.0.3
+        version: 18.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   apps/web:
     dependencies:
+      '@horror-tube/ens':
+        specifier: workspace:*
+        version: link:../../packages/ens
       '@mysten/dapp-kit-core':
         specifier: ^1.6.32
         version: 1.6.32(@mysten/sui@2.33.0(typescript@7.0.2))(typescript@7.0.2)
@@ -54,6 +73,8 @@ importers:
       vite:
         specifier: ^7.1.0
         version: 7.3.6(@types/node@26.6.2)(tsx@4.23.15)
+
+  packages/contracts: {}
 
   packages/ens:
     dependencies:
