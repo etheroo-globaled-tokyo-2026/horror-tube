@@ -6,11 +6,11 @@ default it.
 
 ## Pin (source of truth)
 
-| Item                | Value                                                    |
-| ------------------- | -------------------------------------------------------- |
-| contracts-v2 commit | `71a3b7339dbc55ab47667abdfe8303bac4f4c24e`               |
-| Deployed at         | `2026-09-15T09:46:38.513Z`                               |
-| Address table       | `scripts/pin/sepolia-addresses.md` (copy of the pin raw) |
+| Item                | Value                                                                 |
+| ------------------- | --------------------------------------------------------------------- |
+| contracts-v2 commit | `71a3b7339dbc55ab47667abdfe8303bac4f4c24e`                            |
+| Deployed at         | `2026-09-15T09:46:38.513Z`                                            |
+| Address table       | `packages/ens/scripts/pin/sepolia-addresses.md` (copy of the pin raw) |
 
 Contract addresses used by the register script (`ETHRegistrar`, `ETHRegistry`,
 `MockDAI`, `MockUSDC`, `StandardRentPriceOracle`) live only in that address
@@ -18,7 +18,7 @@ table. Do not paste them elsewhere. Do not use older addresses
 `0xdce5205a553573ffd47629327dddf36186022ffa` or
 `0x7e4b2d59938930168024201752ee5503df402303`.
 
-Minimal ABIs for the calls the script makes live in `scripts/abis.ts`.
+Minimal ABIs for the calls the script makes live in `packages/ens/scripts/abis.ts`.
 
 ## Registrar flow (from pin source)
 
@@ -73,11 +73,11 @@ Pick one payment token from the pin and set `PAYMENT_TOKEN` to `MockDAI` or
 
 Both are `MockERC20` at the pin (`contracts/test/mocks/MockERC20.sol`) with a
 public `mint(address to, uint256 amount)`. Addresses are in
-`scripts/pin/sepolia-addresses.md`.
+`packages/ens/scripts/pin/sepolia-addresses.md`.
 
 ```bash
 # Example: mint 20 MockDAI (18 decimals) to your burner
-# Replace MOCK_TOKEN with the MockDAI address from scripts/pin/sepolia-addresses.md
+# Replace MOCK_TOKEN with the MockDAI address from packages/ens/scripts/pin/sepolia-addresses.md
 cast send "$MOCK_TOKEN" \
   "mint(address,uint256)" \
   YOUR_ADDRESS \
@@ -88,7 +88,7 @@ cast send "$MOCK_TOKEN" \
 
 ```bash
 # Or MockUSDC (6 decimals): mint 20 USDC
-# Replace MOCK_TOKEN with the MockUSDC address from scripts/pin/sepolia-addresses.md
+# Replace MOCK_TOKEN with the MockUSDC address from packages/ens/scripts/pin/sepolia-addresses.md
 cast send "$MOCK_TOKEN" \
   "mint(address,uint256)" \
   YOUR_ADDRESS \
@@ -134,7 +134,7 @@ pnpm ens:register full
 
 Requires funded `PRIVATE_KEY`. Runs commit, waits `MIN_COMMITMENT_AGE`, approves
 the payment token, then `register`. Commitment secret is stored in
-`scripts/.ens-commit-state/<ENS_LABEL>.json` (gitignored).
+`packages/ens/scripts/.ens-commit-state/<ENS_LABEL>.json` (gitignored).
 
 Split steps if you prefer:
 
@@ -153,7 +153,7 @@ parent TLD. Each label keeps its own commit file.
 pnpm test
 ```
 
-Runs `tests/ens-register.test.ts`. Unit tests always run. The smoke test runs
+Runs `packages/ens/tests/ens-register.test.ts`. Unit tests always run. The smoke test runs
 `check` when `ENS_LABEL` and `SEPOLIA_RPC_URL` are set and fails if output
 contains the `PRIVATE_KEY` value. The e2e runs `full` only with `ENS_E2E=1`,
 fails if any write variable is missing, and leaves the name registered; this pin

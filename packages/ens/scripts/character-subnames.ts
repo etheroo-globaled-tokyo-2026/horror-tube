@@ -32,7 +32,7 @@ import {
   loadSubnamePinAddresses,
 } from "./pin.js";
 
-loadDotenv();
+loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const ZERO_BYTES32 =
