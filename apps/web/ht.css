@@ -567,3 +567,27 @@ mysten-dapp-kit-connect-modal {
   --cursor-radio: var(--cursor-button);
   -webkit-font-smoothing: none;
 }
+
+/* Placeholder vote and bet screens; the final UI deletes [data-placeholder]. */
+.placeholder {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 5;
+  max-width: 340px;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px dashed currentColor;
+  background: rgb(0 0 0 / 0.85);
+  color: var(--bone);
+  font: 13px/1.4 monospace;
+}
+.placeholder[data-placeholder="bet"] {
+  right: 12px;
+  left: auto;
+}
+.placeholder .err {
+  color: var(--blood);
+  white-space: pre-wrap;
+}
