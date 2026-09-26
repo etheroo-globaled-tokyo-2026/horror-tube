@@ -35,14 +35,15 @@ Replace the Spaces `op://` paths with your items. Do not commit those values.
 
 ## Required tfvars (no defaults)
 
-Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, bucket name, or database firewall CIDR:
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, or bucket name:
 
 | Variable | Operator value for this project |
 | --- | --- |
 | `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
 | `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
 | `spaces_bucket_name` | globally unique name |
-| `db_firewall_cidr` | your public IP as `x.x.x.x/32` — never `0.0.0.0/0` |
+
+The Managed Postgres firewall is hardcoded to `0.0.0.0/0` in `database.tf` (public because hackathon developers are not on one IP). It is not a tfvars setting.
 
 There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
 
