@@ -8,7 +8,7 @@ export const API_PATHS = [
   "/vote",
   "/betting",
   "/retry-settle",
-  "/replay",
+  "/tapes",
   "/auth/world-id",
   "/wallet",
   "/tx",

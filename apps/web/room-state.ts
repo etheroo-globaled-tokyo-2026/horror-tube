@@ -1,5 +1,6 @@
 import type * as THREE from "three";
 import type { CoinBoxPart, CoinBoxView } from "./coinbox.ts";
+import type { Tape } from "../server/src/types.ts";
 
 export const STAKES = [1, 3, 5];
 
@@ -30,9 +31,20 @@ export const T = {
   say: "",
   sayUntil: 0,
   phase: "",
-  held: -1,
-  hover: -1,
 };
+
+const tapes: Tape[] = [];
+export const VCR = {
+  tapes,
+  held: "",
+  loaded: "",
+  hover: "",
+  over: false,
+};
+export const reelById = (id: string): Tape | undefined =>
+  id === "" ? undefined : VCR.tapes.find((t) => t.battleId === id);
+export const boutNumber = (tape: Tape): string =>
+  String(VCR.tapes.indexOf(tape) + 1).padStart(2, "0");
 
 export const say = (text: string, ms = 3600): void => {
   T.say = text;

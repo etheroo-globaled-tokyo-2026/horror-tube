@@ -17,7 +17,7 @@ import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
 import { DuplicateVoteError, type RoundStore, type Voter } from "../db/rounds.js";
 import type { PairingRunner } from "../pairing-job.js";
-import type { Phase, RoundState } from "../types.js";
+import type { Phase, RoundState, Tape } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import { botSide, type HouseBotChain, type HouseBots } from "./house-bot.js";
 
@@ -550,8 +550,23 @@ export class GameLoop {
     this.emit();
   }
 
-  getReplayVideoUrl(): Promise<string | null> {
-    return this.battleQueueStore.getLatestVideoUrl();
+  async listTapes(): Promise<Tape[]> {
+    const recorded = await this.battleQueueStore.listRecorded();
+    return recorded
+      .filter((battle) => !this.wouldLeakTheLiveWinner(battle.battleId))
+      .map((battle) => ({
+        battleId: battle.battleId,
+        fighters: [battle.fighterASubname, battle.fighterBSubname],
+        winner: battle.winnerSubname,
+        injuries: battle.winnerInjuries,
+        rationale: battle.rationale,
+        videoUrl: battle.videoUrl,
+        recordedAt: battle.recordedAt,
+      }));
+  }
+
+  private wouldLeakTheLiveWinner(battleId: string): boolean {
+    return (this.phase === "bet" || this.phase === "fight") && battleId === this.onChainBattleId;
   }
 
   setOutcome(winner: 0 | 1, damage: number): void {
@@ -998,9 +1013,7 @@ export class GameLoop {
       return;
     }
     if (this.champion === null) {
-      throw new Error(
-        "afterSettle: champion is required before the next fighter can be picked.",
-      );
+      throw new Error("afterSettle: champion is required before the next fighter can be picked.");
     }
     this.round += 1;
     this.winner = null;

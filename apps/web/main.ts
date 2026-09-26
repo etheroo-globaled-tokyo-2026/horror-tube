@@ -19,7 +19,18 @@ import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { T, Z, W8, LOW, say, walkRef, type WalkStep } from "./room-state.ts";
+import {
+  T,
+  VCR,
+  Z,
+  W8,
+  LOW,
+  boutNumber,
+  reelById,
+  say,
+  walkRef,
+  type WalkStep,
+} from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
 import { roomNumber, typedFighterId, typedStake } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
@@ -39,7 +50,8 @@ import {
 import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, video, vidMode } from "./room-tv.ts";
 import { powerOff, powerStage, tickPower } from "./room-power.ts";
 import { keyById, led, remote } from "./room-remote.ts";
-import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
+import { shelf, tape, TAPE, updateTape } from "./room-shelf.ts";
+import { boutTitle, reels, refreshTapes, shownTapes, updateVcr, vcr } from "./room-vcr.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
   ["d", "body"],
@@ -60,7 +72,6 @@ function hintText(): void {
     h.innerHTML = `${step.say} <span class="hint-key">ENTER</span>`;
     return;
   }
-  const hovered = S.chars[T.hover];
   const credit = `${usd(coinBox.credit())} USDC`;
   const waiting = coinBox.waiting();
   const collect =
@@ -101,9 +112,21 @@ function hintText(): void {
     h.innerHTML = error;
     return;
   }
-  h.innerHTML = hovered
-    ? `${b(roomNumber(hovered.id))} ${hovered.name}`
-    : S.phase === "gate"
+  const reel = reelById(VCR.hover);
+  if (reel) {
+    h.innerHTML = `${b(`BOUT ${boutNumber(reel)}`)} ${esc(boutTitle(reel))}`;
+    return;
+  }
+  if (VCR.over) {
+    h.innerHTML = `${b("VCR")} ${VCR.loaded ? "EJECT" : VCR.held ? "PLAY THE TAPE" : "TAKE A TAPE FROM THE SHELF"}`;
+    return;
+  }
+  if (VCR.held) {
+    h.innerHTML = `CLICK THE ${b("VCR")} ON THE TV TO PLAY · CLICK THE TAPE TO PUT IT BACK`;
+    return;
+  }
+  h.innerHTML =
+    S.phase === "gate"
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
@@ -152,12 +175,12 @@ function press(id: string): void {
   if (id === "power") return turnOff();
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
-    T.held = -1;
+    VCR.held = "";
     if (S.phase === "bet" && !S.bet && S.pending === null) T.buf = (T.buf + id).slice(0, 6);
     else T.buf = id;
   } else if (id === "clr") {
     T.buf = "";
-    T.held = -1;
+    VCR.held = "";
   } else if (id === "ok") ok();
   hintText();
 }
@@ -167,13 +190,33 @@ function turnOff(): void {
   coinBox.giveBack();
   holdEnd();
   T.buf = "";
-  T.held = -1;
+  VCR.held = "";
   powerOff(() => {
     video.muted = vidMode !== "live";
     sfx.tvOn();
     say("Thank you. We've had trouble with unattended sets.", 6000);
     hintText();
   });
+  hintText();
+}
+function useVcr(): void {
+  if (VCR.loaded !== "") {
+    sfx.tape();
+    VCR.held = VCR.loaded;
+    VCR.loaded = "";
+    return hintText();
+  }
+  if (VCR.held === "") {
+    sfx.deny();
+    return say("Take a tape from the shelf.");
+  }
+  if (S.phase === "bet" || S.phase === "fight") {
+    sfx.deny();
+    return say("Not during the broadcast.");
+  }
+  sfx.tape();
+  VCR.loaded = VCR.held;
+  VCR.held = "";
   hintText();
 }
 function ok(): void {
@@ -324,7 +367,9 @@ const ndc = new THREE.Vector2();
 type Pick =
   | { at: "paper" }
   | { at: "coin"; part: CoinBoxPart }
-  | { at: "shelf"; slot: Slot | undefined }
+  | { at: "hand" }
+  | { at: "reel"; id: string }
+  | { at: "vcr" }
   | { at: "key"; id: string };
 const shown = (o: THREE.Object3D | null): boolean => o === null || (o.visible && shown(o.parent));
 const within = (o: THREE.Object3D | null, root: THREE.Object3D): boolean =>
@@ -346,9 +391,11 @@ const pickAt = (e: MouseEvent): Pick | null => {
   const id: string | undefined = o.userData.keyId;
   if (id !== undefined) return { at: "key", id };
   if (S.phase === "gate" || Z.at !== null) return null;
-  if (o === tape) return { at: "shelf", slot: undefined };
-  const slot = slots.find((s) => s.mesh === o);
-  return slot === undefined ? null : { at: "shelf", slot };
+  if (o === tape) return { at: "hand" };
+  if (o === vcr) return { at: "vcr" };
+  const reel = shownTapes()[reels.findIndex((r) => r.mesh === o)];
+  if (reel !== undefined) return { at: "reel", id: reel.battleId };
+  return null;
 };
 const WALK: WalkStep[] = [
   {
@@ -360,10 +407,18 @@ const WALK: WalkStep[] = [
     remote: false,
   },
   {
-    say: "THE RESIDENTS. PULL A TAPE. WE KEEP THEIR RECORDS UP TO DATE.",
+    say: "EVERY BOUT IS TAPED. THE SHELF KEEPS THEM.",
     view: () => [
       shelf.localToWorld(new THREE.Vector3(0, 1.28, 1.05)),
       shelf.localToWorld(new THREE.Vector3(0, 1.22, 0.1)),
+    ],
+    remote: false,
+  },
+  {
+    say: "PULL A TAPE AND PLAY IT ON THE VCR.",
+    view: () => [
+      vcr.localToWorld(new THREE.Vector3(0, 0.05, 0.9)),
+      vcr.localToWorld(new THREE.Vector3(0, -0.02, 0)),
     ],
     remote: false,
   },
@@ -439,10 +494,12 @@ const look = new THREE.Vector2();
 let pointer: MouseEvent | null = null;
 function updateHover(): void {
   const pick = pointer ? pickAt(pointer) : null;
-  const hover = pick?.at === "shelf" ? (pick.slot?.id ?? -1) : -1;
-  if (hover === T.hover) return;
-  if (hover >= 0) sfx.slide();
-  T.hover = hover;
+  const reel = pick?.at === "reel" ? pick.id : "";
+  const over = pick?.at === "vcr";
+  if (reel === VCR.hover && over === VCR.over) return;
+  if (reel !== "" && reel !== VCR.hover) sfx.slide();
+  VCR.hover = reel;
+  VCR.over = over;
   hintText();
 }
 let dragFrom: [x: number, y: number] | null = null;
@@ -476,7 +533,7 @@ function cursorFor(pick: Pick | null): string {
   if (walkRef.n >= 0) return "press";
   if (pick === null) return "";
   if (pick.at === "paper") return "pen";
-  return pick.at === "shelf" ? "grab" : "press";
+  return pick.at === "hand" || pick.at === "reel" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || busy()) return;
@@ -497,13 +554,19 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pick === null) return;
   if (pick.at === "paper") return sign();
   if (pick.at === "coin") return zoom("meter");
-  if (pick.at === "shelf") {
+  if (pick.at === "hand") {
     sfx.tape();
-    T.buf = "";
-    T.held = pick.slot?.id ?? -1;
-    T.hover = -1;
+    VCR.held = "";
     return hintText();
   }
+  if (pick.at === "reel") {
+    sfx.tape();
+    T.buf = "";
+    VCR.held = pick.id;
+    VCR.hover = "";
+    return hintText();
+  }
+  if (pick.at === "vcr") return useVcr();
   if (pick.id === "A" || pick.id === "B") sideKey(pick.id === "B" ? 1 : 0);
   else press(pick.id);
 });
@@ -653,7 +716,7 @@ renderer.setAnimationLoop(() => {
   remote.rotation.set(-0.3 + 0.22 * remoteUp, -0.22 + 0.2 * remoteUp, -0.1 + 0.1 * remoteUp);
   if (raise) led.material.color.set(Math.sin(t * 8) > 0 ? COL.blood : COL.bloodDeep);
   remote.visible = !waiver && Z.at === null && (walkRef.n < 0 || raise === 1);
-  updateTape(performance.now());
+  updateTape(performance.now(), updateVcr(performance.now()));
   coinBox.tick(performance.now());
   updateHover();
   coinBox.group.visible = !waiver;
@@ -724,6 +787,7 @@ hooks.render = () => {
     T.betSide = -1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();
+    refreshTapes();
   }
   hintText();
 };

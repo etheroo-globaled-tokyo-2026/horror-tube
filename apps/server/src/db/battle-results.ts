@@ -2,6 +2,7 @@ import {
   assertPlayableFightVideoUrl,
   type BattleQueueRecord,
   type BattleQueueStore,
+  type RecordedBattle,
   type Shot,
 } from "@horror-tube/fight/battle-queue";
 import type { Client, Pool, PoolClient, QueryResultRow } from "pg";
@@ -31,6 +32,8 @@ type BattleResultRow = QueryResultRow & {
   status_tx_hash: string | null;
   settlement_tx_hash: string | null;
 };
+
+type RecordedBattleRow = BattleResultRow & { video_url: string; created_at: Date };
 
 const ShotRow = v.object({
   time_range: v.string(),
@@ -167,21 +170,27 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
   }
 
   // WARNING: order by created_at, not updated_at. Settle writes bump updated_at on older bouts.
-  async getLatestVideoUrl(): Promise<string | null> {
-    const result = await this.db.query<{ video_url: string }>(
-      `SELECT video_url
-       FROM battle_results
-       WHERE video_url IS NOT NULL
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
+  async listRecorded(): Promise<RecordedBattle[]> {
+    const result = await this.db.query<RecordedBattleRow>(
+      `SELECT
+        id, battle_id, fighter_a_subname, fighter_b_subname, shots,
+        ens_line_loser, ens_line_winner, rationale,
+        winner_subname, loser_subname, winner_injuries,
+        betting_closed, playback_finished, video_started_at, betting_closes_at,
+        injuries_tx_hash, status_tx_hash, settlement_tx_hash,
+        video_url, created_at
+      FROM battle_results
+      WHERE video_url IS NOT NULL
+      ORDER BY created_at, id`,
     );
-    const row = result.rows[0];
-    return row === undefined ? null : row.video_url;
+    return result.rows.map((row) => ({
+      ...rowToRecord(row),
+      videoUrl: row.video_url,
+      recordedAt: row.created_at.getTime(),
+    }));
   }
 }
 
-export function requireDatabaseUrl(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+export function requireDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   return readDatabaseUrl(env);
 }

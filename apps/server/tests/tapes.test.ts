@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
-import {
-  MemoryBattleQueueStore,
-  type BattleQueueInsert,
-} from "@horror-tube/fight/battle-queue";
+import { MemoryBattleQueueStore, type BattleQueueInsert } from "@horror-tube/fight/battle-queue";
 import * as v from "valibot";
 
 import { MemoryRoundStore } from "../src/db/rounds.js";
@@ -15,8 +12,17 @@ import { baseUrl } from "./base-url.js";
 
 const NO_HOUSE_BOTS = { chains: [], stakeUnits: 1n };
 
-const ReplayOk = v.object({ videoUrl: v.string() });
-const ReplayErr = v.object({ ok: v.literal(false), error: v.string() });
+const TapeSchema = v.object({
+  battleId: v.string(),
+  fighters: v.tuple([v.string(), v.string()]),
+  winner: v.string(),
+  injuries: v.array(v.string()),
+  rationale: v.string(),
+  videoUrl: v.string(),
+  recordedAt: v.number(),
+});
+const TapesOk = v.object({ tapes: v.array(TapeSchema) });
+const TapesErr = v.object({ ok: v.literal(false), error: v.string() });
 
 const config = {
   quorumVotes: 1,
@@ -28,7 +34,7 @@ const config = {
 
 function agentInsert(overrides: Partial<BattleQueueInsert> = {}): BattleQueueInsert {
   return {
-    id: "replay-queue-1",
+    id: "tapes-queue-1",
     battleId: "will-be-replaced",
     fighterASubname: "jason",
     fighterBSubname: "freddy",
@@ -54,10 +60,7 @@ function fightJobThatNeverFinishes(): Promise<never> {
   return new Promise(() => {});
 }
 
-function testLoop(
-  store: MemoryBattleQueueStore,
-  now: () => number,
-): GameLoop {
+function testLoop(store: MemoryBattleQueueStore, now: () => number): GameLoop {
   return new GameLoop({
     houseBots: NO_HOUSE_BOTS,
     config,
@@ -108,7 +111,7 @@ function testLoop(
   });
 }
 
-describe("GET /replay", () => {
+describe("GET /tapes", () => {
   const servers: ReturnType<typeof createGameServer>[] = [];
 
   after(async () => {
@@ -133,16 +136,15 @@ describe("GET /replay", () => {
     return baseUrl(server);
   }
 
-  it("returns 404 when no fight video is stored", async () => {
-    let clock = 0;
-    const base = await listen(testLoop(new MemoryBattleQueueStore(), () => clock));
-    const res = await fetch(`${base}/replay`);
-    assert.equal(res.status, 404);
-    const body = v.parse(ReplayErr, await res.json());
-    assert.match(body.error, /no fight video is stored/u);
+  it("returns an empty list, as a normal 200, when nothing is recorded", async () => {
+    const base = await listen(testLoop(new MemoryBattleQueueStore(), () => 0));
+    const res = await fetch(`${base}/tapes`);
+    assert.equal(res.status, 200);
+    const body = v.parse(TapesOk, await res.json());
+    assert.deepEqual(body.tapes, []);
   });
 
-  it("returns the latest stored Spaces CDN URL; a newer video wins", async () => {
+  it("hides the live bout's tape while betting is open, and lists it once it is no longer live", async () => {
     const store = new MemoryBattleQueueStore();
     let clock = 0;
     const game = testLoop(store, () => clock);
@@ -155,40 +157,58 @@ describe("GET /replay", () => {
     clock = 1_000;
     await game.tick(clock);
     assert.equal(game.getState().phase, "bet");
-    const battleId = game.getState().battleId;
-    assert.ok(battleId);
+    const liveBattleId = game.getState().battleId;
+    assert.ok(liveBattleId);
 
-    await game.attachAgentResult(agentInsert({ id: "bout-1", battleId }));
+    await game.attachAgentResult(agentInsert({ id: "bout-live", battleId: liveBattleId }));
     await game.setVideoReady(
-      "https://cdn.example/videos/first.mp4",
+      "https://cdn.example/videos/live.mp4",
       1,
-      "https://cdn.example/frames/seed.jpg",
+      "https://cdn.example/frames/live.jpg",
     );
 
-    const first = v.parse(ReplayOk, await (await fetch(`${base}/replay`)).json());
-    assert.equal(first.videoUrl, "https://cdn.example/videos/first.mp4");
+    const storeAlreadyHasAVideoReadyRowForTheLiveBattle = await store.listRecorded();
+    assert.equal(storeAlreadyHasAVideoReadyRowForTheLiveBattle.length, 1);
+    assert.equal(storeAlreadyHasAVideoReadyRowForTheLiveBattle[0]?.battleId, liveBattleId);
 
-    await store.save({
-      ...(await store.get("bout-1"))!,
-      id: "bout-2",
-      battleId: "other-battle",
+    const whileLive = v.parse(TapesOk, await (await fetch(`${base}/tapes`)).json());
+    assert.deepEqual(whileLive.tapes, []);
+
+    const finishedBoutThatIsNotLive = agentInsert({
+      id: "bout-finished",
+      battleId: "finished-battle",
     });
-    await store.setVideoUrl("bout-2", "https://cdn.example/videos/second.mp4");
+    await store.save({
+      ...finishedBoutThatIsNotLive,
+      bettingClosed: true,
+      playbackFinished: true,
+      videoStartedAt: null,
+      bettingClosesAt: null,
+      injuriesTxHash: "0xinj",
+      statusTxHash: "0xstat",
+      settlementTxHash: "0xsettle",
+    });
+    await store.setVideoUrl("bout-finished", "https://cdn.example/videos/finished.mp4");
 
-    const second = v.parse(ReplayOk, await (await fetch(`${base}/replay`)).json());
-    assert.equal(second.videoUrl, "https://cdn.example/videos/second.mp4");
+    const afterFinished = v.parse(TapesOk, await (await fetch(`${base}/tapes`)).json());
+    assert.equal(afterFinished.tapes.length, 1);
+    const tape = afterFinished.tapes[0];
+    assert.equal(tape?.battleId, "finished-battle");
+    assert.deepEqual(tape?.fighters, ["jason", "freddy"]);
+    assert.equal(tape?.winner, "jason");
+    assert.equal(tape?.videoUrl, "https://cdn.example/videos/finished.mp4");
   });
 
   it("returns 500 naming battle_results when the store read fails", async () => {
     class FailingReadStore extends MemoryBattleQueueStore {
-      override async getLatestVideoUrl(): Promise<string | null> {
+      override async listRecorded(): ReturnType<MemoryBattleQueueStore["listRecorded"]> {
         throw new Error("connection reset by peer");
       }
     }
     const base = await listen(testLoop(new FailingReadStore(), () => 0));
-    const res = await fetch(`${base}/replay`);
+    const res = await fetch(`${base}/tapes`);
     assert.equal(res.status, 500);
-    const body = v.parse(ReplayErr, await res.json());
+    const body = v.parse(TapesErr, await res.json());
     assert.match(body.error, /battle_results.*connection reset by peer/u);
   });
 });

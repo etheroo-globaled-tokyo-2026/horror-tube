@@ -5,6 +5,7 @@ import { formatPoolOdds } from "../odds.ts";
 import {
   SessionPostError,
   fetchRoundState,
+  fetchTapes,
   postPlaybackStart,
   postStart,
   postNextFighter,
@@ -81,7 +82,10 @@ describe("session posts", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
     await assert.rejects(() => postVote(0, memoryStore(null)), /World ID session is required/u);
     await assert.rejects(() => postStart(0, memoryStore(null)), /World ID session is required/u);
-    await assert.rejects(() => postNextFighter(1, memoryStore(null)), /World ID session is required/u);
+    await assert.rejects(
+      () => postNextFighter(1, memoryStore(null)),
+      /World ID session is required/u,
+    );
     await assert.rejects(
       () => postPlaybackStart("battle-1", memoryStore(null)),
       /World ID session is required/u,
@@ -159,5 +163,26 @@ describe("RoundState client contract", () => {
     const { pool: _pool, ...withoutPool } = baseState;
     respond(t, 200, JSON.stringify(withoutPool));
     await assert.rejects(fetchRoundState(), /GET \/round sent an invalid RoundState:.*pool/su);
+  });
+});
+
+describe("fetchTapes", () => {
+  it("returns the recorded bouts from GET /tapes", async (t) => {
+    const tape = {
+      battleId: "bout-1",
+      fighters: ["jason", "freddy"],
+      winner: "jason",
+      injuries: ["left arm"],
+      rationale: "jason wins",
+      videoUrl: "https://cdn.example/videos/bout-1.mp4",
+      recordedAt: 1,
+    };
+    respond(t, 200, JSON.stringify({ tapes: [tape] }));
+    assert.deepEqual(await fetchTapes(), [tape]);
+  });
+
+  it("surfaces the server's error when the store read fails", async (t) => {
+    respond(t, 500, JSON.stringify({ ok: false, error: "Reading battle_results failed: timeout" }));
+    await assert.rejects(fetchTapes(), /battle_results failed: timeout/u);
   });
 });
