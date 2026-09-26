@@ -121,20 +121,29 @@ def propose_one(entry: dict[str, Any], *, wiki: str | None) -> Character:
     source = entry.get("source")
     look_source = entry.get("look_source")
     brief_source = entry.get("brief_source")
+    expected_label = entry.get("label")
     if isinstance(source, str) and source.strip() != "":
         if look_source is not None or brief_source is not None:
             raise FandomError(
                 f"Cast entry has source and also look_source/brief_source: {entry!r}"
             )
-        return sheet_from_lore(fetch_page_lore(resolve_page(source, wiki=wiki)))
-    if not isinstance(look_source, str) or look_source.strip() == "":
+        sheet = sheet_from_lore(fetch_page_lore(resolve_page(source, wiki=wiki)))
+    elif not isinstance(look_source, str) or look_source.strip() == "":
         raise FandomError(f"Cast entry needs source or look_source. Got: {entry!r}")
-    if not isinstance(brief_source, str) or brief_source.strip() == "":
+    elif not isinstance(brief_source, str) or brief_source.strip() == "":
         raise FandomError(f"Cast entry needs brief_source with look_source. Got: {entry!r}")
-    return sheet_from_page_pair(
-        resolve_page(look_source, wiki=wiki),
-        resolve_page(brief_source, wiki=wiki),
-    )
+    else:
+        sheet = sheet_from_page_pair(
+            resolve_page(look_source, wiki=wiki),
+            resolve_page(brief_source, wiki=wiki),
+        )
+    if isinstance(expected_label, str) and expected_label.strip() != "":
+        expected = expected_label.strip()
+        if sheet["label"] != expected:
+            raise FandomError(
+                f"Cast label {expected!r} does not match proposed label {sheet['label']!r}."
+            )
+    return sheet
 
 
 def load_cast() -> list[dict[str, Any]]:
@@ -146,6 +155,19 @@ def load_cast() -> list[dict[str, Any]]:
         raise FandomError(
             f"{_CAST_PATH.name} must be a list of 10 fighters. Got {type(raw).__name__} "
             f"length {len(raw) if isinstance(raw, list) else 'n/a'}."
+        )
+    labels = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise FandomError(
+                f"{_CAST_PATH.name} entries must be objects. Got {type(entry).__name__}."
+            )
+        label = entry.get("label")
+        if isinstance(label, str) and label.strip() != "":
+            labels.append(label.strip())
+    if len(labels) != len(raw):
+        raise FandomError(
+            f"cast entry count ({len(raw)}) and label count ({len(labels)}) differ"
         )
     return raw
 
