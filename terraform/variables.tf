@@ -196,6 +196,11 @@ variable "settle_seconds" {
   type        = number
 }
 
+variable "skip_battle_settlement" {
+  description = "SKIP_BATTLE_SETTLEMENT: 1 skips BattleBetting settleBattle until that client exists; 0 calls it. Required; no default."
+  type        = string
+}
+
 variable "roster_ens_labels" {
   description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
   type        = string
