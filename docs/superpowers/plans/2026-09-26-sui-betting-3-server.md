@@ -16,26 +16,26 @@
 
 **Files:** Modify `apps/server/package.json`, `apps/server/src/index.ts`, `.env.example`, CI `docker` job, `terraform/app.tf`, `terraform/variables.tf`, `terraform/README.md`
 
-- [ ] `"@horror-tube/betting": "workspace:*"`; `pnpm install`.
-- [ ] `index.ts`: `readBettingConfig()`, `readKeypair("SUI_OPERATOR_PRIVATE_KEY")`, `requiredEnv("SUI_OPERATOR_CAP_ID")` next to the other env reads; `createOperator(createChain(client, signer), config, cap)`. Missing values fail at startup, naming the variable.
-- [ ] CI `docker` job: pass `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID` (public, from the deploy) and a throwaway operator key generated in the job:
+- [x] `"@horror-tube/betting": "workspace:*"`; `pnpm install`.
+- [x] `index.ts`: `readBettingConfig()`, `readKeypair("SUI_OPERATOR_PRIVATE_KEY")`, `requiredEnv("SUI_OPERATOR_CAP_ID")` next to the other env reads; `createOperator(createChain(client, signer), config, cap)`. Missing values fail at startup, naming the variable.
+- [x] CI `docker` job: pass `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID` (public, from the deploy) and a throwaway operator key generated in the job:
 
 ```bash
 SUI_OPERATOR_PRIVATE_KEY="$(docker run --rm --entrypoint node -w /app/apps/server horror-tube:ci -e 'import("@mysten/sui/keypairs/ed25519").then((m) => console.log(m.Ed25519Keypair.generate().getSecretKey()))')"
 ```
 
-- [ ] Terraform: one `env` block per variable, `RUN_TIME`; `SECRET` for the operator key, `GENERAL` for the rest; a `variable` each (no default); README rows and `export TF_VAR_…` lines.
-- [ ] Commit: `feat: server reads the Sui betting config`.
+- [x] Terraform: one `env` block per variable, `RUN_TIME`; `SECRET` for the operator key, `GENERAL` for the rest; a `variable` each (no default); README rows and `export TF_VAR_…` lines.
+- [x] Commit: `feat: server reads the Sui betting config`.
 
 ### Task 2: Battle ID, pool and fee in `RoundState`; delete off-chain bets
 
 **Files:** Modify `apps/server/src/types.ts`, `src/game/loop.ts`, `src/server.ts`, `tests/game-loop.test.ts`, `tests/server.test.ts`, `docs/game-loop.md`
 
 - [ ] Failing tests: entering `bet` sets a fresh non-empty `battleId` (different next bout) and `poolId: null`; `setPool(battleId, poolId, totals)` updates `poolId` and `pool` only for the live battle; `attachAgentResult` with another `battleId` throws; after settle → vote both reset to `null`.
-- [ ] `RoundState`: `battleId: string | null`, `poolId: string | null`; `pool` = totals in USDC base units.
+- [x] `RoundState`: `battleId: string | null`, `poolId: string | null`; `pool` = totals in USDC base units.
 - [ ] `GameLoop`: `battleId = randomUUID()` wherever the phase becomes `bet` (`closeVoting` and the rotation path); `setPool`; `attachAgentResult` requires `insert.battleId === this.battleId` (the fight pipeline gets the ID from `RoundState`).
-- [ ] Delete `GameLoop.bet`, the `POST /bet` route and their tests.
-- [ ] `docs/game-loop.md` "Server contract": the new fields; `bet(side, amount)` → "bets go to Sui through `/tx`"; the operator table from the spec.
+- [x] Delete `GameLoop.bet`, the `POST /bet` route and their tests.
+- [x] `docs/game-loop.md` "Server contract": the new fields; `bet(side, amount)` → "bets go to Sui through `/tx`"; the operator table from the spec.
 - [ ] Commit: `feat: battle and pool IDs in the round state`.
 
 ### Task 3: `GET /betting`
@@ -43,28 +43,24 @@ SUI_OPERATOR_PRIVATE_KEY="$(docker run --rm --entrypoint node -w /app/apps/serve
 **Files:** Modify `apps/server/src/server.ts`, `tests/server.test.ts`, `apps/web/vite.config.ts` (proxy `/betting` like `/round`)
 
 - [ ] Failing test: `GET /betting` → `200 { packageId, houseId, coinType, feeBps }`.
-- [ ] Route returns the config (`feeBps` read once from the house at startup with `getObject`; fail startup if the house is missing).
+- [x] Route returns the config (`feeBps` read once from the house at startup with `getObject`; fail startup if the house is missing).
 - [ ] Commit: `feat: serve the betting IDs`.
 
-### Task 4: `BettingSync`
+### Task 4: Drive pools from the game loop
 
-**Files:** Create `apps/server/src/betting-sync.ts`, `tests/betting-sync.test.ts`; modify `src/index.ts`
+`GameLoop` calls the operator ports directly (`openBattle`, `closeBetting`, `cancelBattle`, `readPoolTotals` → `setPool`). There is no separate `BettingSync`.
 
-- [ ] Failing tests with a fake operator (records calls; can fail once) and plain `RoundState` objects:
-  - phase `bet` with a new `battleId` → one `openPool(battleId, now + videoTimeout)`; then `setPool` gets the pool ID and totals.
-  - `bet` → `fight` → one `closeBetting`.
-  - `bet` with `error` set → one `cancel`.
-  - an operator failure is logged with the battle ID and retried after the backoff, not every tick.
-- [ ] `createBettingSync({ operator, game, videoTimeoutMs, now, log })` → `observe(state)`. Per battle `{ opened, closed, cancelled, inFlight, retryAt }`; at most one operator call per battle at a time; during `bet`, `operator.read(battleId)` every 2 s → `game.setPool(battleId, poolId, [Number(a), Number(b)])`.
-- [ ] `index.ts`: `sync.observe(game.getState())` in the existing tick.
-- [ ] Commit: `feat: drive Sui pools from the game loop`.
+- [x] `bet` with a new battle → one `openBattle`; `setPool` gets the pool ID and totals (`tests/game-loop.test.ts`).
+- [x] `bet` → `fight` → one `closeBetting`.
+- [x] `bet` with `error` set → one `cancelBattle`.
+- [ ] An operator failure is logged with the battle ID and retried after a backoff, not every tick.
 
 ### Task 5: Settle through the battle queue
 
 **Files:** Modify `packages/fight/src/battle-queue.ts` and tests, `apps/server/src/ens-chain-write.ts`, `apps/server/src/env.ts`, `.env.example`
 
-- [ ] `ChainWritePorts.settleBattle(battleId)` → `settleBattle(battleId: string, winningSide: 0 | 1)`. `settleQueuedBattle` passes `record.winnerSubname === record.fighterASubname ? 0 : 1` and throws when the winner is neither fighter. Update fight tests.
-- [ ] `ens-chain-write.ts` `settleBattle`: replace the "not implemented" throw with `operator.settle(battleId, side)`, returning the settle digest (stored in `settlement_tx_hash`). `operator.settle` returns the digest.
+- [x] `ChainWritePorts.settleBattle(battleId)` → `settleBattle(battleId: string, winningSide: 0 | 1)`. `settleQueuedBattle` passes `record.winnerSubname === record.fighterASubname ? 0 : 1` and throws when the winner is neither fighter. Update fight tests.
+- [x] `ens-chain-write.ts` `settleBattle`: replace the "not implemented" throw with `operator.settle(battleId, side)`, returning the settle digest (stored in `settlement_tx_hash`). `operator.settle` returns the digest.
 - [ ] Delete `SKIP_BATTLE_SETTLEMENT` (`readSkipBattleSettlement`, the loop option, `.env.example`, logs).
 - [ ] Commit: `feat: settle Sui pools from the battle queue`.
 
