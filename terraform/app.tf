@@ -1,11 +1,11 @@
 # App Platform service: one Node process serves the Vite build and the API
-# (issue #54). Region comes from var.region (operator: sgp1). Push to main
-# redeploys via github.deploy_on_push.
+# (issue #54). App region is var.app_region (operator: sgp — App Platform slug;
+# Spaces/Postgres use var.region sgp1). Push to main redeploys via github.deploy_on_push.
 
 resource "digitalocean_app" "game" {
   spec {
     name   = var.app_name
-    region = var.region
+    region = var.app_region
 
     service {
       name               = "game"
@@ -24,6 +24,21 @@ resource "digitalocean_app" "game" {
         http_path = "/health"
       }
 
+      # Baked into the Vite client at image build (apps/web/game.ts via import.meta.env).
+      env {
+        key   = "ENS_LABEL"
+        value = var.ens_label
+        scope = "BUILD_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "VITE_SEPOLIA_RPC_URL"
+        value = var.vite_sepolia_rpc_url
+        scope = "BUILD_TIME"
+        type  = "GENERAL"
+      }
+
       env {
         key   = "GAME_PORT"
         value = tostring(var.game_port)
@@ -31,9 +46,10 @@ resource "digitalocean_app" "game" {
         type  = "GENERAL"
       }
 
+      # Public URI: this app has no VPC, so private_uri would not resolve.
       env {
         key   = "DATABASE_URL"
-        value = var.database_url
+        value = digitalocean_database_cluster.battle_state.uri
         scope = "RUN_TIME"
         type  = "SECRET"
       }

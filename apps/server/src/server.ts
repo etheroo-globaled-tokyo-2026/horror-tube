@@ -5,7 +5,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { extname, join, normalize, resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
 
 export type GameServerOptions = {
   port: number;
@@ -39,23 +39,50 @@ function sendJson(
   res.end(payload);
 }
 
-function sendNotFound(res: ServerResponse): void {
-  res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-  res.end("Not Found");
+function sendText(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
+  res.end(body);
 }
 
-function resolveStaticPath(staticDir: string, urlPath: string): string | null {
-  const decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+function sendNotFound(res: ServerResponse): void {
+  sendText(res, 404, "Not Found");
+}
+
+function sendBadRequest(res: ServerResponse): void {
+  sendText(res, 400, "Bad Request");
+}
+
+function sendInternalError(res: ServerResponse): void {
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  sendText(res, 500, "Internal Server Error");
+}
+
+type StaticPathResult =
+  | { kind: "file"; path: string }
+  | { kind: "missing" }
+  | { kind: "bad-encoding" };
+
+function resolveStaticPath(staticDir: string, urlPath: string): StaticPathResult {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0] ?? "/");
+  } catch {
+    return { kind: "bad-encoding" };
+  }
   const relative = decoded === "/" ? "index.html" : decoded.replace(/^\//u, "");
-  const candidate = normalize(join(staticDir, relative));
-  const root = resolve(staticDir) + sep;
-  if (!candidate.startsWith(root) && candidate !== resolve(staticDir)) {
-    return null;
+  const root = resolve(staticDir);
+  const candidate = resolve(staticDir, relative);
+  const rootPrefix = root.endsWith(sep) ? root : root + sep;
+  if (!candidate.startsWith(rootPrefix) && candidate !== root) {
+    return { kind: "missing" };
   }
   if (!existsSync(candidate) || !statSync(candidate).isFile()) {
-    return null;
+    return { kind: "missing" };
   }
-  return candidate;
+  return { kind: "file", path: candidate };
 }
 
 function serveStatic(
@@ -63,14 +90,27 @@ function serveStatic(
   staticDir: string,
   urlPath: string,
 ): void {
-  const filePath = resolveStaticPath(staticDir, urlPath);
-  if (filePath === null) {
+  const resolved = resolveStaticPath(staticDir, urlPath);
+  if (resolved.kind === "bad-encoding") {
+    sendBadRequest(res);
+    return;
+  }
+  if (resolved.kind === "missing") {
     sendNotFound(res);
     return;
   }
-  const type = CONTENT_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  const type =
+    CONTENT_TYPES[extname(resolved.path).toLowerCase()] ??
+    "application/octet-stream";
   res.writeHead(200, { "content-type": type });
-  createReadStream(filePath).pipe(res);
+  const stream = createReadStream(resolved.path);
+  stream.on("error", (err) => {
+    console.error(
+      `static file read failed for ${resolved.path}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    sendInternalError(res);
+  });
+  stream.pipe(res);
 }
 
 export function createGameServer(options: GameServerOptions): Server {

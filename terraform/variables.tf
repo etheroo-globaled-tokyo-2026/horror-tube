@@ -36,6 +36,11 @@ variable "app_name" {
   type        = string
 }
 
+variable "app_region" {
+  description = "App Platform region slug from GET /v2/apps/regions (or doctl apps list-regions). Singapore is sgp (datacenter sgp1). Distinct from var.region used by Spaces and Managed Postgres. Required; no default."
+  type        = string
+}
+
 variable "github_repo" {
   description = "GitHub owner/name for App Platform deploy-on-push (main). Required; no default. The DigitalOcean team must already have GitHub connected."
   type        = string
@@ -51,8 +56,13 @@ variable "game_port" {
   type        = number
 }
 
-variable "database_url" {
-  description = "DATABASE_URL for the app (use terraform output database_private_uri on App Platform). Set via TF_VAR_database_url from .env. Required; no default. Never commit."
+variable "ens_label" {
+  description = "ENS_LABEL baked into the Vite client at image BUILD_TIME (apps/web/game.ts). Set via TF_VAR_ens_label from .env. Required; no default."
+  type        = string
+}
+
+variable "vite_sepolia_rpc_url" {
+  description = "VITE_SEPOLIA_RPC_URL baked into the Vite client at image BUILD_TIME. Set via TF_VAR_vite_sepolia_rpc_url from .env. Required; no default. Never commit secrets."
   type        = string
   sensitive   = true
 }

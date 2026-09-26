@@ -11,6 +11,16 @@ COPY packages/roster/package.json packages/roster/
 COPY packages/contracts/package.json packages/contracts/
 RUN pnpm install --frozen-lockfile
 COPY . .
+# Vite bakes these into the client at build time (apps/web/vite.config.ts envPrefix).
+# CI passes --build-arg; App Platform injects BUILD_TIME env as build-args.
+ARG ENS_LABEL
+ARG VITE_SEPOLIA_RPC_URL
+ENV ENS_LABEL=$ENS_LABEL
+ENV VITE_SEPOLIA_RPC_URL=$VITE_SEPOLIA_RPC_URL
+RUN if [ -z "${ENS_LABEL}" ] || [ -z "${VITE_SEPOLIA_RPC_URL}" ]; then \
+      echo "ENS_LABEL and VITE_SEPOLIA_RPC_URL are required at image build time. See .env.example." >&2; \
+      exit 1; \
+    fi
 RUN pnpm --filter @horror-tube/web build
 RUN pnpm --filter @horror-tube/server build
 

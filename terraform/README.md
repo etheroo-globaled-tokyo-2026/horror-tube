@@ -76,11 +76,12 @@ Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publ
 
 ## Required tfvars (no defaults)
 
-Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, bucket name, app name, GitHub repo, instance size, game port, or game-loop timings:
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, App Platform region, database size, bucket name, app name, GitHub repo, instance size, game port, or game-loop timings:
 
 | Variable | Operator value for this project |
 | --- | --- |
-| `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
+| `region` | `sgp1` (Singapore datacenter — Spaces + Managed Postgres; confirm via API before changing) |
+| `app_region` | `sgp` (App Platform region slug from [list_regions](https://docs.digitalocean.com/reference/pydo/reference/apps/list_regions/); datacenter under it is `sgp1`. Do not pass `sgp1` here.) |
 | `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
 | `spaces_bucket_name` | globally unique name |
 | `app_name` | `horror-tube` |
@@ -91,25 +92,33 @@ Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every
 
 The Managed Postgres firewall keeps the hardcoded public IPv4 rules in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`) so hackathon laptops can reach Postgres, and adds a rule of type `app` whose value is the App Platform app id so the game service is a trusted source. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
 
-There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
+There is no Tokyo DO region. Pick the geographically closest **datacenter** where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1` for `var.region`. App Platform uses a separate shorter slug (`var.app_region` = `sgp` for Singapore).
 
 `db-s-1vcpu-2gb` was verified under `options.pg.layouts` for `num_nodes: 1`.
 
 ## App Platform (game node + Vite)
 
-`digitalocean_app.game` is one service built from the repo-root `Dockerfile`. It listens on `game_port` (`GAME_PORT` / `http_port`), health-checks `GET /health`, and serves the Vite build from `STATIC_DIR` inside the image.
+`digitalocean_app.game` is one service built from the repo-root `Dockerfile`. Spec `region` is `var.app_region` (`sgp`), not `var.region` (`sgp1`). It listens on `game_port` (`GAME_PORT` / `http_port`), health-checks `GET /health`, and serves the Vite build from `STATIC_DIR` inside the image.
+
+`ENS_LABEL` and `VITE_SEPOLIA_RPC_URL` are `BUILD_TIME` env on the service (required Terraform variables, no defaults) so the Dockerfile can bake them into the Vite client. Without them the browser throws when `apps/web/game.ts` reads `import.meta.env`.
 
 Push to `main` redeploys (`github.deploy_on_push = true`). The DigitalOcean team must already have the GitHub repository connected in the control panel, or apply fails when App Platform cannot clone the repo.
 
 After apply, the public room URL is output `app_live_url` (health at `{app_live_url}/health`). This stack documents the resource; it does not claim apply has been run.
 
+### DATABASE_URL (public URI, no VPC)
+
+The app runtime `DATABASE_URL` is set in Terraform from `digitalocean_database_cluster.battle_state.uri` (the **public** connection URI). This stack does not create a VPC, so `private_uri` would not resolve from the App Platform container. Laptops still use output `database_uri` in `.env` for local tools. Do not pass `TF_VAR_database_url`.
+
 ### App runtime secrets (TF_VAR from `.env`, never in tfvars)
 
-Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed). Source them from the repo `.env` for that one command:
+Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed), plus BUILD_TIME Vite env. Source them from the repo `.env` for that one command:
 
 | App env | Terraform variable | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | `TF_VAR_database_url` | App uses output `database_private_uri`; a laptop uses `database_uri` |
+| `ENS_LABEL` | `TF_VAR_ens_label` | BUILD_TIME; from `.env` |
+| `VITE_SEPOLIA_RPC_URL` | `TF_VAR_vite_sepolia_rpc_url` | BUILD_TIME; from `.env` |
+| `DATABASE_URL` | *(none)* | set from `battle_state.uri` in Terraform |
 | `SPACES_ACCESS_KEY_ID` | `TF_VAR_spaces_access_key_id` | from `.env` |
 | `SPACES_SECRET` | `TF_VAR_spaces_secret` | from `.env` |
 | `SPACES_BUCKET` | `TF_VAR_spaces_bucket` | from `.env` |
@@ -122,6 +131,8 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
 
+`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet).
+
 Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
 
 ```bash
@@ -132,7 +143,8 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   # shellcheck disable=SC1091
   source "$root/.env"
   set +a
-  : "${DATABASE_URL:?DATABASE_URL is required. See .env.example.}"
+  : "${ENS_LABEL:?ENS_LABEL is required. See .env.example.}"
+  : "${VITE_SEPOLIA_RPC_URL:?VITE_SEPOLIA_RPC_URL is required. See .env.example.}"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
   : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_BUCKET:?SPACES_BUCKET is required. See .env.example.}"
@@ -146,7 +158,8 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
-  export TF_VAR_database_url="$DATABASE_URL"
+  export TF_VAR_ens_label="$ENS_LABEL"
+  export TF_VAR_vite_sepolia_rpc_url="$VITE_SEPOLIA_RPC_URL"
   export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
   export TF_VAR_spaces_secret="$SPACES_SECRET"
   export TF_VAR_spaces_bucket="$SPACES_BUCKET"
