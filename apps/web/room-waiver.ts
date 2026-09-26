@@ -1,11 +1,7 @@
 import * as THREE from "three";
 import { $, newSeason } from "./game.ts";
 import { ctx2d } from "./sprites.ts";
-import {
-  fetchEnterRoomRequest,
-  startEnterRoomProof,
-  verifyEnterRoomProof,
-} from "./world-id.ts";
+import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
 import { openGameWallet } from "./wallet.ts";
 import { sfx } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
@@ -184,6 +180,7 @@ export async function beginWorldIdScan(): Promise<void> {
     const proof = await startEnterRoomProof(context);
     if (signal.aborted) return;
     W8.qrUri = proof.connectorURI;
+    waiverHooks.hintText();
     const idkitResult = await proof.wait();
     if (signal.aborted) return;
     await verifyEnterRoomProof(idkitResult);

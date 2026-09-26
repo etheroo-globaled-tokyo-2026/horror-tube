@@ -9,7 +9,11 @@ export const PROOF_OF_HUMAN_ISSUER_SCHEMA_ID = 1;
 
 export type VerifyFetch = (
   input: string,
-  init: { method: "POST"; headers: { "content-type": "application/json" }; body: string },
+  init: {
+    method: "POST";
+    headers: { "content-type": "application/json"; "x-staging-verification-token"?: string };
+    body: string;
+  },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export type VerifiedHuman = {
@@ -82,8 +86,15 @@ export async function verifyProofOfHuman(args: {
   signal: string | null;
   idkitResult: unknown;
   fetch: VerifyFetch;
+  stagingToken?: string;
 }): Promise<VerifiedHuman> {
   const rpId = args.rpId.trim();
+  const stagingToken = args.stagingToken?.trim() ?? "";
+  if (args.environment === "staging" && stagingToken === "") {
+    throw new Error(
+      "WORLD_ID_STAGING_TOKEN is required to verify a staging World ID proof. See .env.example.",
+    );
+  }
   if (rpId === "") {
     throw new Error("WORLD_ID_RP_ID is required to verify a World ID proof. See .env.example.");
   }
@@ -108,7 +119,10 @@ export async function verifyProofOfHuman(args: {
   const url = `${WORLD_ID_VERIFY_URL_BASE}/${encodeURIComponent(rpId)}`;
   const response = await args.fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers:
+      args.environment === "staging"
+        ? { "content-type": "application/json", "x-staging-verification-token": stagingToken }
+        : { "content-type": "application/json" },
     body: JSON.stringify(args.idkitResult),
   });
   const text = await response.text();
