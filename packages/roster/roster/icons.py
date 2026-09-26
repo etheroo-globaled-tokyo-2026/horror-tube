@@ -1,16 +1,21 @@
-"""Generate 100x100 face icons with Together FLUX.1."""
+"""Generate 100x100 face icons with Together FLUX.1 and upload to Spaces."""
 
 from __future__ import annotations
 
 import base64
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from io import BytesIO
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
+from urllib.parse import urlparse
 
+import boto3
+from botocore.client import BaseClient, Config
+from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger("roster.icons")
@@ -21,7 +26,19 @@ REQUEST_TIMEOUT_SECONDS = 180
 
 
 class IconGenerationError(RuntimeError):
-    """Raised when face-icon generation cannot finish."""
+    """Raised when face-icon generation or Spaces upload cannot finish."""
+
+
+class IconObjectStore(Protocol):
+    """Bucket operations used by the icons command."""
+
+    def object_exists(self, key: str) -> bool:
+        """Return True when the object key is already on the bucket."""
+        ...
+
+    def put_public_png(self, key: str, body: bytes) -> None:
+        """Upload PNG bytes with ACL public-read."""
+        ...
 
 
 def required_env(name: str, env: Mapping[str, str]) -> str:
@@ -31,6 +48,66 @@ def required_env(name: str, env: Mapping[str, str]) -> str:
             f"{name} is required. Set it in .env. See .env.example. Refusing to fall back."
         )
     return value.strip()
+
+
+def spaces_region_from_endpoint(endpoint: str) -> str:
+    parsed = urlparse(endpoint)
+    host = parsed.hostname
+    if host is None or host.strip() == "":
+        raise IconGenerationError(
+            f"SPACES_ENDPOINT must include a host. Got: {endpoint!r}"
+        )
+    region = host.split(".", 1)[0].strip()
+    if region == "":
+        raise IconGenerationError(
+            f"SPACES_ENDPOINT host has no Spaces region prefix. Got: {host!r}"
+        )
+    return region
+
+
+def canonical_icon_key(label: str) -> str:
+    return f"{label}.png"
+
+
+def override_icon_key(label: str, unix_seconds: int) -> str:
+    if unix_seconds < 0:
+        raise IconGenerationError(
+            f"override unix_seconds must be >= 0. Got: {unix_seconds}"
+        )
+    return f"{label}-{unix_seconds}.png"
+
+
+def icon_object_key(label: str, *, override: bool, unix_seconds: int) -> str:
+    if override:
+        return override_icon_key(label, unix_seconds)
+    return canonical_icon_key(label)
+
+
+def icon_cdn_url(cdn_host: str, object_key: str) -> str:
+    host = cdn_host.strip()
+    if host.startswith("https://"):
+        host = host[len("https://") :]
+    elif host.startswith("http://"):
+        raise IconGenerationError(
+            "SPACES_CDN_HOST must be a hostname (optionally with https://). "
+            f"Got http:// URL: {cdn_host!r}"
+        )
+    host = host.strip().rstrip("/")
+    if host == "":
+        raise IconGenerationError(
+            "SPACES_CDN_HOST is blank after normalization. Refusing to build an icon URL."
+        )
+    key = object_key.strip().lstrip("/")
+    if key == "":
+        raise IconGenerationError(
+            "icon object key is blank. Refusing to build an icon URL."
+        )
+    return f"https://{host}/{key}"
+
+
+def should_skip_generation(*, object_exists: bool, override: bool) -> bool:
+    """Skip Together + upload when the canonical object exists and override is off."""
+    return object_exists and not override
 
 
 def image_request_body(look: str, model: str) -> dict[str, object]:
@@ -173,6 +250,72 @@ def generate_face_png(
     return png_icon(decode_image(image_b64(payload)))
 
 
+class SpacesIconStore:
+    """DigitalOcean Spaces (S3-compatible) store for character icon PNGs."""
+
+    def __init__(
+        self,
+        *,
+        client: BaseClient,
+        bucket: str,
+    ) -> None:
+        self._client = client
+        self.bucket = bucket
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> SpacesIconStore:
+        access_key = required_env("SPACES_ACCESS_KEY_ID", env)
+        secret = required_env("SPACES_SECRET", env)
+        bucket = required_env("SPACES_BUCKET", env)
+        endpoint = required_env("SPACES_ENDPOINT", env)
+        region = spaces_region_from_endpoint(endpoint)
+        client = boto3.client(
+            "s3",
+            region_name=region,
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret,
+            config=Config(signature_version="s3v4"),
+        )
+        return cls(client=client, bucket=bucket)
+
+    def object_exists(self, key: str) -> bool:
+        try:
+            self._client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            http_status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if code in ("404", "NoSuchKey", "NotFound") or http_status == 404:
+                return False
+            raise IconGenerationError(
+                f"Spaces head_object failed for s3://{self.bucket}/{key}: "
+                f"Code={code!r} HTTPStatusCode={http_status!r} {exc}"
+            ) from exc
+        except BotoCoreError as exc:
+            raise IconGenerationError(
+                f"Spaces head_object request failed for s3://{self.bucket}/{key}: {exc}"
+            ) from exc
+
+    def put_public_png(self, key: str, body: bytes) -> None:
+        try:
+            self._client.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=body,
+                ACL="public-read",
+                ContentType="image/png",
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise IconGenerationError(
+                f"Spaces put_object failed for s3://{self.bucket}/{key}: {exc}"
+            ) from exc
+
+
+def spaces_store_from_env(env: Mapping[str, str]) -> SpacesIconStore:
+    return SpacesIconStore.from_env(env)
+
+
 def write_face_icons(
     characters: Sequence[Mapping[str, str]],
     out_dir: Path,
@@ -180,14 +323,49 @@ def write_face_icons(
     api_key: str,
     model: str,
     api_url: str,
-) -> list[Path]:
+    spaces: IconObjectStore,
+    cdn_host: str,
+    override: bool,
+    clock: Callable[[], int] | None = None,
+) -> tuple[list[Path], list[dict[str, str]]]:
+    """Generate and/or upload face icons; return written paths and updated sheets."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
+    updated: list[dict[str, str]] = []
+    now = clock if clock is not None else (lambda: int(time.time()))
+
     for character in characters:
         label = character["label"]
-        path = out_dir / f"{label}.png"
-        if path.exists():
-            logger.info("replacing existing icon %s", path)
+        sheet: dict[str, str] = dict(character)
+        canonical_key = canonical_icon_key(label)
+        canonical_url = icon_cdn_url(cdn_host, canonical_key)
+
+        try:
+            exists = spaces.object_exists(canonical_key)
+        except IconGenerationError as exc:
+            raise IconGenerationError(
+                f"Face icon for {label} failed while checking Spaces. "
+                f"Processed {len(updated)} character(s) before this failure. {exc}"
+            ) from exc
+
+        if should_skip_generation(object_exists=exists, override=override):
+            logger.info(
+                "skipping Together and upload for %s; already on Spaces at %s",
+                label,
+                canonical_url,
+            )
+            if sheet.get("icon", "").strip() == "":
+                sheet["icon"] = canonical_url
+            updated.append(sheet)
+            continue
+
+        # Missing object: first upload is always <label>.png (even with --override).
+        # Existing object + --override: new key so the CDN does not keep the old file.
+        if exists and override:
+            object_key = override_icon_key(label, now())
+        else:
+            object_key = canonical_key
+
         try:
             png = generate_face_png(
                 character["look"],
@@ -195,12 +373,23 @@ def write_face_icons(
                 model=model,
                 api_url=api_url,
             )
+            spaces.put_public_png(object_key, png)
         except IconGenerationError as exc:
             raise IconGenerationError(
                 f"Face icon for {label} failed. "
                 f"Wrote {len(written)} icon(s) before this failure. {exc}"
             ) from exc
+
+        path = out_dir / f"{label}.png"
+        if path.exists():
+            logger.info("replacing existing local icon %s", path)
         path.write_bytes(png)
         logger.info("wrote %s (%s bytes)", path, len(png))
         written.append(path)
-    return written
+
+        url = icon_cdn_url(cdn_host, object_key)
+        sheet["icon"] = url
+        logger.info("uploaded %s -> %s", label, url)
+        updated.append(sheet)
+
+    return written, updated
