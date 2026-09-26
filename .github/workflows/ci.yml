@@ -38,6 +38,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/fight-media build
       - run: pnpm --filter @horror-tube/fight build
       - run: pnpm --filter @horror-tube/fight test
       - run: pnpm --filter @horror-tube/fight typecheck
@@ -54,6 +55,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/fight-media build
       - run: pnpm --filter @horror-tube/fight-media test
       - run: pnpm --filter @horror-tube/fight-media typecheck
 
@@ -86,6 +88,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @horror-tube/world-id build
+      - run: pnpm --filter @horror-tube/fight-media build
       - run: pnpm --filter @horror-tube/fight build
       - run: pnpm --filter @horror-tube/server test
       - run: pnpm --filter @horror-tube/server typecheck
