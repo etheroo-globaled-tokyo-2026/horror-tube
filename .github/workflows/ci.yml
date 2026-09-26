@@ -135,6 +135,11 @@ jobs:
       # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
       ENS_LABEL: "ci"
       VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
+      # Runtime roster read (apps/server/src/index.ts). The server reads each
+      # label's ENS status before listen. jason and freddy are registered
+      # under horrortube.eth.
+      SERVER_ENS_LABEL: "horrortube"
+      SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
       # Runtime World ID gate (apps/server/src/index.ts). CI-only values; not production secrets.
       WORLD_ID_APP_ID: "app_ci_docker"
       WORLD_ID_RP_ID: "rp_ci_docker"
@@ -149,7 +154,7 @@ jobs:
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
       SKIP_BATTLE_SETTLEMENT: "1"
-      ROSTER_ENS_LABELS: "ci-alpha,ci-bravo"
+      ROSTER_ENS_LABELS: "jason,freddy"
       # Startup requires these. The key and pepper are not real. The coin type is public testnet USDC so the tag check passes. CI does not send a transaction.
       SHINAMI_ACCESS_KEY: "ci-not-a-real-shinami-key"
       WALLET_SECRET_PEPPER: "ci-wallet-pepper"
@@ -226,6 +231,8 @@ jobs:
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
             -e "SKIP_BATTLE_SETTLEMENT=${SKIP_BATTLE_SETTLEMENT}" \
+            -e "ENS_LABEL=${SERVER_ENS_LABEL}" \
+            -e "SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
             -e "SHINAMI_ACCESS_KEY=${SHINAMI_ACCESS_KEY}" \
             -e "WALLET_SECRET_PEPPER=${WALLET_SECRET_PEPPER}" \
