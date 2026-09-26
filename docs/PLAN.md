@@ -18,7 +18,7 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet.                                                                     |
 | Game server                  | Built (`apps/server`). Waiting→bet→fight→settle holding loop; a verified `POST /start` opens the first bout.                                                                                                                                                                              |
 | Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                                                                                                                                                                               |
-| ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or settle stays on the round error. `POST /retry-settle` runs the pending steps again. |
+| ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or an unfinished settle is logged and the next bout still opens. |
 
 ## Art direction
 
@@ -49,7 +49,7 @@ See `apps/web/DESIGN.md`.
 8. **Bet**: users bet on the outcome (paid) until betting closes shortly after the video starts. Each bet is USDC into the battle's Sui pool, sent through `POST /tx`; Shinami pays the gas.
    The video model makes the video from the LLM text while betting is open.
 9. **Show video**: the fight video plays from `RoundState.videoUrl`. There is no local demo clip.
-10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. The server then calls `settleBattle` on the Sui pool. A failed ENS write or settle stays on the round error and does not start the next bout. `POST /retry-settle` runs the pending ENS steps again. Moving the loser to a dead-pool name is still open (question 2).
+10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. The server then calls `settleBattle` on the Sui pool. A failed ENS write or an unfinished settle is logged and does not stay on the round. The next bout still opens. Moving the loser to a dead-pool name is still open (question 2).
 11. The winner stays on against a random living challenger (step 6), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
