@@ -8,6 +8,7 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/ens/package.json packages/ens/
 COPY packages/roster/package.json packages/roster/
+COPY packages/contracts/package.json packages/contracts/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @horror-tube/web build

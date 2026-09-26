@@ -246,7 +246,7 @@ export function createCoinBox(
 
   const slotPanel = panel();
   slotPanel.innerHTML = `<h2 class="lit">INSERT A COIN</h2><p>Your wallet opens once to approve.</p>
-    <div class="row">${COINS.map((c) => `<button class="btn primary" value="${c}">${c} USDC</button>`).join("")}</div>
+    <div class="row">${COINS.map((c) => `<button class="btn primary" data-cursor="coin" value="${c}">${c} USDC</button>`).join("")}</div>
     <div class="row"><button class="btn" value="0">WALK AWAY</button></div>`;
   slotPanel.addEventListener("click", (event) => {
     if (!(event.target instanceof HTMLButtonElement)) return;

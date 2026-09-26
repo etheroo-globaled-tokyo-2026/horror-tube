@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { getAddress } from "viem";
 
 export const CONTRACTS_V2_COMMIT = "71a3b7339dbc55ab47667abdfe8303bac4f4c24e" as const;
@@ -71,9 +68,10 @@ function parsePinnedAddresses<const N extends readonly string[]>(
   return addresses;
 }
 
+// No top-level node imports: the web app imports this file for the parsers.
 function readPinMarkdown(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return readFileSync(join(here, "pin", "sepolia-addresses.md"), "utf8");
+  const { readFileSync } = process.getBuiltinModule("node:fs");
+  return readFileSync(new URL("pin/sepolia-addresses.md", import.meta.url), "utf8");
 }
 
 export function parsePinAddressesFromMarkdown(markdown: string): PinAddresses {
