@@ -239,3 +239,32 @@ def set_icons(
             }
         )
     return results
+
+
+def apply_text_reset(characters: Sequence[Character]) -> None:
+    """setText every text field on existing registered subnames. Never registers."""
+    if len(characters) == 0:
+        raise RosterValidationError(
+            "apply_text_reset requires at least one character sheet. Refusing empty list."
+        )
+    plan = {
+        "plan": "apply-text",
+        "chain_writes": True,
+        "characters": [
+            {
+                "label": character["label"],
+                "display_name": character["display_name"],
+                "look": character["look"],
+                "brief": character["brief"],
+                "injury_places": character["injury_places"],
+                "injuries": character["injuries"],
+                "status": character["status"],
+                "icon": character["icon"],
+            }
+            for character in characters
+        ],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        plan_path = Path(tmp) / "apply-text-plan.json"
+        plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        run_chain(["apply-text", "--plan", str(plan_path)])

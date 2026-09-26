@@ -3,6 +3,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import {
   $,
   DUR,
@@ -30,7 +31,13 @@ import {
   type CoinBoxView,
   createCoinBox,
 } from "./coinbox.ts";
+import QRCode from "qrcode";
 import { getGameWallet } from "./wallet.ts";
+import {
+  fetchEnterRoomRequest,
+  startEnterRoomProof,
+  verifyEnterRoomProof,
+} from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -85,6 +92,23 @@ const T = {
 
 const canvas = $("#view");
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#view is not a canvas");
+let ps1 = Number(localStorage.getItem("ps1") ?? 0.25);
+let ps1Text = Number(localStorage.getItem("ps1Text") ?? 0.1);
+const textTex = <T extends THREE.Texture>(t: T): T => {
+  t.userData.text = true;
+  return t;
+};
+const psSnap = { value: 0 };
+THREE.ShaderChunk.common = "uniform float psSnap;\n" + THREE.ShaderChunk.common;
+THREE.ShaderChunk.project_vertex = THREE.ShaderChunk.project_vertex.replace(
+  "gl_Position = projectionMatrix * mvPosition;",
+  `gl_Position = projectionMatrix * mvPosition;
+  if (psSnap > 0.0) gl_Position.xy = floor(gl_Position.xy / gl_Position.w * psSnap) / psSnap * gl_Position.w;`,
+);
+THREE.Material.prototype.onBeforeCompile = (shader) => {
+  shader.uniforms.psSnap = psSnap;
+};
+const TEXT_LAYER = 1;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
 renderer.setPixelRatio(1);
 renderer.shadowMap.enabled = true;
@@ -100,10 +124,119 @@ const ao = new GTAOPass(scene, camera);
 ao.updateGtaoMaterial({ radius: 0.5, thickness: 1, scale: 2, distanceExponent: 2 });
 composer.addPass(ao);
 composer.addPass(new OutputPass());
+const levels = { value: 255 };
+const dither = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, levels },
+  vertexShader:
+    "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `
+      uniform sampler2D tDiffuse; uniform float levels; varying vec2 vUv;
+      const mat4 B = mat4(0.,8.,2.,10., 12.,4.,14.,6., 3.,11.,1.,9., 15.,7.,13.,5.);
+      void main() {
+        vec4 c = texture2D(tDiffuse, vUv);
+        ivec2 p = ivec2(mod(gl_FragCoord.xy, 4.0));
+        float d = (B[p.x][p.y] / 16.0 - 0.5) / levels;
+        gl_FragColor = vec4(floor((c.rgb + d) * levels + 0.5) / levels, c.a);
+      }`,
+});
+dither.uniforms.levels = levels;
+composer.addPass(dither);
+composer.renderToScreen = false;
+const textRT = new THREE.WebGLRenderTarget(1, 1, {
+  magFilter: THREE.NearestFilter,
+  minFilter: THREE.NearestFilter,
+  type: THREE.HalfFloatType,
+});
+const blitMap = { value: new THREE.Texture() };
+const blitLinear = { value: 0 };
+const blit = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.ShaderMaterial({
+    uniforms: { map: blitMap, linear: blitLinear },
+    vertexShader:
+      "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: `
+      uniform sampler2D map; uniform float linear; varying vec2 vUv;
+      void main() {
+        vec4 c = texture2D(map, vUv);
+        if (linear > 0.5 && c.a > 0.0) {
+          vec3 l = clamp(c.rgb / c.a, 0.0, 1.0);
+          c.rgb = mix(l * 12.92, 1.055 * pow(l, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)) * c.a;
+        }
+        gl_FragColor = clamp(c, 0.0, 1.0);
+      }`,
+    premultipliedAlpha: true,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  }),
+);
+blit.frustumCulled = false;
+const blitScene = new THREE.Scene().add(blit);
+const blitCam = new THREE.Camera();
+const depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
+const snapFor = (v: number): number => (v < 0.05 ? 0 : THREE.MathUtils.lerp(600, 100, v));
+const lowH = (v: number): number => Math.round(THREE.MathUtils.lerp(innerHeight, 180, v));
+const isText = (m: THREE.Material): boolean =>
+  "map" in m && m.map instanceof THREE.Texture && m.map.userData.text === true;
+const clearColor = new THREE.Color();
+function draw(): void {
+  const text: THREE.Mesh[] = [];
+  const seeThrough: THREE.Mesh[] = [];
+  scene.traverse((o) => {
+    if (o instanceof THREE.Light) o.layers.enable(TEXT_LAYER);
+    if (!(o instanceof THREE.Mesh) || !o.visible) return;
+    const mats: THREE.Material[] = Array.isArray(o.material) ? o.material : [o.material];
+    if (mats.some((m) => m.transparent)) seeThrough.push(o);
+    if (mats.some(isText)) {
+      o.layers.enable(TEXT_LAYER);
+      text.push(o);
+    } else o.layers.disable(TEXT_LAYER);
+  });
+  psSnap.value = snapFor(ps1);
+  for (const m of text) m.visible = false;
+  composer.render();
+  for (const m of text) m.visible = true;
+  blitMap.value = composer.readBuffer.texture;
+  blitLinear.value = 0;
+  blit.material.blending = THREE.NoBlending;
+  renderer.setRenderTarget(null);
+  renderer.render(blitScene, blitCam);
+  psSnap.value = snapFor(ps1Text);
+  const bg = scene.background;
+  const clearAlpha = renderer.getClearAlpha();
+  renderer.getClearColor(clearColor);
+  scene.background = null;
+  renderer.setRenderTarget(textRT);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+  renderer.autoClear = false;
+  scene.overrideMaterial = depthOnly;
+  for (const m of seeThrough) m.visible = false;
+  renderer.render(scene, camera);
+  for (const m of seeThrough) m.visible = true;
+  scene.overrideMaterial = null;
+  camera.layers.set(TEXT_LAYER);
+  renderer.render(scene, camera);
+  camera.layers.set(0);
+  scene.background = bg;
+  renderer.setClearColor(clearColor, clearAlpha);
+  renderer.setRenderTarget(null);
+  blitMap.value = textRT.texture;
+  blitLinear.value = 1;
+  blit.material.blending = THREE.NormalBlending;
+  renderer.render(blitScene, blitCam);
+  renderer.autoClear = true;
+}
 function size() {
-  const w = innerWidth,
-    h = innerHeight;
-  renderer.setSize(w, h, false);
+  const h = lowH(ps1),
+    w = Math.round((h * innerWidth) / innerHeight),
+    th = lowH(ps1Text);
+  renderer.setSize(innerWidth, innerHeight, false);
+  textRT.setSize(Math.round((th * innerWidth) / innerHeight), th);
+  for (const t of [composer.renderTarget1.texture, composer.renderTarget2.texture])
+    t.magFilter = THREE.NearestFilter;
+  levels.value = THREE.MathUtils.lerp(255, 15, ps1);
   composer.setSize(w, h);
   camera.aspect = innerWidth / innerHeight;
   const wide = 16 / 9;
@@ -116,6 +249,19 @@ function size() {
   camera.updateProjectionMatrix();
 }
 addEventListener("resize", size);
+for (const [id, get, set] of [
+  ["ps1", () => ps1, (v: number) => (ps1 = v)],
+  ["ps1Text", () => ps1Text, (v: number) => (ps1Text = v)],
+] as const) {
+  const el = $(`#${id}`);
+  if (!(el instanceof HTMLInputElement)) continue;
+  el.value = String(get());
+  el.addEventListener("input", () => {
+    set(Number(el.value));
+    localStorage.setItem(id, el.value);
+    size();
+  });
+}
 size();
 
 let seedT = 7;
@@ -252,15 +398,6 @@ const wallTex = tex(
   [4, 1],
 );
 const floorTex = tex(128, 128, (g, w, h) => planks(g, w, h, 16, COL.char, [COL.soot]), [3, 3]);
-const tvFrontTex = tex(256, 200, (g, w, h) => {
-  g.fillStyle = COL.char;
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = COL.grime;
-  g.fillRect(222, 8, 28, 80);
-  g.fillStyle = COL.soot;
-  for (let y = 11; y < 86; y += 4)
-    for (let x = 224 + ((y >> 2) % 2) * 2; x < 249; x += 4) g.fillRect(x, y, 2, 2);
-});
 const label = (
   text: string,
   bg: string,
@@ -379,9 +516,14 @@ const legM = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.45) });
 const brassM = lambert({
   color: new THREE.Color(COL.sulfur).lerp(new THREE.Color(COL.rustDeep), 0.45),
 });
-const leg = (top: THREE.Vector3, foot: THREE.Vector3, r: number): void => {
+const leg = (
+  top: THREE.Vector3,
+  foot: THREE.Vector3,
+  r: number,
+  parent: THREE.Object3D = scene,
+): void => {
   const tip = foot.clone().lerp(top, 0.08);
-  scene.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
+  parent.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
 };
 const rails = [-1, 1].map((sx) => {
   const ends = [1, -1].map((sz): [THREE.Vector3, THREE.Vector3] => [
@@ -396,6 +538,8 @@ const rails = [-1, 1].map((sx) => {
 });
 scene.add(strut(rails[0], rails[1], 0.009, 0.009, legM));
 const STOOL = { x: 0, z: -0.75, top: 0.45 };
+const stool = new THREE.Group();
+scene.add(stool);
 const cushion = cyl(
   0.18,
   0.17,
@@ -420,13 +564,14 @@ const cushion = cyl(
   16,
 );
 cushion.position.set(STOOL.x, STOOL.top - 0.03, STOOL.z);
-scene.add(cushion);
+stool.add(cushion);
 for (let i = 0; i < 4; i++) {
   const a = Math.PI / 4 + (i * Math.PI) / 2;
   leg(
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.11, STOOL.top - 0.06, STOOL.z + Math.sin(a) * 0.11),
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.21, 0, STOOL.z + Math.sin(a) * 0.21),
     0.013,
+    stool,
   );
 }
 
@@ -436,7 +581,7 @@ const paperCanvas = document.createElement("canvas");
 paperCanvas.width = PW;
 paperCanvas.height = PH;
 const pg = ctx2d(paperCanvas);
-const paperTex = new THREE.CanvasTexture(paperCanvas);
+const paperTex = textTex(new THREE.CanvasTexture(paperCanvas));
 paperTex.colorSpace = THREE.SRGBColorSpace;
 paperTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 const paper = new THREE.Mesh(
@@ -451,8 +596,8 @@ burnLight.position.set(STOOL.x, STOOL.top + 0.11, STOOL.z + 0.05);
 scene.add(burnLight);
 const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
-type Waiver = { step: Step; at: number; ink: number };
-const W8: Waiver = { step: "read", at: 0, ink: 0 };
+type Waiver = { step: Step; at: number; ink: number; qrUri: string };
+const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "" };
 const SCRIBBLE = Array.from({ length: 28 }, (_, i): [number, number] => [
   70 + i * 9,
   388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
@@ -540,7 +685,7 @@ const tvCanvas = document.createElement("canvas");
 tvCanvas.width = TW;
 tvCanvas.height = TH;
 const tvCtx = ctx2d(tvCanvas);
-const tvTex = new THREE.CanvasTexture(tvCanvas);
+const tvTex = textTex(new THREE.CanvasTexture(tvCanvas));
 tvTex.magFilter = THREE.LinearFilter;
 tvTex.minFilter = THREE.LinearMipmapLinearFilter;
 tvTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -570,7 +715,9 @@ const teak = rough(
     scratches(g, tr, [0, 0, w, h], 12, COL.rust, 0.4);
   }),
 );
-tv.add(box(1.02, 0.8, 0.72, [teak, teak, teak, teak, rough(tvFrontTex), teak]));
+const body = box(1.02, 0.8, 0.63, teak);
+body.position.z = -0.045;
+tv.add(body);
 const ivory = lambert({
   map: tex(
     128,
@@ -614,22 +761,22 @@ const rounded = (
   p.quadraticCurveTo(x, y, x + c, y);
 };
 const maskOutline = new THREE["Shape"]();
-rounded(maskOutline, -0.505, -0.395, 0.85, 0.79, 0.02);
+rounded(maskOutline, -0.505, -0.395, 1.01, 0.79, 0.02);
 const hole = new THREE.Path();
-rounded(hole, -0.435, -0.2775, 0.75, 0.555, 0.07);
+rounded(hole, -0.47, -0.315, 0.82, 0.63, 0.08);
 maskOutline.holes.push(hole);
 const mask = new THREE.Mesh(
   new THREE.ExtrudeGeometry(maskOutline, {
-    depth: 0.01,
+    depth: 0.092,
     bevelEnabled: true,
     bevelThickness: 0.008,
     bevelSize: 0.008,
     bevelSegments: 2,
     curveSegments: 6,
   }),
-  ivory,
+  [ivory, ivory],
 );
-const MASK = { x: -0.505, y: -0.395, w: 0.85, h: 0.79, px: 600 };
+const MASK = { x: -0.505, y: -0.395, w: 1.01, h: 0.79, px: 600 };
 const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), (g, w, h) => {
   const wr = seeded(13),
     at = (x: number, y: number): [number, number] => [
@@ -648,9 +795,9 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
   }
   g.globalAlpha = 1;
   for (let i = 0; i < 10; i++) blotch(g, wr, wr() * w, wr() * h, 30 + wr() * 70, COL.rust, 0.07);
-  const [hx, hy] = at(-0.435, 0.2775);
-  const hw = 0.75 * MASK.px,
-    hh = 0.555 * MASK.px;
+  const [hx, hy] = at(-0.47, 0.315);
+  const hw = 0.82 * MASK.px,
+    hh = 0.63 * MASK.px;
   for (const [lw, a, c] of [
     [22, 0.12, COL.grime],
     [12, 0.22, COL.grime],
@@ -660,7 +807,7 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
     g.strokeStyle = c;
     g.lineWidth = lw;
     g.beginPath();
-    rounded(g, hx, hy, hw, hh, 0.07 * MASK.px);
+    rounded(g, hx, hy, hw, hh, 0.08 * MASK.px);
     g.stroke();
   }
   g.globalAlpha = 1;
@@ -687,8 +834,22 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
       g.fillRect(fx + Math.sin(y * 0.05 + f) * 2, 190 + y, 4 - y / 90, 1);
   }
   g.globalAlpha = 1;
+  const [gx, gy] = at(0.37, 0.35);
+  const gw = 0.12 * MASK.px,
+    gh = 0.7 * MASK.px,
+    grilleH = 0.36 * MASK.px;
+  g.fillStyle = COL.soot;
+  g.beginPath();
+  rounded(g, gx, gy, gw, gh, 8);
+  g.fill();
+  g.fillStyle = COL.grime;
+  for (let y = gy + 8; y < gy + grilleH; y += 8)
+    for (let x = gx + 7 + ((y / 8) % 2) * 4; x < gx + gw - 6; x += 8) g.fillRect(x, y, 3, 3);
+  for (let x = gx + 6; x < gx + gw - 4; x += 6)
+    g.fillRect(x, gy + grilleH + 10, 2, gh - grilleH - 18);
   g.save();
-  g.translate(hx + 90, hy + hh + 40);
+  g.translate(hx + 90, hy + hh + 26);
+  g.scale(0.8, 0.8);
   g.rotate(-0.06);
   g.fillStyle = COL.bone;
   g.fillRect(-80, -15, 160, 30);
@@ -706,36 +867,80 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
 maskTex.wrapS = maskTex.wrapT = THREE.ClampToEdgeWrapping;
 maskTex.repeat.set(1 / MASK.w, 1 / MASK.h);
 maskTex.offset.set(-MASK.x / MASK.w, -MASK.y / MASK.h);
-mask.material = lambert({
-  map: maskTex,
-  bumpMap: maskTex,
-  bumpScale: 0.35,
-  color: new THREE.Color().setScalar(0.62),
-});
-mask.position.z = 0.368;
+mask.material = [
+  lambert({
+    map: maskTex,
+    bumpMap: maskTex,
+    bumpScale: 0.35,
+    color: new THREE.Color().setScalar(0.62),
+  }),
+  lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.28) }),
+];
+mask.position.z = 0.278;
 tv.add(mask);
+const loop = (x: number, y: number, w: number, h: number, c: number): THREE.Vector2[] => {
+  const sh = new THREE["Shape"]();
+  rounded(sh, x, y, w, h, c);
+  return sh.getSpacedPoints(64);
+};
+const mouth = loop(-0.47, -0.315, 0.82, 0.63, 0.08),
+  throat = loop(-0.43, -0.2725, 0.74, 0.545, 0.06);
+const funnelPos: number[] = [];
+for (let i = 0; i < mouth.length - 1; i++) {
+  const [a, b, c, d] = [mouth[i], mouth[i + 1], throat[i + 1], throat[i]];
+  if (!a || !b || !c || !d) continue;
+  funnelPos.push(
+    a.x,
+    a.y,
+    0.378,
+    b.x,
+    b.y,
+    0.378,
+    c.x,
+    c.y,
+    0.28,
+    a.x,
+    a.y,
+    0.378,
+    c.x,
+    c.y,
+    0.28,
+    d.x,
+    d.y,
+    0.28,
+  );
+}
+const funnelGeo = new THREE.BufferGeometry();
+funnelGeo.setAttribute("position", new THREE.Float32BufferAttribute(funnelPos, 3));
+funnelGeo.computeVertexNormals();
+tv.add(
+  new THREE.Mesh(
+    funnelGeo,
+    lambert({
+      color: new THREE.Color(COL.bone).multiplyScalar(0.45),
+      side: THREE.DoubleSide,
+    }),
+  ),
+);
 const badge = new THREE.Mesh(
   new THREE.PlaneGeometry(0.17, 0.026),
   lambert({ map: label("HORROR TUBE", COL.rustDeep, COL.bone, 340, 52, 30) }),
 );
-badge.position.set(-0.06, -0.337, 0.3875);
+badge.position.set(-0.06, -0.337, 0.3785);
 tv.add(badge);
 const knobM = lambert({ color: COL.soot });
+const knobMetal = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.7) });
 const knob = (x: number, y: number, rad: number, depth: number): void => {
-  const k = cyl(rad, rad * 1.08, depth, knobM, 14);
+  const k = cyl(rad, rad * 1.08, depth, knobMetal, 14);
   k.rotation.x = Math.PI / 2;
-  k.position.set(x, y, 0.36 + depth / 2);
-  const capM = cyl(rad * 0.45, rad * 0.45, 0.004, ivory, 10);
+  k.position.set(x, y, 0.378 + depth / 2);
+  const capM = cyl(rad * 0.45, rad * 0.45, 0.004, knobM, 10);
   capM.rotation.x = Math.PI / 2;
-  capM.position.set(x, y, 0.36 + depth + 0.002);
+  capM.position.set(x, y, 0.378 + depth + 0.002);
   tv.add(k, capM);
 };
-for (const y of [-0.02, -0.18]) knob(0.43, y, 0.021, 0.028);
-const stub = cyl(0.004, 0.004, 0.02, lambert({ color: COL.grime }), 6);
-stub.rotation.x = Math.PI / 2;
-stub.position.set(0.43, -0.1, 0.37);
-tv.add(stub);
-knob(0.43, -0.3, 0.042, 0.036);
+for (const y of [-0.05, -0.13, -0.21]) knob(0.43, y, 0.02, 0.026);
+knob(0.43, -0.3, 0.038, 0.036);
 const ears = new THREE.Group();
 ears.position.set(0.12, 0.4, -0.08);
 const earBase = cyl(0.045, 0.06, 0.035, knobM, 12);
@@ -758,15 +963,22 @@ for (const side of [-1, 1]) {
   }
 }
 tv.add(ears);
-const crt = new THREE.PlaneGeometry(0.78, 0.585, 12, 9);
-const cp = crt.getAttribute("position");
+const crt = new THREE.PlaneGeometry(0.78, 0.585, 32, 24);
+const cp = crt.getAttribute("position"),
+  cuv = crt.getAttribute("uv");
+const BULGE = 0.025,
+  BARREL = 0.06;
 for (let i = 0; i < cp.count; i++) {
   const x = cp.getX(i) / 0.39,
-    y = cp.getY(i) / 0.2925;
-  cp.setZ(i, 0.018 * (1 - x * x) * (1 - y * y));
+    y = cp.getY(i) / 0.2925,
+    u = cuv.getX(i) - 0.5,
+    v = cuv.getY(i) - 0.5;
+  cp.setZ(i, BULGE * (1 - x * x) * (1 - y * y));
+  cuv.setXY(i, 0.5 + u * (1 + BARREL * 4 * v * v), 0.5 + v * (1 + BARREL * 4 * u * u));
 }
+crt.computeVertexNormals();
 const screen = new THREE.Mesh(crt, basic({ map: tvTex, fog: false }));
-screen.position.set(-0.06, 0, 0.372);
+screen.position.set(-0.06, 0, 0.28);
 tv.add(screen);
 const glass = new THREE.Mesh(
   crt,
@@ -784,7 +996,7 @@ const glass = new THREE.Mesh(
     depthWrite: false,
   }),
 );
-glass.position.set(-0.06, 0, 0.374);
+glass.position.set(-0.06, 0, 0.282);
 tv.add(glass);
 const smudge = new THREE.Mesh(
   crt,
@@ -831,8 +1043,9 @@ const smudge = new THREE.Mesh(
     depthWrite: false,
   }),
 );
-smudge.position.set(-0.06, 0, 0.375);
+smudge.position.set(-0.06, 0, 0.283);
 tv.add(smudge);
+for (const m of [glass.material.map, smudge.material.map]) if (m) textTex(m);
 const tvGlow = new THREE.PointLight(COL.body, 1.2, 0, 2);
 tvGlow.position.set(0, TV_Y - 0.02, -0.8);
 scene.add(tvGlow);
@@ -877,7 +1090,6 @@ remote.add(faceLight);
 const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 4), basic({ color: COL.bloodDeep }));
 led.position.set(0, 0.165, 0.019);
 remote.add(led);
-const keys: THREE.Mesh[] = [];
 const keyById = new Map<string, THREE.Mesh>();
 const key = (
   id: string,
@@ -896,13 +1108,14 @@ const key = (
     side,
     side,
     side,
-    basic({ map: label(text, bg, fg, Math.round(w * 3000), Math.round(h * 3000), font * 3) }),
+    basic({
+      map: textTex(label(text, bg, fg, Math.round(w * 3000), Math.round(h * 3000), font * 3)),
+    }),
     side,
   ]);
   m.position.set(x, y, 0.022);
   m.userData.keyId = id;
   remote.add(m);
-  keys.push(m);
   keyById.set(id, m);
   return m;
 };
@@ -938,7 +1151,7 @@ const VW = 320,
 const tapeCanvas = document.createElement("canvas");
 tapeCanvas.width = VW;
 tapeCanvas.height = VH;
-const tapeTex = new THREE.CanvasTexture(tapeCanvas);
+const tapeTex = textTex(new THREE.CanvasTexture(tapeCanvas));
 tapeTex.colorSpace = THREE.SRGBColorSpace;
 tapeTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 const plastic = lambert({ map: metalTex(COL.soot) });
@@ -1130,7 +1343,7 @@ SHELF.rows.forEach((y, row) => {
     }
     const canvas = document.createElement("canvas");
     [canvas.width, canvas.height] = SPINE.px;
-    const t = new THREE.CanvasTexture(canvas);
+    const t = textTex(new THREE.CanvasTexture(canvas));
     pixel(t);
     const face = lit(t);
     const mesh = place(SPINE.w, SPINE.h, face);
@@ -1450,40 +1663,26 @@ function drawTV(): void {
     if (W8.step === "scan") {
       noise = 0.1;
       fill(COL.soot);
-      const cell = 12,
-        n = 25,
-        ox = (W - n * cell) / 2,
-        oy = 40;
-      seedT = 23;
-      g.fillStyle = COL.bone;
-      for (let y = 0; y < n; y++)
-        for (let x = 0; x < n; x++) {
-          const finder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(
-            ([fx = 0, fy = 0]) =>
-              x >= fx &&
-              x < fx + 7 &&
-              y >= fy &&
-              y < fy + 7 &&
-              (x === fx ||
-                x === fx + 6 ||
-                y === fy ||
-                y === fy + 6 ||
-                (x > fx + 1 && x < fx + 5 && y > fy + 1 && y < fy + 5)),
-          );
-          const inFinder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(([fx = 0, fy = 0]) => x >= fx && x < fx + 8 && y >= fy && y < fy + 8);
-          if (finder || (!inFinder && r() < 0.48))
-            g.fillRect(ox + x * cell, oy + y * cell, cell, cell);
-        }
-      text("SCAN WITH WORLD APP", 380, 30, COL.sulfur);
-      text("Orb only. We check it on our side.", 420, 24, COL.bone, "DotGothic16", 400);
+      if (W8.qrUri !== "") {
+        const { modules } = QRCode.create(W8.qrUri, { errorCorrectionLevel: "M" });
+        const pad = 36;
+        const cell = Math.floor(Math.min(W - pad * 2, 280) / modules.size);
+        const side = cell * modules.size;
+        const ox = Math.floor((W - side) / 2);
+        const oy = 28;
+        g.fillStyle = COL.bone;
+        g.fillRect(ox - 8, oy - 8, side + 16, side + 16);
+        g.fillStyle = COL.soot;
+        for (let row = 0; row < modules.size; row++)
+          for (let col = 0; col < modules.size; col++)
+            if (modules.get(row, col))
+              g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
+        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
+        text("Orb only. We check it on our side.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+      } else {
+        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
+        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+      }
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
@@ -1814,32 +2013,6 @@ function holdEnd(): void {
   pressKey("B", 0.022);
 }
 
-const ray = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-const hitAt = (e: MouseEvent): string | null => {
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  if (!remote.visible) return null;
-  const h = ray.intersectObjects(keys, false)[0];
-  const id: string | undefined = h?.object.userData.keyId;
-  return id ?? null;
-};
-const onShelf = (e: MouseEvent): THREE.Object3D | null => {
-  if (S.phase === "gate" || Z.at !== null) return null;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
-  if (tape.visible) targets.push(tape);
-  return ray.intersectObjects(targets, false)[0]?.object ?? null;
-};
-const slotOf = (o: THREE.Object3D | null): Slot | undefined => slots.find((s) => s.mesh === o);
-const onPaper = (e: MouseEvent): boolean => {
-  if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  return ray.intersectObject(paper, false).length > 0;
-};
-
 const store = <T>(fn: (s: Storage) => T): T | null => {
   try {
     return fn(localStorage);
@@ -1868,6 +2041,7 @@ function step(name: Step): void {
   STEP_SOUND.get(name)?.();
   hintText();
 }
+let scanAbort: AbortController | null = null;
 function sign(): void {
   if (W8.step !== "read") return;
   step("ink");
@@ -1876,11 +2050,35 @@ function sign(): void {
     W8.ink = Math.min(1, (performance.now() - t0) / 700);
     if (W8.ink < 1) return;
     clearInterval(inkTimer);
-    step("scan");
-    scanTimer = window.setTimeout(verified, 2800);
+    void beginWorldIdScan();
   }, 30);
 }
-let scanTimer = 0;
+async function beginWorldIdScan(): Promise<void> {
+  if (W8.step !== "ink" && W8.step !== "scan") return;
+  scanAbort?.abort();
+  scanAbort = new AbortController();
+  const { signal } = scanAbort;
+  W8.qrUri = "";
+  step("scan");
+  try {
+    const context = await fetchEnterRoomRequest();
+    if (signal.aborted) return;
+    const proof = await startEnterRoomProof(context);
+    if (signal.aborted) return;
+    W8.qrUri = proof.connectorURI;
+    const idkitResult = await proof.wait();
+    if (signal.aborted) return;
+    await verifyEnterRoomProof(idkitResult);
+    if (signal.aborted) return;
+    verified();
+  } catch (err) {
+    if (signal.aborted) return;
+    console.error(
+      `World ID enter-room failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    noOrb();
+  }
+}
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
@@ -1896,6 +2094,7 @@ function verified(): void {
 function enterRoom(): void {
   step("done");
   paper.visible = false;
+  stool.visible = false;
   $("#gate").hidden = true;
   void newSeason();
 }
@@ -1938,11 +2137,34 @@ const cable = new THREE.Mesh(
   lambert({ color: COL.soot }),
 );
 scene.add(cable);
-const coinPartAt = (e: MouseEvent): CoinBoxPart | null => {
-  if (coinBox === null || !coinBox.group.visible) return null;
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+type Pick =
+  | { at: "paper" }
+  | { at: "coin"; part: CoinBoxPart }
+  | { at: "shelf"; slot: Slot | undefined }
+  | { at: "key"; id: string };
+const shown = (o: THREE.Object3D | null): boolean => o === null || (o.visible && shown(o.parent));
+const within = (o: THREE.Object3D | null, root: THREE.Object3D): boolean =>
+  o !== null && (o === root || within(o.parent, root));
+const pickAt = (e: MouseEvent): Pick | null => {
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  return coinBox.partAt(ray);
+  const hit = ray
+    .intersectObject(scene, true)
+    .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
+  if (hit === undefined) return null;
+  const o = hit.object;
+  if (o === paper)
+    return S.phase === "gate" && W8.step === "read" && $("#gate").hidden ? { at: "paper" } : null;
+  if (coinBox !== null && within(o, coinBox.group))
+    return { at: "coin", part: coinBox.partAt(hit) };
+  const id: string | undefined = o.userData.keyId;
+  if (id !== undefined) return { at: "key", id };
+  if (S.phase === "gate" || Z.at !== null) return null;
+  if (o === tape) return { at: "shelf", slot: undefined };
+  const slot = slots.find((s) => s.mesh === o);
+  return slot === undefined ? null : { at: "shelf", slot };
 };
 const WALK: WalkStep[] = [
   {
@@ -2001,7 +2223,9 @@ $("#hint").addEventListener("click", (e) => {
 });
 function noOrb(): void {
   if (W8.step !== "read" && W8.step !== "scan") return;
-  clearTimeout(scanTimer);
+  scanAbort?.abort();
+  scanAbort = null;
+  W8.qrUri = "";
   step("off");
   setTimeout(() => step("burn"), LOW ? 0 : 500);
   setTimeout(() => step("dark"), LOW ? 0 : 3100);
@@ -2009,6 +2233,7 @@ function noOrb(): void {
 function retry(): void {
   cut(() => {
     W8.ink = 0;
+    W8.qrUri = "";
     burnLight.intensity = 0;
     paperDrawn = false;
     step("read");
@@ -2022,7 +2247,8 @@ $("#forget").addEventListener("click", () => {
 const look = new THREE.Vector2();
 let pointer: MouseEvent | null = null;
 function updateHover(): void {
-  const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
+  const pick = pointer ? pickAt(pointer) : null;
+  const hover = pick?.at === "shelf" ? (pick.slot?.id ?? -1) : -1;
   if (hover === T.hover) return;
   if (hover >= 0) sfx.slide();
   T.hover = hover;
@@ -2031,12 +2257,13 @@ function updateHover(): void {
 addEventListener("pointermove", (e) => {
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  const part = coinPartAt(e);
+  const pick = pickAt(e);
+  const part = pick?.at === "coin" ? pick.part : null;
   if (part !== Z.hover) {
     Z.hover = part;
     hintText();
   }
-  canvas.dataset.cursor = cursorAt(e, part);
+  canvas.dataset.cursor = cursorFor(pick);
 });
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -2048,33 +2275,31 @@ const PART_CURSOR = {
   lock: "grab",
   body: "press",
 } satisfies Record<CoinBoxPart, string>;
-function cursorAt(e: MouseEvent, part: CoinBoxPart | null): string {
+function cursorFor(pick: Pick | null): string {
   if (walk >= 0) return "press";
-  if (onPaper(e)) return "pen";
-  if (part !== null) return PART_CURSOR[part];
-  if (onShelf(e)) return "grab";
-  return hitAt(e) ? "press" : "";
+  if (pick === null) return "";
+  if (pick.at === "paper") return "pen";
+  if (pick.at === "coin") return PART_CURSOR[pick.part];
+  return pick.at === "shelf" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   if (walk >= 0) return walkTo(walk + 1);
-  if (onPaper(e)) return sign();
-  const part = coinPartAt(e);
-  if (Z.at !== null) return part === null ? stepBack() : useCoinPart(part);
-  if (part !== null) return zoom("meter");
-  const hit = onShelf(e);
-  if (hit) {
+  const pick = pickAt(e);
+  if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
+  if (pick === null) return;
+  if (pick.at === "paper") return sign();
+  if (pick.at === "coin") return zoom("meter");
+  if (pick.at === "shelf") {
     sfx.tape();
     T.buf = "";
     T.reveal = -1;
-    T.held = slotOf(hit)?.id ?? -1;
+    T.held = pick.slot?.id ?? -1;
     T.hover = -1;
     return hintText();
   }
-  const id = hitAt(e);
-  if (!id) return;
-  if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
-  else press(id);
+  if (pick.id === "A" || pick.id === "B") holdStart(pick.id === "B" ? 1 : 0);
+  else press(pick.id);
 });
 addEventListener("pointerup", holdEnd);
 addEventListener(
@@ -2137,6 +2362,7 @@ addEventListener("keyup", (e) => {
 });
 
 shade(scene);
+mask.castShadow = false;
 const clock = new THREE.Clock();
 let lastPaint = 0;
 let gaze = 0;
@@ -2233,7 +2459,7 @@ renderer.setAnimationLoop(() => {
     lastPaint = t;
     drawTV();
   }
-  composer.render();
+  draw();
 });
 
 const PHASE_SOUND = new Map<Phase, () => void>([

@@ -26,6 +26,17 @@
         image-rendering: pixelated;
         mask-image: radial-gradient(ellipse at 50% 45%, black 55%, var(--shade));
       }
+      .demo.ps1 {
+        align-items: center;
+        color: var(--bone, #d8c8a8);
+        font: inherit;
+        font-size: 11px;
+        gap: 8px;
+        top: auto;
+        bottom: 16px;
+        right: 16px;
+        left: auto;
+      }
       .hint {
         position: fixed;
         left: 24px;
@@ -144,6 +155,10 @@
       <button id="no-orb">DEMO · NO ORB ▸ X</button><button id="forget">DEMO · FORGET ME</button>
     </p>
     <p class="demo sound"><button id="mute">SOUND ON · M</button></p>
+    <p class="demo ps1">
+      <label>PS1 ROOM <input id="ps1" type="range" min="0" max="1" step="0.01" /></label>
+      <label>PS1 TEXT <input id="ps1Text" type="range" min="0" max="1" step="0.01" /></label>
+    </p>
     <div id="waiver-text" class="sr-only">
       <h2>Horror Tube waiver</h2>
       <p>
