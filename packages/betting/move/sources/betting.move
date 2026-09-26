@@ -1,8 +1,8 @@
 /// Parimutuel bet pools for Horror Tube battles, paid in one coin type per
 /// house. Battle state (fighters, winner) lives in the game database and ENS;
 /// a pool knows only its battle's database ID and two sides. The game server
-/// opens, closes and settles pools, and every bet must be sponsored by the
-/// house's gas sponsor, which only the game server's wallet API reaches.
+/// opens, closes and settles pools. Players bet through the game server's
+/// wallet API, which checks World ID; the package itself does not enforce that.
 module horror_tube::betting;
 
 use std::string::String;
@@ -41,8 +41,6 @@ const EInvalidSide: vector<u8> = b"Side must be 0 or 1.";
 #[error]
 const EBetBelowMinimum: vector<u8> = b"Bet is below the house minimum.";
 #[error]
-const EBetNotSponsored: vector<u8> = b"Bets must be sponsored by the house's gas sponsor.";
-#[error]
 const EPoolNotFinished: vector<u8> = b"The pool is not settled or cancelled yet.";
 #[error]
 const EWrongPool: vector<u8> = b"The ticket is for a different pool.";
@@ -60,7 +58,6 @@ public struct House<phantom T> has key {
     id: UID,
     fee_bps: u64,
     min_bet: u64,
-    bet_sponsor: address,
     operators: VecSet<ID>,
     treasury: Balance<T>,
 }
@@ -93,14 +90,12 @@ public struct HouseCreated has copy, drop {
     house_id: ID,
     fee_bps: u64,
     min_bet: u64,
-    bet_sponsor: address,
 }
 
 public struct HouseConfigChanged has copy, drop {
     house_id: ID,
     fee_bps: u64,
     min_bet: u64,
-    bet_sponsor: address,
 }
 
 public struct OperatorCapIssued has copy, drop { house_id: ID, cap_id: ID }
@@ -142,24 +137,17 @@ fun init(ctx: &mut TxContext) {
     transfer::public_transfer(AdminCap { id: object::new(ctx) }, ctx.sender());
 }
 
-public fun create_house<T>(
-    _: &AdminCap,
-    fee_bps: u64,
-    min_bet: u64,
-    bet_sponsor: address,
-    ctx: &mut TxContext,
-) {
+public fun create_house<T>(_: &AdminCap, fee_bps: u64, min_bet: u64, ctx: &mut TxContext) {
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
     assert!(min_bet > 0, EZeroMinBet);
     let house = House<T> {
         id: object::new(ctx),
         fee_bps,
         min_bet,
-        bet_sponsor,
         operators: vec_set::empty(),
         treasury: balance::zero(),
     };
-    event::emit(HouseCreated { house_id: object::id(&house), fee_bps, min_bet, bet_sponsor });
+    event::emit(HouseCreated { house_id: object::id(&house), fee_bps, min_bet });
     transfer::share_object(house);
 }
 
@@ -189,11 +177,6 @@ public fun set_fee_bps<T>(house: &mut House<T>, _: &AdminCap, fee_bps: u64) {
 public fun set_min_bet<T>(house: &mut House<T>, _: &AdminCap, min_bet: u64) {
     assert!(min_bet > 0, EZeroMinBet);
     house.min_bet = min_bet;
-    house.emit_config();
-}
-
-public fun set_bet_sponsor<T>(house: &mut House<T>, _: &AdminCap, bet_sponsor: address) {
-    house.bet_sponsor = bet_sponsor;
     house.emit_config();
 }
 
@@ -246,7 +229,6 @@ public fun place_bet<T>(
     ctx: &mut TxContext,
 ): Ticket<T> {
     house.assert_owns(pool);
-    assert!(ctx.sponsor() == option::some(house.bet_sponsor), EBetNotSponsored);
     assert!(pool.status == OPEN, EPoolNotOpen);
     assert!(clock.timestamp_ms() < pool.closes_at_ms, EBettingClosed);
     assert!(side < 2, EInvalidSide);
@@ -393,7 +375,6 @@ fun emit_config<T>(house: &House<T>) {
         house_id: object::id(house),
         fee_bps: house.fee_bps,
         min_bet: house.min_bet,
-        bet_sponsor: house.bet_sponsor,
     });
 }
 

@@ -161,20 +161,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "WORLD_ID_PRACTICE_ACTIONS"
-        value = var.world_id_practice_actions
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
-        key   = "WORLD_ID_JUDGE_ACTION"
-        value = var.world_id_judge_action
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "SUI_USDC_TYPE"
         value = var.sui_usdc_type
         scope = "RUN_TIME"
@@ -254,6 +240,13 @@ resource "digitalocean_app" "game" {
       env {
         key   = "SKIP_BATTLE_SETTLEMENT"
         value = var.skip_battle_settlement
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "BATTLE_BETTING_ADDRESS"
+        value = var.battle_betting_address
         scope = "RUN_TIME"
         type  = "GENERAL"
       }

@@ -1,18 +1,12 @@
 import { IDKit, proofOfHuman, type IDKitRequestConfig } from "@worldcoin/idkit-core";
 
-export type GateSlot = 1 | 2 | 3 | 4 | 5 | "judge";
-
 export type EnterRoomIdkitContext = IDKitRequestConfig & {
   action: string;
   allow_legacy_proofs: false;
 };
 
-export async function fetchEnterRoomRequest(slot: GateSlot): Promise<EnterRoomIdkitContext> {
-  const res = await fetch("/world-id/request", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ slot }),
-  });
+export async function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
+  const res = await fetch("/world-id/request", { method: "POST" });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`POST /world-id/request failed: HTTP ${String(res.status)} body=${text}`);
@@ -31,8 +25,7 @@ export async function fetchEnterRoomRequest(slot: GateSlot): Promise<EnterRoomId
     typeof body !== "object" ||
     body === null ||
     body.allow_legacy_proofs !== false ||
-    typeof body.action !== "string" ||
-    body.action.trim() === "" ||
+    body.action !== "enter-room" ||
     typeof body.app_id !== "string" ||
     typeof body.rp_context?.signature !== "string"
   ) {
