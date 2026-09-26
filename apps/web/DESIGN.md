@@ -115,6 +115,9 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
+- **Opening the wallet:** once the proof verifies, the QR goes away and the TV says VERIFIED · OPENING YOUR WALLET
+  while the game wallet session and the coin box open. If that fails, the TV and hint say which step failed and the
+  server's reason; the player stays out.
 - **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the room.
 - **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
   says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.

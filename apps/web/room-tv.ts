@@ -686,6 +686,11 @@ export function drawTV(): void {
         text("STARTING WORLD ID…", 210, 36, COL.sulfur);
         text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
       }
+    } else if (W8.step === "wallet") {
+      noise = 0.1;
+      fill(COL.soot);
+      text("VERIFIED", 210, 48, COL.blood);
+      text(`OPENING YOUR WALLET${".".repeat(1 + (((now / 400) | 0) % 3))}`, 270, 26, COL.bone);
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
@@ -715,9 +720,11 @@ export function drawTV(): void {
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
-      text("SCAN FAILED", 190, 48, COL.blood);
-      text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
-      text("YOU ARE NOT IN.", 340, 24, COL.rust);
+      text("YOU ARE NOT IN", 110, 48, COL.blood);
+      g.font = "400 22px DotGothic16";
+      g.fillStyle = COL.bone;
+      const end = wrap(g, W8.fail, W / 2, 170, W - 64, 28);
+      text("ENTER TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.rust);
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
