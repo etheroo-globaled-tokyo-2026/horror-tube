@@ -9,6 +9,7 @@ import {
   fetchBettingIds,
   placeBet,
   toContractIds,
+  winningsDue,
   type BettingIds,
 } from "./betting.ts";
 import {
@@ -165,7 +166,13 @@ export const S: GameState = {
 
 let gameWallet: GameWallet | null = null;
 let bettingIds: BettingIds | null = null;
-let pendingClaimTickets: Ticket[] = [];
+let owedTickets: Ticket[] = [];
+let moneyQueue: Promise<void> = Promise.resolve();
+const queueMoney = (task: () => Promise<void>): void => {
+  moneyQueue = moneyQueue
+    .then(task)
+    .catch((error: Error) => note(`BETTING ERROR. ${error.message}`, "bad"));
+};
 
 export function setWallet(wallet: GameWallet): void {
   gameWallet = wallet;
@@ -174,18 +181,18 @@ export function setWallet(wallet: GameWallet): void {
 export function setBettingIds(ids: BettingIds): void {
   bettingIds = ids;
   S.feeBps = ids.feeBps;
+  queueMoney(checkWinnings);
 }
 
-export async function refreshClaimable(): Promise<void> {
+async function checkWinnings(): Promise<void> {
   if (gameWallet === null || bettingIds === null) return;
-  const ids = toContractIds(bettingIds);
-  const result = await claimable(gameWallet, ids);
-  pendingClaimTickets = result.tickets;
-  S.claim = fromUsdcUnits(result.units);
-  if (result.units === 0n && result.lost > 0n) {
-    S.result = -fromUsdcUnits(result.lost);
-  } else if (result.units > 0n) {
-    S.result = fromUsdcUnits(result.units);
+  try {
+    const found = await claimable(gameWallet, toContractIds(bettingIds), S.poolId);
+    owedTickets = found.tickets;
+    S.claim = fromUsdcUnits(found.units);
+    S.result = found.units === 0n && found.lost > 0n ? -fromUsdcUnits(found.lost) : 0;
+  } catch (error) {
+    note(`WINNINGS CHECK FAILED. ${error instanceof Error ? error.message : String(error)}`, "bad");
   }
   render();
 }
@@ -270,6 +277,7 @@ export function applyRoundState(state: ServerRoundState): void {
     local.kills = remote.kills;
     local.damage = remote.damage;
   }
+  if (winningsDue(prevPhase, state.phase)) queueMoney(checkWinnings);
   if (state.error) {
     note(state.error, "bad");
   }
@@ -289,12 +297,6 @@ export function applyRoundState(state: ServerRoundState): void {
       S.last = { fighters: f, winner: state.winner, round: state.round };
       S.focus = w.id;
     }
-    void refreshClaimable().catch((cause: unknown) => {
-      note(
-        `CLAIM LOOKUP FAILED. ${cause instanceof Error ? cause.message : String(cause)}`,
-        "bad",
-      );
-    });
   }
   const votingWindowOpened =
     (state.phase === "vote" || state.phase === "countdown") &&
@@ -304,6 +306,8 @@ export function applyRoundState(state: ServerRoundState): void {
     S.picks = [];
     S.cast = null;
     S.bet = null;
+    S.result = 0;
+    S.claim = 0;
   }
   render();
 }
@@ -641,7 +645,7 @@ document.addEventListener("click", (e) => {
         note("CLAIM REJECTED. Wallet or betting IDs are not ready.", "bad");
         return;
       }
-      if (pendingClaimTickets.length === 0) {
+      if (owedTickets.length === 0) {
         note("CLAIM REJECTED. No finished tickets to claim.", "bad");
         return;
       }
@@ -649,11 +653,11 @@ document.addEventListener("click", (e) => {
         const digest = await claimAll(
           gameWallet,
           toContractIds(bettingIds),
-          pendingClaimTickets,
+          owedTickets,
         );
         log(`CLAIMED +${usd(S.claim)} USDC · ${digest.slice(0, 8)}`, "t-alive");
         S.claim = 0;
-        pendingClaimTickets = [];
+        owedTickets = [];
         render();
       } catch (error) {
         note(
