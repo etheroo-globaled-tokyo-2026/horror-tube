@@ -5,4 +5,3 @@
 region             = "sgp1"
 spaces_bucket_name = "horror-tube-icons-REPLACE_ME"
 db_size            = "db-s-1vcpu-2gb"
-db_firewall_cidr   = "x.x.x.x/32"
