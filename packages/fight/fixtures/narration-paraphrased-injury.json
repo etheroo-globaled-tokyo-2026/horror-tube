@@ -1,0 +1,74 @@
+{
+  "fighterA": {
+    "subname": "jason",
+    "look": "Jason Voorhees is a large, muscular man recognized by wearing a hockey mask to cover his face, and the use of a machete as his weapon of choice.",
+    "brief": "Master Hand-to-Hand Combatant: Jason Is an incredibly formidable and fierce opponent as he uses his greater strength and durability to his advantage in fights as shown when he punched a young man's head off with a single punch.",
+    "injuries": [],
+    "status": "alive"
+  },
+  "fighterB": {
+    "subname": "pinhead",
+    "look": "Pinhead's unique physical description has made him a notable figure in the horror genre.",
+    "brief": "Immortality: Pinhead is shown to be biologically immortal, he is ageless and his body never decays.",
+    "injuries": [],
+    "status": "alive"
+  },
+  "rejected": {
+    "shots": [
+      {
+        "time_range": "0-3s",
+        "characters": "Jason Voorhees: a large, muscular man in a hockey mask, gripping a machete. Pinhead: a pale, hairless Cenobite with a grid of pins driven into his skull, in a long black leather robe.",
+        "action": "Jason and Pinhead stand on opposite sides of the arena. Jason stalks forward, machete raised; Pinhead waits, hands folded.",
+        "camera": "Slow push-in from a wide shot across the arena floor.",
+        "style": "Gritty practical horror, cold blue light, drifting smoke, no readable text, no extra people."
+      },
+      {
+        "time_range": "3-6s",
+        "characters": "Jason in his hockey mask with the machete. Pinhead in his black leather robe, pins glinting.",
+        "action": "Jason's machete slashes down and rips open the shoulder of Pinhead's robe, exposing pale skin. Pinhead does not flinch. Hooked chains burst from the darkness and sink into Jason's chest and arms.",
+        "camera": "Handheld close-up on the blade, then a whip pan to the chains.",
+        "style": "Wet blood, sparks from the chains, no readable text, no extra people."
+      },
+      {
+        "time_range": "6-10s",
+        "characters": "Jason pinned by hooked chains. Pinhead with the shoulder of his robe torn open, pins in his skull.",
+        "action": "The chains pull taut in every direction and tear Jason apart. Jason dies on camera and falls to the arena floor. Pinhead stands alone.",
+        "camera": "Low-angle orbit ending on Pinhead.",
+        "style": "Deep shadows, blue-black palette, no readable text, no extra people."
+      }
+    ],
+    "loser_subname": "jason",
+    "winner_subname": "pinhead",
+    "winner_injuries": ["torn shoulder of his robe"],
+    "rationale": "Pinhead's chains outreach Jason's machete, and Jason's strength cannot stop a Cenobite who feels no pain."
+  },
+  "corrected": {
+    "shots": [
+      {
+        "time_range": "0-3s",
+        "characters": "Jason Voorhees: a large, muscular man in a hockey mask, gripping a machete. Pinhead: a pale, hairless Cenobite with a grid of pins driven into his skull, in a long black leather robe.",
+        "action": "Jason and Pinhead stand on opposite sides of the arena. Jason stalks forward, machete raised; Pinhead waits, hands folded.",
+        "camera": "Slow push-in from a wide shot across the arena floor.",
+        "style": "Gritty practical horror, cold blue light, drifting smoke, no readable text, no extra people."
+      },
+      {
+        "time_range": "3-6s",
+        "characters": "Jason in his hockey mask with the machete. Pinhead in his black leather robe, pins glinting.",
+        "action": "Jason's machete slashes down and rips open the shoulder of Pinhead's robe, exposing pale skin. Pinhead does not flinch. Hooked chains burst from the darkness and sink into Jason's chest and arms.",
+        "camera": "Handheld close-up on the blade, then a whip pan to the chains.",
+        "style": "Wet blood, sparks from the chains, no readable text, no extra people."
+      },
+      {
+        "time_range": "6-10s",
+        "characters": "Jason pinned by hooked chains. Pinhead with a torn shoulder of his robe, pins in his skull.",
+        "action": "The chains pull taut in every direction and tear Jason apart. Jason dies on camera and falls to the arena floor. Pinhead stands alone.",
+        "camera": "Low-angle orbit ending on Pinhead.",
+        "style": "Deep shadows, blue-black palette, no readable text, no extra people."
+      }
+    ],
+    "loser_subname": "jason",
+    "winner_subname": "pinhead",
+    "winner_injuries": ["torn shoulder of his robe"],
+    "rationale": "Pinhead's chains outreach Jason's machete, and Jason's strength cannot stop a Cenobite who feels no pain."
+  }
+}

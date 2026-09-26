@@ -704,9 +704,7 @@ document.addEventListener("click", (e) => {
   } else if (act === "view") {
     S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
-  } else if (act === "book") void startBout(Number(el.dataset.id));
-  else if (act === "next-fighter") void chooseNextFighter(Number(el.dataset.id));
-  else if (act === "ring") pick(Number(el.dataset.id));
+  } else if (act === "ring") pick(Number(el.dataset.id));
   else if (act === "side") {
     S.side = Number(el.dataset.i);
     render();

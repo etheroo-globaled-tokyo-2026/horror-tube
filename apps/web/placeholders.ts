@@ -1,12 +1,10 @@
 import { $, S, submitBet } from "./game.ts";
-import { placeholderView, type BetView, type PickView } from "./placeholder-view.ts";
+import { placeholderView, type BetView } from "./placeholder-view.ts";
 import { STAKES } from "./room-state.ts";
 
 const betRoot = $('[data-placeholder="bet"]');
-const pickRoot = $('[data-placeholder="pick"]');
-const failure = { bet: "", pick: "" };
+const failure = { bet: "" };
 let betKey = "";
-let pickKey = "";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -42,21 +40,6 @@ function frame(root: HTMLElement, title: string, parts: string[]): void {
 function showFailure(root: HTMLElement, text: string): void {
   part(root, "error").textContent = text;
   part(root, "dismiss").hidden = text === "";
-}
-
-function buildPick(view: PickView): void {
-  frame(pickRoot, view.title, ["choices"]);
-  const choices = part(pickRoot, "choices");
-  for (const choice of view.choices) {
-    const button = el("button", choice.name);
-    button.dataset.act = view.act;
-    button.dataset.id = String(choice.id);
-    choices.append(button, el("br"));
-  }
-  part(pickRoot, "dismiss").addEventListener("click", () => {
-    failure.pick = "";
-    renderPlaceholders();
-  });
 }
 
 function buildBet(view: BetView): void {
@@ -100,20 +83,7 @@ function buildBet(view: BetView): void {
 
 export function renderPlaceholders(): void {
   const view = placeholderView(S);
-  const pick = view?.screen === "pick" ? view : null;
   const bet = view?.screen === "bet" ? view : null;
-
-  if (pick !== null) {
-    const key = `${S.phase}:${pick.choices.map((c) => String(c.id)).join(",")}`;
-    if (key !== pickKey) {
-      buildPick(pick);
-      pickKey = key;
-    }
-  } else {
-    pickKey = "";
-  }
-  if (pickKey !== "") showFailure(pickRoot, failure.pick);
-  pickRoot.hidden = pick === null && failure.pick === "";
 
   if (bet !== null) {
     const key = `${String(S.round)}:${String(S.battleId)}`;
