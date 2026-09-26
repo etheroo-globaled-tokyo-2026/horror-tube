@@ -144,11 +144,11 @@ mysten-dapp-kit-connect-modal {
   -webkit-font-smoothing: none;
 }
 
-/* Placeholder bet screen; the final UI deletes [data-placeholder]. */
+/* Placeholder bet screen; the final UI deletes [data-placeholder]. Sits above the PS1 sliders in the same corner. */
 .placeholder {
   position: fixed;
-  bottom: 12px;
-  left: 12px;
+  right: 12px;
+  bottom: 44px;
   z-index: 5;
   max-width: 340px;
   max-height: 70vh;
@@ -158,10 +158,6 @@ mysten-dapp-kit-connect-modal {
   background: rgb(0 0 0 / 0.85);
   color: var(--bone);
   font: 13px/1.4 monospace;
-}
-.placeholder[data-placeholder="bet"] {
-  right: 12px;
-  left: auto;
 }
 .placeholder .err {
   color: var(--blood);

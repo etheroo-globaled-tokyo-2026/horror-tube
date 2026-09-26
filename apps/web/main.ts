@@ -63,6 +63,8 @@ function hintText(): void {
   const hovered = S.chars[T.hover];
   const credit = `${usd(coinBox.credit())} USDC`;
   const waiting = coinBox.waiting();
+  const collect =
+    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · COLLECT ${b("OK")}` : "";
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.at === "sticker"
@@ -112,11 +114,11 @@ function hintText(): void {
                     ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" || S.phase === "countdown"
-        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
+        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
         : S.phase === "waiting" || S.phase === "over"
-          ? "BOOK THE FIRST FIGHTER"
+          ? `BOOK THE FIRST FIGHTER${collect}`
           : S.phase === "pick"
-            ? "PICK THE NEXT FIGHTER"
+            ? `PICK THE NEXT FIGHTER${collect}`
             : S.phase === "bet" && !S.bet && S.poolId === null
               ? "OPENING THE BOOK"
               : S.pending === "bet"
