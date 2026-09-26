@@ -41,7 +41,7 @@ export const narrationSchema = {
           characters: {
             type: "string",
             description:
-              "Visible looks for the fighters in this shot. Copy look text; restate carried injuries.",
+              "Visible looks for the fighters in this shot. Copy look text; restate each carried injury word for word.",
           },
           action: {
             type: "string",
@@ -72,7 +72,7 @@ export const narrationSchema = {
       type: "array",
       items: { type: "string" },
       description:
-        "Full injury list the video shows: carried injuries plus new damage. Each phrase must appear in the shot list. Use [] only when the winner card was unhurt and no new damage appears.",
+        "Full injury list the video shows: every injury on the winner's card plus new damage. Copy each phrase word for word from the shot text. Use [] only when the winner card was unhurt and no new damage appears.",
     },
     rationale: {
       type: "string",
@@ -83,6 +83,8 @@ export const narrationSchema = {
 } as const;
 
 export type NarrationJsonSchema = typeof narrationSchema;
+
+export const NARRATION_MAX_ATTEMPTS = 3;
 
 export type NarrationProviderClient = {
   complete: (args: {
@@ -132,27 +134,42 @@ export async function narrateFight(
   input: FightInput,
   config: NarrationConfig,
   client: NarrationProviderClient = providerClient(config),
+  log: (line: string) => void = (line) => console.warn(line),
 ): Promise<NarrationResult> {
   validateFightInput(input);
+  const fight = `${input.fighterA.subname} vs ${input.fighterB.subname}`;
   const system = buildSystemPrompt(config.fightVideoSeconds);
   const user = buildUserPrompt(input);
-  let modelTurn: NarrationModelTurn;
-  try {
-    modelTurn = await client.complete({
-      system,
-      user,
-      schema: narrationSchema,
-    });
-  } catch (err) {
-    if (err instanceof FightError) throw err;
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new FightError(
-      `narration provider ${config.provider} failed: ${detail}`,
-      { cause: err },
-    );
+  const rejected: string[] = [];
+  let prompt = user;
+  for (let attempt = 1; attempt <= NARRATION_MAX_ATTEMPTS; attempt += 1) {
+    let turn: NarrationModelTurn;
+    try {
+      turn = await client.complete({ system, user: prompt, schema: narrationSchema });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new FightError(
+        `narration for ${fight}: ${config.provider} ${config.model} request failed: ${detail}`,
+        { cause: err },
+      );
+    }
+    try {
+      return checkedNarration(turn, input);
+    } catch (err) {
+      if (!(err instanceof FightError)) throw err;
+      const line = `attempt ${String(attempt)}/${String(NARRATION_MAX_ATTEMPTS)} rejected: ${err.message}`;
+      rejected.push(line);
+      log(`narration ${fight} ${config.provider} ${config.model} ${line} answer=${JSON.stringify(turn)}`);
+      prompt = retryPrompt(user, turn, err.message);
+    }
   }
-  validateNarrationTurn(modelTurn, input);
-  const turn: NarrationModelTurn = modelTurn;
+  throw new FightError(
+    `narration for ${fight} failed after ${String(NARRATION_MAX_ATTEMPTS)} attempt(s) with ${config.provider} ${config.model}: ${rejected.join(" | ")}`,
+  );
+}
+
+function checkedNarration(turn: NarrationModelTurn, input: FightInput): NarrationResult {
+  validateNarrationTurn(turn, input);
   const ensLines = renderEnsLines(turn);
   assertEnsLinesLegal(ensLines);
   assertTurnContractText(`${ensLines[0]}\n${ensLines[1]}`, turn);
@@ -162,6 +179,17 @@ export async function narrateFight(
     rationale: turn.rationale,
     videoPrompt: videoPromptFromTurn(turn),
   };
+}
+
+function retryPrompt(user: string, turn: NarrationModelTurn, reason: string): string {
+  return [
+    user,
+    "",
+    `Your previous answer was rejected: ${reason}`,
+    "Previous answer:",
+    JSON.stringify(turn, null, 2),
+    "Answer again with the full corrected JSON. Copy every winner_injuries item word for word from the shot text.",
+  ].join("\n");
 }
 
 export function providerClient(config: NarrationConfig): NarrationProviderClient {
@@ -184,13 +212,13 @@ function anthropicClient(config: NarrationConfig): NarrationProviderClient {
           format: jsonSchemaOutputFormat(schema),
         },
       });
-      const parsed = message.parsed_output;
-      if (parsed === null || parsed === undefined) {
+      const turn = narrationModelTurnSchema.safeParse(message.parsed_output);
+      if (!turn.success) {
         throw new FightError(
-          "Anthropic returned no parsed_output for the narration schema.",
+          `Anthropic narration output does not match the narration schema: ${z.prettifyError(turn.error)}`,
         );
       }
-      return parsed;
+      return turn.data;
     },
   };
 }
@@ -241,7 +269,8 @@ function buildSystemPrompt(fightVideoSeconds: number): string {
     `The fight happens in this fixed arena: ${ARENA_VIDEO_PROMPT_PREFIX}`,
     "Every shot description must stay in that arena. Do not invent a different location (no boiler room, street, house, forest, or other setting).",
     "The two fighters start on opposite sides of the arena.",
-    "The winner may take visible damage. Winner injuries must be a JSON array of phrases that also appear in the shot list (carried injuries plus any new damage).",
+    "The winner may take visible damage. winner_injuries lists every injury the winner ends with: each injury on the winner's card, copied exactly, plus any new damage.",
+    "Each winner_injuries item must appear word for word in the shot text: write the injury phrase into a shot, then copy that same phrase into winner_injuries. Do not reword, reorder, or summarize it.",
     "Each shot needs: character looks, a timed beat (time_range), action, camera move, and style.",
     "No readable on-screen text. No extra people.",
     "Do not name a next opponent. The application pairs the next bout separately.",

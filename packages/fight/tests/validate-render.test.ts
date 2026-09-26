@@ -75,6 +75,28 @@ describe("validateNarrationTurn", () => {
       /injury|shot list/i,
     );
   });
+
+  it("finds an injury phrase in the shot list regardless of case and punctuation", () => {
+    assert.doesNotThrow(() =>
+      validateNarrationTurn(
+        validModelTurn({
+          winner_injuries: ["Cracked mask", "deep gouge across Jason’s shoulder"],
+        }),
+        sampleFightInput(),
+      ),
+    );
+  });
+
+  it("rejects an injury list that drops an injury the winner already carries", () => {
+    assert.throws(
+      () =>
+        validateNarrationTurn(
+          validModelTurn({ winner_injuries: ["gouge across the shoulder"] }),
+          sampleFightInput(),
+        ),
+      /jason's carried injury is missing from winner_injuries: "cracked mask"/u,
+    );
+  });
 });
 
 describe("renderEnsLines", () => {
