@@ -18,6 +18,7 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
+import { tornDraws, type Rect } from "./tv-tear.ts";
 
 export const TW = 640,
   TH = 480;
@@ -439,12 +440,7 @@ export function syncVideo(): void {
     void video.play();
   });
 }
-export function crop(
-  sw0: number,
-  sh0: number,
-  dw: number,
-  dh: number,
-): [number, number, number, number] {
+export function crop(sw0: number, sh0: number, dw: number, dh: number): Rect {
   let sw = sw0,
     sh = sw0 / (dw / dh);
   if (sh > sh0) {
@@ -453,42 +449,15 @@ export function crop(
   }
   return [(sw0 - sw) / 2, (sh0 - sh) / 2, sw, sh];
 }
-function tearDraw(
-  src: HTMLCanvasElement,
-  [sx, sy, sw, sh]: [number, number, number, number],
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number,
-): void {
+function tearDraw(src: HTMLCanvasElement, from: Rect, to: Rect): void {
   const g = tvCtx,
-    k = dh / sh;
+    draws: [Rect, Rect][] =
+      Math.random() < 0.05 ? tornDraws(from, to, Math.random()) : [[from, to]];
   g.imageSmoothingEnabled = false;
-  if (Math.random() < 0.05) {
-    const y = (Math.random() * (sh - 10)) | 0;
-    g.drawImage(src, sx, sy, sw, y, dx, dy, dw, y * k);
-    g.drawImage(src, sx, sy + y, sw, 10, dx + 24, dy + y * k, dw, 10 * k);
-    g.drawImage(
-      src,
-      sx,
-      sy + y + 10,
-      sw,
-      sh - y - 10,
-      dx,
-      dy + (y + 10) * k,
-      dw,
-      (sh - y - 10) * k,
-    );
-  } else g.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+  for (const [[sx, sy, sw, sh], [dx, dy, dw, dh]] of draws)
+    g.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
 }
-function fit(
-  sw: number,
-  sh: number,
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number,
-): [number, number, number, number] {
+function fit(sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): Rect {
   const k = Math.min(dw / sw, dh / sh),
     w = Math.round(sw * k),
     h = Math.round(sh * k);
@@ -498,7 +467,7 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
   if (S.videoStyle === "rotoscope") {
     dg.imageSmoothingEnabled = false;
     dg.drawImage(video, 0, 0, DRAWN_W, DRAWN_H);
-    tearDraw(drawn, [0, 0, DRAWN_W, DRAWN_H], ...fit(DRAWN_W, DRAWN_H, dx, dy, dw, dh));
+    tearDraw(drawn, [0, 0, DRAWN_W, DRAWN_H], fit(DRAWN_W, DRAWN_H, dx, dy, dw, dh));
     return;
   }
   const w = 160,
@@ -526,7 +495,7 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     }
   }
   sg.putImageData(img, 0, 0);
-  tearDraw(small, [0, 0, w, h], dx, dy, dw, dh);
+  tearDraw(small, [0, 0, w, h], [dx, dy, dw, dh]);
 }
 export function drawGuide(now: number): void {
   const g = tvCtx,
