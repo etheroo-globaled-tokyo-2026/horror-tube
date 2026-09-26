@@ -3,15 +3,15 @@
 Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
 and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
 
-| Command        | Chain?  | Role                                                                 |
-| -------------- | ------- | -------------------------------------------------------------------- |
-| `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
-| `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
-| `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
-| `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
-| `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
-| `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
-| `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
+| Command       | Chain?  | Role                                                                      |
+| ------------- | ------- | ------------------------------------------------------------------------- |
+| `propose`     | no      | Build roster JSON from Fandom `api.php`                                   |
+| `import`      | no      | Validate JSON and write an import **plan** (`chain_writes: false`)        |
+| `plan-remove` | no      | Validate labels and write a removal **plan** (`chain_writes: false`)      |
+| `register`    | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`          |
+| `remove`      | **yes** | `UserRegistry.unregister` for each label                                  |
+| `icons`       | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet  |
+| `icons-chain` | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
 `icons-chain` always hit chain (after validating input). Do not confuse them.
@@ -36,14 +36,14 @@ Checked in under `packages/roster/roster/schemas/`:
 
 ### Required fields (every key must be present)
 
-| Key        | Rules                                                                         |
-| ---------- | ----------------------------------------------------------------------------- |
-| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                           |
-| `look`     | Non-empty string                                                              |
-| `brief`    | Non-empty string                                                              |
-| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default) |
+| Key        | Rules                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                                                                              |
+| `look`     | Non-empty string                                                                                                                 |
+| `brief`    | Non-empty string                                                                                                                 |
+| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default)                                                    |
 | `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
-| `icon`     | `""` or an `https://` URL. Missing key is an error                            |
+| `icon`     | `""` or an `https://` URL. Missing key is an error                                                                               |
 
 **Forbidden keys:** `strength`, `intelligence`, `luck`, `role`.
 
@@ -180,6 +180,8 @@ python3 -m roster remove --input labels.json
 for each. Use `plan-remove` if you only want the JSON plan.
 
 ## Character sheet dashboard
+
+The chain reader is `packages/ens/scripts/roster.ts`. It has no Node imports, so the dashboard, `character-subnames list`, and the web game (`apps/web/game.ts`) all use it.
 
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
 and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
