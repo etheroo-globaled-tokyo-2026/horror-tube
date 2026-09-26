@@ -39,5 +39,5 @@ battle_betting_address = "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
 # Comma-separated ENS labels (at least two). Same order does not matter; the server sorts them.
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 
-# WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: production).
+# WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: staging).
 # Do not put WORLD_ID_* secrets in this file.
