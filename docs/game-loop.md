@@ -139,7 +139,7 @@ pays out. Stakes are not defined here (no stake columns).
 **Actions from the client:**
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). Stage 2+ has no vote.
-- `POST /bet` with `{ side, amount }`: allowed only in the `bet` phase. Adds to the in-memory pool. Does not call `BattleBetting` or debit USDC. Zero bets is a valid fight.
+- `POST /bet` with `{ side, amount }`: allowed only in the `bet` phase. `amount` is a positive integer stake unit (room UI: 1, 3, or 5). The server calls `BattleBetting.placeBet` with `units × minBet` wei, then mirrors the units into the in-memory `pool`. Fails closed if `BATTLE_BETTING_ADDRESS`, `SEPOLIA_RPC_URL`, or `AGENT_PRIVATE_KEY` is missing, or if `openBattle` did not run for this bout. Zero bets is a valid fight (no house/robot seed).
 
 ## Client
 
@@ -148,5 +148,5 @@ The web client does not run a self-contained sim of the loop. `connectToServerRo
 ## Out of scope
 
 - How the server is hosted.
-- The Sui betting contract. `POST /bet` still only grows the in-memory pool.
+- The Sui betting contract. Sepolia `BattleBetting.placeBet` is the on-chain bet path for `POST /bet`.
 - Season end beyond today's `OVER` screen and reset.

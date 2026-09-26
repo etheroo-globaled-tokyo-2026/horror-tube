@@ -7,6 +7,7 @@ import {
   type ChainWritePorts,
 } from "@horror-tube/fight/battle-queue";
 
+import type { BattleBettingPorts } from "../src/battle-betting.js";
 import { readSkipBattleSettlement } from "../src/env.js";
 import {
   readGameLoopConfig,
@@ -41,6 +42,29 @@ function trackingPorts(calls: string[]): ChainWritePorts {
     async settleBattle(battleId) {
       calls.push(`settle:${battleId}`);
       return "0xsettle";
+    },
+  };
+}
+
+function trackingBattleBetting(calls: string[]): BattleBettingPorts {
+  let nextId = 1n;
+  return {
+    async minBet() {
+      return 10_000_000_000_000n;
+    },
+    async openBattle(fighterA, fighterB, closesAtUnix) {
+      const id = nextId;
+      nextId += 1n;
+      calls.push(
+        `open:${fighterA},${fighterB},${String(closesAtUnix)}→${String(id)}`,
+      );
+      return id;
+    },
+    async placeBet(battleId, fighter, valueWei) {
+      calls.push(
+        `bet:${String(battleId)},${String(fighter)},${String(valueWei)}`,
+      );
+      return `0xbet${String(battleId)}` as `0x${string}`;
     },
   };
 }
@@ -91,11 +115,14 @@ function sampleAgentInsert(
 
 function unusedSettleDeps(skipSettlement = true) {
   const calls: string[] = [];
+  const betCalls: string[] = [];
   return {
     battleQueueStore: new MemoryBattleQueueStore(),
     chainWritePorts: trackingPorts(calls),
+    battleBetting: trackingBattleBetting(betCalls),
     skipSettlement,
     calls,
+    betCalls,
   };
 }
 
@@ -173,6 +200,7 @@ describe("World ID vote gate", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: settle.skipSettlement,
     });
     await assert.rejects(
@@ -200,6 +228,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => {
         nullifierSeq += 1;
@@ -226,9 +255,17 @@ describe("GameLoop phases", () => {
     assert.ok(loop.getState().fighters);
     // votes: 0→1, 1→2, 2→1 → top are 1 then 0
     assert.deepEqual(loop.getState().fighters, [1, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith("open:bravo,alpha,")),
+      `expected openBattle for bravo vs alpha, got ${JSON.stringify(settle.betCalls)}`,
+    );
 
-    loop.bet(0, 1.5);
-    assert.deepEqual(loop.getState().pool, [1.5, 0]);
+    await loop.bet(0, 2);
+    assert.deepEqual(loop.getState().pool, [2, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith("bet:1,0,20000000000000")),
+      `expected placeBet call, got ${JSON.stringify(settle.betCalls)}`,
+    );
 
     await loop.attachAgentResult(sampleAgentInsert());
     loop.setOutcome(0, 3);
@@ -290,6 +327,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: false,
       verifyWorldId: async () => {
         n += 1;
@@ -345,6 +383,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: store,
       chainWritePorts: ports,
+      battleBetting: trackingBattleBetting([]),
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "ens-fail" }),
     });
@@ -395,6 +434,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "mismatch" }),
     });
@@ -433,6 +473,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "no-agent" }),
     });
@@ -467,6 +508,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "same" }),
     });
@@ -488,6 +530,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
+      battleBetting: settle2.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
@@ -523,10 +566,11 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "x" }),
     });
-    assert.throws(() => loop.bet(0, 1), /bet phase/u);
+    await assert.rejects(() => loop.bet(0, 1), /bet phase/u);
     let now = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
@@ -541,6 +585,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
+      battleBetting: settle2.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "y" }),
     });
@@ -575,6 +620,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "z" }),
     });
