@@ -233,7 +233,6 @@ export function enterRoom(): void {
   step("done");
   paper.visible = false;
   stool.visible = false;
-  $("#gate").hidden = true;
   void newSeason();
 }
 export function noOrb(): void {
