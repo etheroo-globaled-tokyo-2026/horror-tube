@@ -11,6 +11,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `game.ts`               | The simulated game from `docs/PLAN.md`. No layout.                    |
 | `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers. |
 | `coinbox.ts`            | The coin box: meter, coin slot, PAY BY PHONE sticker, coin return.    |
+| `sfx.ts`                | Every sound, made live with Web Audio. No sound files.                |
 | `sprites.ts`            | `paint` (pixel art) and `portrait` (the 16 head sprites).             |
 | `ht.css`                | Tokens, plus the World ID gate and coin box panel styles.             |
 | `system.html`           | The specimen page for the tokens.                                     |
@@ -116,7 +117,7 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
-- **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` skips the phase, `V` shows the records.
+- **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` skips the phase, `V` shows the records, `M` mutes.
 
 Rules from review:
 
@@ -148,6 +149,22 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
+
+## Sound
+
+All sound is made in code with Web Audio (`sfx.ts`): no files, no AI, no cost. The room has a low rumble, the bulb hums
+and buzzes when it flickers, and the TV hisses as loud as its static. Something creaks, drips or knocks far away every
+15 to 45 seconds.
+
+- The waiver: a pen scratch, the VERIFIED stamp, and on the fail path the TV clicks off, the paper burns, a deep boom.
+- The remote: a plastic click per key, a buzz when the TV says no, a ratchet while you hold A or B, a clunk when the bet
+  locks.
+- The phases: a church bell opens the vote, a typewriter writes the story, a heartbeat speeds up while the bet closes,
+  hits on the fight, the emergency-broadcast tone and a boom at "WE INTERRUPT THIS PROGRAM" (a tape stop if you lost),
+  a 1 kHz test tone at END OF PROGRAMMING. The demo fight video plays its own sound.
+- The coin box: a coin drops in, the meter ticks, the lever ratchets, coins pour out, a buzz when the box spits it out.
+- The browser keeps sound off until the first click or key. `M` or SOUND ON · M mutes and remembers it.
+- Any sound can be swapped for an ElevenLabs file later, one at a time.
 
 ## Colour
 

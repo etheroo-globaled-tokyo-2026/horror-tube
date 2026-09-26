@@ -4,6 +4,8 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import QRCode from "qrcode";
 import * as THREE from "three";
 
+import { sfx } from "./sfx.ts";
+
 import {
   type GameWallet,
   SUI_TESTNET_GRPC,
@@ -208,6 +210,7 @@ export function createCoinBox(
   async function refresh(): Promise<void> {
     const next = fromUsdcUnits(await getUsdcBalance(wallet));
     if (next === credit) return;
+    sfx.meter();
     credit = next;
     onCredit(credit);
     draw();
@@ -229,6 +232,7 @@ export function createCoinBox(
       throw new Error(result.FailedTransaction.status.error?.message ?? "Deposit failed");
     await dAppKit.getClient().core.waitForTransaction({ digest: result.Transaction.digest });
     rememberPayout(payer);
+    sfx.coin();
     say(`${dollars} USDC in. The meter ticks up.`);
   }
 
@@ -241,6 +245,7 @@ export function createCoinBox(
     if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");
     await sendUsdc(wallet, to, units);
+    sfx.coins(10);
     say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
   }
 
@@ -279,6 +284,7 @@ export function createCoinBox(
 
   function showError(message: string): void {
     errorText.textContent = message;
+    sfx.spat();
     if (!errorPanel.open) errorPanel.showModal();
   }
 
@@ -295,6 +301,7 @@ export function createCoinBox(
   }
 
   function pullLever(): void {
+    sfx.lever();
     lever.rotation.x = -0.6;
     setTimeout(() => (lever.rotation.x = 0), 400);
     run(withdraw);
