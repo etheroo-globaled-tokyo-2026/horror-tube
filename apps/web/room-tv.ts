@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
 import {
+  DUR,
   S,
   applyRoundState,
   char,
@@ -522,7 +523,21 @@ export function drawGuide(now: number): void {
   g.fillStyle = COL.soot;
   g.fillRect(0, 0, W, H);
   const filmCanvas = film();
-  if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
+  if (S.phase === "countdown") {
+    g.textAlign = "center";
+    g.font = "700 26px Silkscreen";
+    g.fillStyle = COL.sulfur;
+    g.fillText(S.cast ? "VOTING CLOSES IN" : "LAST CALL TO VOTE", W / 2, 76);
+    g.font = "700 84px Silkscreen";
+    g.fillStyle = COL.blood;
+    g.fillText(mmss(S.t), W / 2, 164);
+    g.font = "24px DotGothic16";
+    g.fillStyle = COL.bone;
+    g.fillText(`${S.voters} ${S.voters === 1 ? "human has" : "humans have"} voted`, W / 2, 206);
+    const bar = W * Math.min(1, S.t / DUR.countdown);
+    g.fillStyle = COL.blood;
+    g.fillRect((W - bar) / 2, top - 8, bar, 8);
+  } else if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
   else if (S.last && filmCanvas.width) {
     g.imageSmoothingEnabled = false;
     g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
@@ -552,7 +567,7 @@ export function drawGuide(now: number): void {
       g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
     }
   }
-  if (S.last) {
+  if (S.last && S.phase !== "countdown") {
     g.textAlign = "left";
     if ((now / 500) % 2 < 1) {
       g.fillStyle = COL.blood;
@@ -644,6 +659,7 @@ export function drawTV(): void {
     const width = g.measureText(t).width,
       max = W - 64;
     if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
+    g.textAlign = "center";
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -777,19 +793,7 @@ export function drawTV(): void {
     else if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "countdown") {
-      fill(COL.soot);
-      text("VOTING CLOSES", 120, 36, COL.sulfur);
-      text(mmss(S.t), 220, 64, COL.blood);
-      text(
-        `${String(S.voters)} / ${String(S.quorum)} humans in`,
-        300,
-        26,
-        COL.bone,
-        "DotGothic16",
-        400,
-      );
-    } else if (S.phase === "bet" && vidMode === "live") {
+    if (S.phase === "bet" && vidMode === "live") {
       band(H - 150, 100);
       text(
         S.bettingClosesAt === null
