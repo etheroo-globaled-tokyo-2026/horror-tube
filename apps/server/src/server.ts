@@ -52,6 +52,7 @@ export type JsonBody =
   | { ok: true }
   | { ok: false; error: string }
   | { ok: false; error: string; code: "bout_open" | "start_failed" }
+  | { videoUrl: string }
   | HttpErrorBody
   | { session: string }
   | { address: string }
@@ -383,6 +384,26 @@ async function handleRequest(
           "content-length": Buffer.byteLength(payload),
         });
         res.end(payload);
+        return;
+      }
+      if (method === "GET" && path === "/replay") {
+        let videoUrl;
+        try {
+          videoUrl = await opts.game.getReplayVideoUrl();
+        } catch (err) {
+          const message = `Reading the latest fight video from battle_results failed: ${err instanceof Error ? err.message : String(err)}`;
+          console.error(`GET /replay failed: ${message}`);
+          sendJson(res, 500, { ok: false, error: message });
+          return;
+        }
+        if (videoUrl === null) {
+          sendJson(res, 404, {
+            ok: false,
+            error: "no fight video is stored. A bout must reach setVideoReady before replay.",
+          });
+          return;
+        }
+        sendJson(res, 200, { videoUrl });
         return;
       }
       if (method === "POST" && path === "/retry-settle") {

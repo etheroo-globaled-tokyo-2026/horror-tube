@@ -112,8 +112,15 @@ describe("migration SQL shape", () => {
       "003_betting_closes_at.sql",
       "004_sui_pools.sql",
       "005_house_bot_votes.sql",
-      "006_drop_next_opponent.sql",
+      "006_battle_video_url.sql",
+      "007_drop_next_opponent.sql",
     ]);
+  });
+
+  it("adds video_url to battle_results for fight replay", async () => {
+    const sql = await readMigrationSql("006_battle_video_url.sql");
+    assert.match(sql, /ALTER TABLE battle_results/u);
+    assert.match(sql, /ADD COLUMN IF NOT EXISTS video_url text/u);
   });
 
   it("defines the sui_pools ledger with the columns the pool store reads and writes", async () => {

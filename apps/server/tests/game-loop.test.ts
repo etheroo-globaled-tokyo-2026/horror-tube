@@ -225,7 +225,7 @@ async function startPlayback(loop: GameLoop): Promise<void> {
 async function readyAlphaWin(loop: GameLoop, id: string, durationMs = 1): Promise<void> {
   await loop.attachAgentResult(agentInsertForAlphaWin({ id }));
   loop.setOutcome(0, 0);
-  loop.setVideoReady(
+  await loop.setVideoReady(
     "https://cdn.example/v.mp4",
     durationMs,
     "https://cdn.example/frames/seed.jpg",
@@ -500,7 +500,7 @@ describe("GameLoop phases", () => {
 
     await loop.attachAgentResult(agentInsertForAlphaWin());
     loop.setOutcome(0, 3);
-    loop.setVideoReady(
+    await loop.setVideoReady(
       "https://cdn.example/videos/fight1.mp4",
       4_000,
       "https://cdn.example/frames/fight1.jpg",
@@ -626,7 +626,7 @@ describe("GameLoop phases", () => {
       agentInsertForAlphaWin({ id: "wrong-winner", winnerSubname: "bravo", loserSubname: "alpha" }),
     );
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
     await step(1_000);
     await assert.rejects(() => step(1), /does not match bout winner/u);
@@ -639,8 +639,11 @@ describe("GameLoop phases", () => {
   it("refuses a playback report when no agent result is attached", async () => {
     const { loop, deps, step } = await startedLoop({ config: fastConfig });
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
-    await assert.rejects(() => startPlayback(loop), /no battle_results row is attached/u);
+    await assert.rejects(
+      () => loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg"),
+      /no battle_results row is attached/u,
+    );
+    await assert.rejects(() => startPlayback(loop), /fight video is not ready/u);
     await step(60_000);
     assert.equal(loop.getState().phase, "bet");
     assert.equal(loop.getState().bettingClosesAt, null);
@@ -649,11 +652,11 @@ describe("GameLoop phases", () => {
 
   it("rejects an empty video or frame url", async () => {
     const { loop } = await startedLoop();
-    assert.throws(
+    await assert.rejects(
       () => loop.setVideoReady("  ", 1000, "https://cdn.example/frames/seed.jpg"),
       /non-empty/u,
     );
-    assert.throws(
+    await assert.rejects(
       () => loop.setVideoReady("https://cdn.example/v.mp4", 1000, "  "),
       /frameUrl must be non-empty/u,
     );
