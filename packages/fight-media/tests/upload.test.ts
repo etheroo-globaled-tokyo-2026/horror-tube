@@ -177,7 +177,3 @@ describe("uploadFightFrame", () => {
     );
   });
 });
-
-// Live Spaces PUT was not run: no FIGHT_MEDIA_SPACES_* credentials in this worktree .env.
-// Request construction is covered by buildPutFightVideoInput / buildPutFightFrameInput;
-// failure paths use a stub transport.

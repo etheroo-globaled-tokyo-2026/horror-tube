@@ -16,6 +16,8 @@ export type VerifyFetch = (
   },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
+export type IdkitResultJson = z.core.util.JSONType;
+
 export type VerifiedHuman = {
   action: string;
   nullifier: string;
@@ -71,7 +73,7 @@ const verifySuccessSchema = z.object({
   ),
 });
 
-export function parseProofOfHumanResult(input: unknown): ProofOfHumanResult {
+export function parseProofOfHumanResult(input: IdkitResultJson): ProofOfHumanResult {
   const parsed = proofOfHumanResultSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error(`World ID result rejected:\n${z.prettifyError(parsed.error)}`);
@@ -84,7 +86,7 @@ export async function verifyProofOfHuman(args: {
   environment: WorldIdEnvironment;
   action: string;
   signal: string | null;
-  idkitResult: unknown;
+  idkitResult: IdkitResultJson;
   fetch: VerifyFetch;
   stagingToken?: string;
 }): Promise<VerifiedHuman> {
