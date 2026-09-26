@@ -4,7 +4,7 @@
 
 **Goal:** Run the Move package's tests in CI and review it before the first publish.
 
-**Architecture:** `packages/betting/move` (module `horror_tube::betting`) and its 20 tests are on main and pass. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
+**Architecture:** `packages/betting/move` (module `horror_tube::betting`) and its tests are on main and pass. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
 
 **Tech Stack:** Sui Move 2024, Sui CLI `testnet-v1.80.1`, GitHub Actions.
 
@@ -14,7 +14,7 @@
 
 **Files:** Modify `.github/workflows/ci.yml` (add a job after `server`)
 
-- [ ] Add:
+- [x] Add:
 
 ```yaml
   betting-move:
@@ -31,10 +31,10 @@
 ```
 
 - [ ] The job passes on the PR.
-- [ ] Commit: `ci: run Move betting tests`.
+- [x] Commit: `ci: run Move betting tests`.
 
 ### Task 2: Security review
 
-- [ ] Invoke the `move-security` skill on `packages/betting/move/sources/betting.move`. Check at least: every operator function calls `assert_operator`; every pool access checks `assert_owns` or the ticket's `pool_id`; a ticket can't be paid twice (`redeem` deletes it); a pool can't settle twice (`status == OPEN`); `mul_div` can't overflow (`stake ≤ W`); `withdraw_fees` needs `AdminCap`; both caps have `store` (holders can transfer them: accepted).
-- [ ] Fix real findings with a failing Move test first; list accepted ones in the PR body.
-- [ ] Commit: `fix: <finding>` per fix.
+- [x] Invoke the `move-security` skill on `packages/betting/move/sources/betting.move`. Check at least: every operator function calls `assert_operator`; every pool access checks `assert_owns` or the ticket's `pool_id`; a ticket can't be paid twice (`redeem` deletes it); a pool can't settle twice (`status == OPEN`); `mul_div` can't overflow (`stake ≤ W`); `withdraw_fees` needs `AdminCap`; both caps have `store` (holders can transfer them: accepted).
+- [x] Fix real findings with a failing Move test first; list accepted ones in the PR body.
+- [x] Commit: `fix: <finding>` per fix. No code defects found; `test: pin betting settle, cancel and house guards` covers the unguarded checks.

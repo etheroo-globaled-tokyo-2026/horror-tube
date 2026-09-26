@@ -48,7 +48,7 @@ RoundState ◄── battleId, poolId, pool totals ◄── operator reads the 
 
 ## Move package `horror_tube::betting`
 
-Code and 20 unit tests: `packages/betting/move`.
+Code and unit tests: `packages/betting/move`.
 
 | Object | Ownership | Fields |
 | --- | --- | --- |
@@ -133,7 +133,8 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 ## Testing
 
 - Move (`sui move test`): payouts, refunds, fee lock and cap, sponsor gate, close and settle timing,
-  operator revocation, one pool per battle, derived IDs, a 20-round payout invariant.
+  operator revocation, a pool settles or cancels once and only through its own house, one pool per
+  battle, derived IDs, a 20-round payout invariant.
 - TS unit (`tsx --test`): pool ID derivation against the Move vector, the payout mirror, `tx-policy`
   accepting real bet and claim kinds, the operator's state machine with a fake chain.
 - Live (`pnpm betting:e2e`): the admin moves USDC into a Shinami e2e wallet's address balance → open →
