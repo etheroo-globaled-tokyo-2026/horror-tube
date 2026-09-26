@@ -1,7 +1,13 @@
 import { parsePinAddressesFromMarkdown } from "@horror-tube/ens/scripts/pin.ts";
 import pinMarkdown from "@horror-tube/ens/scripts/pin/sepolia-addresses.md?raw";
 import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
-import { readWebEnv } from "./env.ts";
+import {
+  connectRoundEvents,
+  fetchRoundState,
+  postBet,
+  postVote,
+  type ServerRoundState,
+} from "./round-client.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
 
 export const $ = (s: string): HTMLElement => {
@@ -10,6 +16,7 @@ export const $ = (s: string): HTMLElement => {
   return el;
 };
 export const hooks = { render: (): void => {} };
+export const countdown = { hold: false };
 const render = (): void => hooks.render();
 
 const C = {
@@ -32,18 +39,14 @@ const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 export const hex = (n: number): string =>
   "0x" + Array.from({ length: n }, () => "0123456789abcdef"[(rnd() * 16) | 0]).join("");
 export const usd = (n: number): string => n.toFixed(2);
+export const mmss = (s: number): string =>
+  `${Math.floor(s / 60)}:${String(Math.ceil(s) % 60).padStart(2, "0")}`;
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
+export const DUR = { vote: 15, countdown: 15, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
-const CHAPTERS = [
-  "finds {b} at the old mill.",
-  "follows {b} into the cellar.",
-  "waits for {b} under the pier.",
-  "cuts the power. {b} hears it.",
-  "knocks twice. {b} opens the door.",
-];
 
 export type Character = {
   id: number;
@@ -60,12 +63,14 @@ export type Character = {
   damage: number;
 };
 export type Pair = [number, number];
-export type Phase = "gate" | "vote" | "story" | "bet" | "fight" | "settle" | "over";
+export type Phase = "gate" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 export type Shot = { fighters: Pair; winner: number; round: number };
 export type LogEntry = { round: number; text: string; cls: string };
 export type GameState = {
   view: number;
   phase: Phase;
+  t: number;
+  endsAt: number | null;
   round: number;
   chars: Character[];
   picks: number[];
@@ -88,11 +93,19 @@ export type GameState = {
   noteKind: string;
   frame: number;
   log: LogEntry[];
+  slots: 1 | 2;
+  champion: number | null;
+  voters: number;
+  quorum: number;
+  videoUrl: string | null;
+  error: string | null;
 };
 
 export const S: GameState = {
   view: 1,
   phase: "gate",
+  t: 0,
+  endsAt: null,
   round: 1,
   chars: [],
   picks: [],
@@ -115,15 +128,16 @@ export const S: GameState = {
   noteKind: "",
   frame: 0,
   log: [],
+  slots: 2,
+  champion: null,
+  voters: 0,
+  quorum: 1,
+  videoUrl: null,
+  error: null,
 };
 const col = (ch: Character): string => C[ch.hue];
 export const living = (): Character[] => S.chars.filter((c) => c.alive);
 const deadEns = (ch: Character): string => (ch.alive ? ch.ens : ch.ens.replace(".", ".deadpool."));
-const pair = (): Pair | null => {
-  const sorted = living().sort((a, b) => (S.votes[b.id] || 0) - (S.votes[a.id] || 0));
-  const [a, b] = sorted;
-  return a && b ? [a.id, b.id] : null;
-};
 const place = (round: number): Place => PLACES[round % PLACES.length];
 export const log = (text: string, cls = ""): void => {
   S.log.unshift({ round: S.round, text, cls });
@@ -136,6 +150,90 @@ export const note = (text: string, kind = ""): void => {
   render();
 };
 
+export function refreshTimer(now = Date.now()): void {
+  if (S.endsAt === null) {
+    S.t = 0;
+    return;
+  }
+  S.t = Math.max(0, (S.endsAt - now) / 1000);
+}
+
+let stopRoundStream: (() => void) | null = null;
+
+export function applyRoundState(state: ServerRoundState): void {
+  const prevPhase = S.phase;
+  S.round = state.round;
+  S.phase = state.phase;
+  S.endsAt = state.endsAt;
+  S.champion = state.champion;
+  S.slots = state.slots;
+  S.voters = state.voters;
+  S.quorum = state.quorum;
+  S.votes = { ...state.votes };
+  S.fighters = state.fighters;
+  S.pool = [...state.pool] as [number, number];
+  S.winner = state.winner === null ? -1 : state.winner;
+  S.videoUrl = state.videoUrl;
+  S.error = state.error;
+  refreshTimer();
+  for (const remote of state.chars) {
+    const local = S.chars[remote.id];
+    if (local === undefined) continue;
+    local.alive = remote.alive;
+    local.kills = remote.kills;
+    local.damage = remote.damage;
+  }
+  if (state.error) {
+    note(state.error, "bad");
+  }
+  if (
+    state.phase === "settle" &&
+    prevPhase === "fight" &&
+    state.fighters &&
+    state.winner !== null
+  ) {
+    const f = state.fighters;
+    const w = S.chars[f[state.winner] ?? -1];
+    const l = S.chars[f[1 - state.winner] ?? -1];
+    if (w && l) {
+      log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
+      log(`${deadEns(l)} · status=dead`, "t-house");
+      log(`${w.ens} · damage=${w.damage}`, "t-house");
+      S.last = { fighters: f, winner: state.winner, round: state.round };
+      S.focus = w.id;
+    }
+  }
+  if (state.phase === "vote" || state.phase === "countdown") {
+    // New voting window: clear local picks if we have not cast this round yet.
+    if (prevPhase !== "vote" && prevPhase !== "countdown") {
+      S.picks = [];
+      S.cast = null;
+      S.bet = null;
+    }
+  }
+  render();
+}
+
+export async function connectToServerRound(): Promise<void> {
+  if (stopRoundStream) {
+    stopRoundStream();
+    stopRoundStream = null;
+  }
+  const initial = await fetchRoundState();
+  applyRoundState(initial);
+  stopRoundStream = connectRoundEvents(applyRoundState);
+  log(
+    `SERVER ROUND · phase=${initial.phase} quorum=${String(initial.quorum)} slots=${String(initial.slots)}`,
+    "t-house",
+  );
+}
+
+const env = (name: string): string => {
+  const value = String(import.meta.env[name] ?? "").trim();
+  if (!value)
+    throw new Error(`${name} is required. Set it in the repo-root .env. See .env.example.`);
+  return value;
+};
 async function loadIcon(name: string, url: string): Promise<HTMLImageElement> {
   if (!url.startsWith("https://"))
     throw new Error(
@@ -161,11 +259,10 @@ const isAlive = (name: string, status: string): boolean => {
   );
 };
 const ROSTER = (async () => {
-  const env = readWebEnv();
   const ethRegistry = parsePinAddressesFromMarkdown(pinMarkdown).ETHRegistry;
   const { parentName, sheets } = await readRosterFromChain(
-    env.ENS_LABEL,
-    env.VITE_SEPOLIA_RPC_URL,
+    env("ENS_LABEL"),
+    env("VITE_SEPOLIA_RPC_URL"),
     ethRegistry,
   );
   return {
@@ -189,21 +286,21 @@ export async function newSeason(): Promise<void> {
   }
   S.chars = roster.sheets.map((s, id) => ({
     id,
-    name: s.display_name,
+    name: s.label.toUpperCase(),
     short: s.label.toUpperCase(),
     ens: s.name,
     hue: HUES[id % 3],
     brief: s.brief,
-    injuries: s.injuries.join("; "),
+    injuries: s.injuries,
     icon: s.img,
     fights: 0,
     alive: s.alive,
     kills: 0,
     damage: 0,
   }));
-  Object.assign(S, { round: 1, focus: 0, last: null, view: 1 });
+  Object.assign(S, { round: 1, focus: 0, last: null, view: 1, picks: [], cast: null, bet: null });
   log(`NEW SEASON · ${S.chars.length} subnames read from ${roster.parentName}`, "t-house");
-  startVote();
+  await connectToServerRound();
 }
 const faces = new Map<string, HTMLCanvasElement>();
 export function face(ch: Character): HTMLCanvasElement {
@@ -228,22 +325,7 @@ export function face(ch: Character): HTMLCanvasElement {
   faces.set(key, cv);
   return cv;
 }
-function startVote(): void {
-  Object.assign(S, {
-    phase: "vote",
-    picks: [],
-    cast: null,
-    votes: {},
-    fighters: null,
-    bet: null,
-    winner: -1,
-    story: "",
-    note: "",
-  });
-  for (const c of living()) S.votes[c.id] = (rnd() * 6) | 0;
-  log(`ROUND ${S.round} · VOTE OPEN`, "t-house");
-  render();
-}
+
 const char = (id: number): Character => {
   const ch = S.chars[id];
   if (!ch) throw new Error(`no character ${id}`);
@@ -255,81 +337,11 @@ const fighters = (): Pair => {
 };
 export { char, fighters };
 
-function startStory(): void {
-  S.fighters = pair();
-  if (!S.fighters) return end();
-  const [a, b] = S.fighters.map(char);
-  if (!a || !b) return;
-  const edge = 0.5 + (a.kills - b.kills) * 0.05 - (a.damage - b.damage) * 0.004;
-  S.winner = rnd() < edge ? 0 : 1;
-  S.dmg = 15 + ((rnd() * 35) | 0);
-  S.story = `${a.short} ${(CHAPTERS[S.round % CHAPTERS.length] ?? "").replace("{b}", b.short)}`;
-  log(`LOADED ${a.ens} + ${b.ens}`, "t-house");
-  log("THE STORY IS BEING WRITTEN", "t-house");
-  Object.assign(S, { phase: "story", note: "" });
-  render();
-}
-function startBet(): void {
-  log("VOTING CLOSED · BETTING OPEN", "t-house");
-  Object.assign(S, {
-    phase: "bet",
-    pool: [20 + rnd() * 30, 20 + rnd() * 30],
-    side: 0,
-    note: "",
-  });
-  render();
-}
-function startFight(): void {
-  Object.assign(S, { phase: "fight", frame: 0, note: "" });
-  log(`ON AIR · ${S.story}`, "t-yours");
-  render();
-}
-function startSettle(): void {
-  const f = fighters();
-  const w = char(f[S.winner] ?? -1),
-    l = char(f[1 - S.winner] ?? -1);
-  l.alive = false;
-  w.fights++;
-  l.fights++;
-  w.kills++;
-  w.damage = Math.min(95, w.damage + S.dmg);
-  log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
-  log(`${deadEns(l)} · status=dead`, "t-house");
-  log(`${w.ens} · damage=${w.damage}`, "t-house");
-  S.result = 0;
-  if (S.bet) {
-    const total = S.pool[0] + S.pool[1];
-    S.result = S.bet.side === S.winner ? (S.bet.amt * total) / (S.pool[S.winner] ?? 0) : -S.bet.amt;
-    if (S.result > 0) S.claim += S.result;
-    log(
-      S.result > 0 ? `CLAIMABLE +${usd(S.result)} USDC` : `LOST −${usd(S.bet.amt)} USDC`,
-      S.result > 0 ? "t-alive" : "t-lost",
-    );
-  }
-  S.last = { fighters: f, winner: S.winner, round: S.round };
-  S.focus = w.id;
-  S.phase = "settle";
-  render();
-}
-function end(): void {
-  S.phase = "over";
-  log("SEASON OVER", "t-yours");
-  render();
-}
-export function next(): void {
-  if (S.phase === "vote") startStory();
-  else if (S.phase === "story") startBet();
-  else if (S.phase === "bet") startFight();
-  else if (S.phase === "fight") startSettle();
-  else if (S.phase === "settle") {
-    S.round++;
-    if (living().length > 1) startVote();
-    else end();
-  }
-}
+export const replaying = (): boolean =>
+  (S.phase === "vote" || S.phase === "countdown") && !!S.last && !!S.videoUrl;
 
-export const replaying = (): boolean => (S.phase === "vote" || S.phase === "story") && !!S.last;
 setInterval(() => {
+  refreshTimer();
   if (S.phase === "fight" || replaying()) S.frame++;
   if (S.phase !== "gate") paintFilm();
 }, 125);
@@ -407,7 +419,7 @@ function paintFilm(): void {
     rep = replaying(),
     shot = rep
       ? S.last
-      : S.fighters && S.phase !== "vote" && S.phase !== "story"
+      : S.fighters && S.phase !== "vote" && S.phase !== "countdown"
         ? { fighters: S.fighters, winner: S.winner, round: S.round }
         : null,
     [fill, lamp] = SCENERY[place(shot ? shot.round : S.round)],
@@ -486,16 +498,32 @@ document.addEventListener("click", (e) => {
   if (!el || (el instanceof HTMLButtonElement && el.disabled)) return;
   const act = el.dataset.act;
   if (act === "skip") {
-    if (S.phase !== "gate") next();
+    note("Skip is disabled. The shared server owns the phase clock.", "bad");
   } else if (act === "view") {
     S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
   } else if (act === "reset") void newSeason();
   else if (act === "ring") pick(Number(el.dataset.id));
   else if (act === "cast") {
-    S.cast = hex(10);
-    log(`VOTE CAST · nullifier ${S.cast}`, "t-alive");
-    note("Proof checked on the server.", "good");
+    void (async () => {
+      if (S.cast) return;
+      if (S.picks.length !== S.slots) {
+        note(`Pick exactly ${String(S.slots)} character(s) before casting.`, "bad");
+        return;
+      }
+      try {
+        // Proof must be verified on the server. Until IDKit is wired, the server refuses.
+        const state = await postVote({ client: "web", pending: true }, S.picks);
+        S.cast = "submitted";
+        applyRoundState(state);
+        log("VOTE SUBMITTED · waiting on server RoundState", "t-alive");
+      } catch (error) {
+        note(
+          `VOTE REJECTED. ${error instanceof Error ? error.message : String(error)}`,
+          "bad",
+        );
+      }
+    })();
   } else if (act === "side") {
     S.side = Number(el.dataset.i);
     render();
@@ -504,11 +532,21 @@ document.addEventListener("click", (e) => {
     render();
   } else if (act === "bet") {
     if (S.bet || S.phase !== "bet" || S.amt > S.credit) return;
-    S.bet = { side: S.side, amt: S.amt };
-    S.credit -= S.amt;
-    S.pool[S.side ? 1 : 0] += S.amt;
-    log(`BET ${S.amt} USDC ON ${char(fighters()[S.side] ?? -1).short}`, "t-yours");
-    render();
+    void (async () => {
+      const side = (S.side ? 1 : 0) as 0 | 1;
+      try {
+        const state = await postBet(side, S.amt);
+        S.bet = { side, amt: S.amt };
+        S.credit -= S.amt;
+        applyRoundState(state);
+        log(`BET ${S.amt} USDC ON ${char(fighters()[side] ?? -1).short}`, "t-yours");
+      } catch (error) {
+        note(
+          `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`,
+          "bad",
+        );
+      }
+    })();
   } else if (act === "claim") {
     if (!S.claim) return;
     log(`CLAIMED +${usd(S.claim)} USDC`, "t-alive");
@@ -528,16 +566,24 @@ document.addEventListener("mouseover", (e) => {
 export function pick(id: number): void {
   S.focus = id;
   const ch = char(id);
-  if (S.phase !== "vote" || S.cast) return render();
+  if ((S.phase !== "vote" && S.phase !== "countdown") || S.cast) return render();
   if (!ch.alive) return note(`${ch.short} is dead. Dead characters cannot get votes.`, "bad");
+  if (S.champion !== null && id === S.champion) {
+    return note(`${ch.short} is the champion and stays on. Pick a challenger.`, "bad");
+  }
   if (S.picks.includes(id)) {
     S.picks = S.picks.filter((p) => p !== id);
-    S.votes[id] = (S.votes[id] ?? 0) - 1;
     return note("");
   }
-  if (S.picks.length === 2) return note("Two picks max. Tap one to drop it.", "bad");
+  if (S.picks.length >= S.slots) {
+    return note(
+      S.slots === 1
+        ? "One pick this round. Tap it to drop it."
+        : `Two picks max. Tap one to drop it.`,
+      "bad",
+    );
+  }
   S.picks.push(id);
-  S.votes[id] = (S.votes[id] ?? 0) + 1;
   note("");
 }
 
@@ -546,7 +592,6 @@ document.addEventListener("keydown", (e) => {
   if (parent !== window && /^([1-9]|ArrowLeft|ArrowRight|r|R)$/.test(e.key))
     parent.document.dispatchEvent(new KeyboardEvent("keydown", { key: e.key }));
   if (S.phase === "gate") return;
-  if (e.key === "n" || e.key === "N") next();
   if (e.key === "v" || e.key === "V") {
     S.view = S.view === 1 ? 2 : 1;
     render();
