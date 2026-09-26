@@ -5,9 +5,6 @@ import * as v from "valibot";
 
 export const WALLET_SESSION_KEY = "horror-tube.wallet-session";
 
-export const USDC_TYPE =
-  "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
-
 export const USDC_DECIMALS = 6;
 
 export const SUI_TESTNET_GRPC = "https://fullnode.testnet.sui.io:443";
@@ -119,10 +116,10 @@ export async function getGameWallet(
   return walletFromSession(storedSession(store), fetchImpl);
 }
 
-export async function getUsdcBalance(wallet: GameWallet): Promise<bigint> {
+export async function getUsdcBalance(wallet: GameWallet, coinType: string): Promise<bigint> {
   const { balance } = await wallet.client.core.getBalance({
     owner: wallet.address,
-    coinType: USDC_TYPE,
+    coinType,
   });
   return BigInt(balance.balance);
 }
@@ -135,19 +132,19 @@ export function fromUsdcUnits(units: bigint): number {
   return Number(units) / 10 ** USDC_DECIMALS;
 }
 
-export function usdcTransfer(to: string, units: bigint): Transaction {
+export function usdcTransfer(coinType: string, to: string, units: bigint): Transaction {
   const tx = new Transaction();
-  tx.transferObjects([coinWithBalance({ type: USDC_TYPE, balance: units, useGasCoin: false })], to);
+  tx.transferObjects([coinWithBalance({ type: coinType, balance: units, useGasCoin: false })], to);
   return tx;
 }
 
-export function usdcDeposit(to: string, units: bigint): Transaction {
+export function usdcDeposit(coinType: string, to: string, units: bigint): Transaction {
   const tx = new Transaction();
   tx.moveCall({
     target: "0x2::coin::send_funds",
-    typeArguments: [USDC_TYPE],
+    typeArguments: [coinType],
     arguments: [
-      coinWithBalance({ type: USDC_TYPE, balance: units, useGasCoin: false }),
+      coinWithBalance({ type: coinType, balance: units, useGasCoin: false }),
       tx.pure.address(to),
     ],
   });
@@ -179,9 +176,10 @@ export async function runKind(
 
 export async function sendUsdc(
   wallet: GameWallet,
+  coinType: string,
   to: string,
   units: bigint,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  await runKind(wallet, usdcTransfer(to, units), fetchImpl);
+  await runKind(wallet, usdcTransfer(coinType, to, units), fetchImpl);
 }

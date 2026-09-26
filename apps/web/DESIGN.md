@@ -51,12 +51,14 @@ reads the meter:
   gone, and JSON-RPC is already off on public testnet nodes.
 - Bets and claims: `betting.ts` builds kinds with `@horror-tube/betting` (`betTx` / `claimTx`) and sends them through
   `runKind` → `POST /tx`. IDs come from `GET /betting`. Odds use `RoundState.pool` and `feeBps`.
-- USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
-  Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
+- The coin: the live game bets in the repo's own test USDC (`packages/test-usdc`, 6 decimals, no value), not Circle's
+  testnet USDC. The web has no coin type of its own: it uses `coinType` from `GET /betting` (the server's
+  `SUI_USDC_TYPE`) for the meter, deposits and withdrawals, and the coin box does not mount if that call fails.
+- Funding a demo player: `pnpm test-usdc:send <account-index> <to-address> <units>` moves test USDC from one of the
+  20 funded wallets into the player's in-game address balance (the PAY BY PHONE QR encodes that address).
 - **USDsui** (Sui's own dollar, issued by Bridge) is the coin for mainnet:
   `0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI`, 6 decimals. It is **not on
-  testnet** (checked 2026-09-26: no coin metadata there). So testnet uses Circle USDC. Moving to USDsui changes one
-  constant, `USDC_TYPE`.
+  testnet** (checked 2026-09-26: no coin metadata there). Moving to it means a new house for that `SUI_USDC_TYPE`.
 - Gas: the burner needs a little SUI to send anything. **Not built:** a faucet that sends testnet SUI and the first
   USDC after World ID, one time per nullifier (needs a backend). Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
   co-signs), so users hold only USDC.

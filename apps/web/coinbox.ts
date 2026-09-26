@@ -125,6 +125,7 @@ function drawQr(g: CanvasRenderingContext2D, text: string, rect: Rect, ink: stri
 
 export function createCoinBox(
   wallet: GameWallet,
+  coinType: string,
   onCredit: (usdc: number) => void,
   say: (text: string) => void,
   onError: (message: string) => void,
@@ -497,7 +498,7 @@ export function createCoinBox(
   }
 
   async function refresh(): Promise<void> {
-    const next = fromUsdcUnits(await getUsdcBalance(wallet));
+    const next = fromUsdcUnits(await getUsdcBalance(wallet, coinType));
     if (next === credit) return;
     sfx.meter();
     credit = next;
@@ -515,7 +516,7 @@ export function createCoinBox(
       );
     setStatus("INSERTING");
     const result = await dAppKit.signAndExecuteTransaction({
-      transaction: usdcDeposit(wallet.address, toUsdcUnits(dollars)),
+      transaction: usdcDeposit(coinType, wallet.address, toUsdcUnits(dollars)),
     });
     if (result.$kind === "FailedTransaction")
       throw new Error(result.FailedTransaction.status.error?.message ?? "Deposit failed");
@@ -526,12 +527,12 @@ export function createCoinBox(
   }
 
   async function withdraw(): Promise<void> {
-    const units = await getUsdcBalance(wallet);
+    const units = await getUsdcBalance(wallet, coinType);
     if (units === 0n) return say("Nothing to give back.");
     const to = storedPayout() ?? (await connectBrowserWallet());
     if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");
-    await sendUsdc(wallet, to, units);
+    await sendUsdc(wallet, coinType, to, units);
     sfx.coins(10);
     say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
   }

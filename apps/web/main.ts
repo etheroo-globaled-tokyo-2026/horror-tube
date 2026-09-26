@@ -205,7 +205,7 @@ async function mountCoinBox(): Promise<void> {
   if (coinBox !== null) return;
   const wallet = await getGameWallet();
   setWallet(wallet);
-  await loadBettingIds();
+  const { coinType } = await loadBettingIds();
   void refreshClaimable().catch((err: unknown) => {
     console.error(
       `claimable after wallet mount failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -213,6 +213,7 @@ async function mountCoinBox(): Promise<void> {
   });
   coinBox = createCoinBox(
     wallet,
+    coinType,
     (usdc) => {
       S.credit = usdc;
       chainCredit = usdc;
