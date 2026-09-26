@@ -1,7 +1,8 @@
-import type {
-  BattleQueueRecord,
-  BattleQueueStore,
-  Shot,
+import {
+  assertPlayableFightVideoUrl,
+  type BattleQueueRecord,
+  type BattleQueueStore,
+  type Shot,
 } from "@horror-tube/fight/battle-queue";
 import type { Client, Pool, PoolClient, QueryResultRow } from "pg";
 import * as v from "valibot";
@@ -151,6 +152,34 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
         record.settlementTxHash,
       ],
     );
+  }
+
+  async setVideoUrl(id: string, videoUrl: string): Promise<void> {
+    const trimmed = assertPlayableFightVideoUrl(videoUrl);
+    const result = await this.db.query<{ id: string; battle_id: string }>(
+      `UPDATE battle_results
+       SET video_url = $2, updated_at = now()
+       WHERE id = $1
+       RETURNING id, battle_id`,
+      [id, trimmed],
+    );
+    if (result.rows[0] === undefined) {
+      throw new Error(
+        `battle_results row ${JSON.stringify(id)} is missing. Cannot store fight video.`,
+      );
+    }
+  }
+
+  async getLatestVideoUrl(): Promise<string | null> {
+    const result = await this.db.query<{ video_url: string }>(
+      `SELECT video_url
+       FROM battle_results
+       WHERE video_url IS NOT NULL
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+    );
+    const row = result.rows[0];
+    return row === undefined ? null : row.video_url;
   }
 }
 

@@ -61,6 +61,41 @@ function parseRoundState(source: string, json: string): ServerRoundState {
   return parsed.output;
 }
 
+export async function fetchReplayVideoUrl(
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const res = await fetchImpl("/replay");
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (cause) {
+    throw new Error(
+      `GET /replay returned non-JSON with HTTP ${String(res.status)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+  const parsed = v.safeParse(
+    v.union([
+      v.object({ videoUrl: v.pipe(v.string(), v.minLength(1)) }),
+      v.object({ ok: v.literal(false), error: v.string() }),
+    ]),
+    body,
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `GET /replay sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
+    );
+  }
+  const out = parsed.output;
+  if ("error" in out) {
+    throw new Error(out.error);
+  }
+  if (!res.ok) {
+    throw new Error(`GET /replay failed: HTTP ${String(res.status)}`);
+  }
+  return out.videoUrl;
+}
+
 export async function fetchRoundState(): Promise<ServerRoundState> {
   const res = await fetch("/round");
   if (!res.ok) {

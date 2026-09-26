@@ -56,6 +56,7 @@ const CONTENT_TYPES = new Map([
 export type JsonBody =
   | { ok: true }
   | { ok: false; error: string }
+  | { videoUrl: string }
   | HttpErrorBody
   | { session: string }
   | { address: string }
@@ -375,6 +376,16 @@ async function handleRequest(
           "content-length": Buffer.byteLength(payload),
         });
         res.end(payload);
+        return;
+      }
+      if (method === "GET" && path === "/replay") {
+        try {
+          const videoUrl = await opts.game.getReplayVideoUrl();
+          sendJson(res, 200, { videoUrl });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, 404, { ok: false, error: message });
+        }
         return;
       }
       if (method === "POST" && path === "/retry-settle") {

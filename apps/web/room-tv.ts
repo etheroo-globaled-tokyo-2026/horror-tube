@@ -16,6 +16,7 @@ import {
   type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
+import { playReplayVideo } from "./replay-video.ts";
 import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { BARS, COL, RAMP } from "./room-palette.ts";
@@ -423,6 +424,9 @@ small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" = "";
 let reportedBattleId: string | null = null;
+let replayVideoUrl: string | null = null;
+let replayFetchInFlight = false;
+let replayFetchFailed = false;
 // WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
@@ -439,27 +443,20 @@ video.addEventListener("playing", () => {
       );
     });
 });
-export function syncVideo(): void {
-  const url = S.videoUrl;
-  if (!url) {
-    if (vidMode) {
-      video.pause();
-      vidMode = "";
-    }
-    lastVideoUrl = null;
-    return;
-  }
+
+function clearReplayFetchState(): void {
+  replayVideoUrl = null;
+  replayFetchInFlight = false;
+  replayFetchFailed = false;
+}
+
+function applyVideoSrc(url: string, mode: "live" | "rec"): void {
   if (url !== lastVideoUrl) {
     video.src = url;
     lastVideoUrl = url;
   }
-  const mode = S.phase === "fight" || S.phase === "bet" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
-  if (!mode) {
-    video.pause();
-    return;
-  }
   video.currentTime = 0;
   video.loop = mode === "rec";
   video.muted = mode === "rec";
@@ -467,6 +464,57 @@ export function syncVideo(): void {
     video.muted = true;
     void video.play();
   });
+}
+
+function pauseVideo(): void {
+  if (vidMode) {
+    video.pause();
+    vidMode = "";
+  }
+  lastVideoUrl = null;
+}
+
+function requestReplayVideo(): void {
+  if (replayFetchInFlight || replayFetchFailed || replayVideoUrl !== null) return;
+  replayFetchInFlight = true;
+  void playReplayVideo({
+    get currentSrc() {
+      return lastVideoUrl;
+    },
+    setSrc(url) {
+      if (!replaying()) return;
+      replayVideoUrl = url;
+      applyVideoSrc(url, "rec");
+    },
+    note,
+  }).finally(() => {
+    replayFetchInFlight = false;
+    if (replayVideoUrl === null) replayFetchFailed = true;
+  });
+}
+
+export function syncVideo(): void {
+  const live = S.phase === "fight" || S.phase === "bet";
+  if (live) {
+    clearReplayFetchState();
+    const url = S.videoUrl;
+    if (!url) {
+      pauseVideo();
+      return;
+    }
+    applyVideoSrc(url, "live");
+    return;
+  }
+  if (replaying()) {
+    if (replayVideoUrl !== null) {
+      applyVideoSrc(replayVideoUrl, "rec");
+      return;
+    }
+    requestReplayVideo();
+    return;
+  }
+  clearReplayFetchState();
+  pauseVideo();
 }
 export function crop(
   sw0: number,

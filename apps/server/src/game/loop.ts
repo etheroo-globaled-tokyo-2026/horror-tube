@@ -552,7 +552,7 @@ export class GameLoop {
     this.queuedAgentResultId = record.id;
   }
 
-  setVideoReady(url: string, durationMs: number, frameUrl: string): void {
+  async setVideoReady(url: string, durationMs: number, frameUrl: string): Promise<void> {
     if (this.phase !== "bet") {
       throw new Error(
         `setVideoReady is only allowed in the bet phase. Current phase: ${this.phase}.`,
@@ -571,10 +571,35 @@ export class GameLoop {
         `setVideoReady durationMs must be an integer >= 1. Got: ${String(durationMs)}.`,
       );
     }
-    this.videoUrl = url.trim();
+    const queueId = this.queuedAgentResultId;
+    const battleId = this.onChainBattleId;
+    if (queueId === null) {
+      throw new Error(
+        `setVideoReady for battle ${JSON.stringify(battleId)}: no battle_results row is attached. Cannot store fight video.`,
+      );
+    }
+    const trimmed = url.trim();
+    try {
+      await this.battleQueueStore.setVideoUrl(queueId, trimmed);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new StoreWriteError(
+        `Storing fight video URL failed for battle ${JSON.stringify(battleId)} (battle_results ${queueId}): ${detail}`,
+        { cause },
+      );
+    }
+    this.videoUrl = trimmed;
     this.frameUrl = frameUrl.trim();
     this.videoDurationMs = durationMs;
     this.emit();
+  }
+
+  async getReplayVideoUrl(): Promise<string> {
+    const url = await this.battleQueueStore.getLatestVideoUrl();
+    if (url === null || url.trim() === "") {
+      throw new Error("no fight video is stored. Play a bout first so setVideoReady can persist the Spaces CDN URL.");
+    }
+    return url;
   }
 
   setOutcome(winner: 0 | 1, damage: number): void {
@@ -1278,7 +1303,7 @@ export class GameLoop {
         return;
       }
       this.setOutcome(result.winnerSide, result.damage);
-      this.setVideoReady(result.videoUrl, result.durationMs, result.frameUrl);
+      await this.setVideoReady(result.videoUrl, result.durationMs, result.frameUrl);
       console.log(
         `fight job ready battleId=${battleId} winnerSide=${String(result.winnerSide)} video=${result.videoUrl}`,
       );

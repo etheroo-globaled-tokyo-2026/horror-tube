@@ -232,3 +232,48 @@ describe("fightInputFromQueuedNext", () => {
     );
   });
 });
+
+describe("battle video URL store", () => {
+  it("rejects blank and fal.media URLs; accepts a Spaces CDN URL and returns it later", async () => {
+    const store = new MemoryBattleQueueStore();
+    const row = createQueuedRecord(sampleInsert({ id: "vid-1" }));
+    await store.save(row);
+
+    await assert.rejects(() => store.setVideoUrl(row.id, "  "), /blank/u);
+    await assert.rejects(
+      () => store.setVideoUrl(row.id, "https://v3b.fal.media/files/b/fight.mp4"),
+      /fal\.media/u,
+    );
+    await assert.rejects(
+      () => store.setVideoUrl(row.id, "https://fal.media/files/fight.mp4"),
+      /fal\.media/u,
+    );
+
+    const cdn = "https://fight-media.example/videos/abc.mp4";
+    await store.setVideoUrl(row.id, cdn);
+    assert.equal(await store.getLatestVideoUrl(), cdn);
+  });
+
+  it("returns the newest stored URL and null when none exist", async () => {
+    const store = new MemoryBattleQueueStore();
+    assert.equal(await store.getLatestVideoUrl(), null);
+
+    const older = createQueuedRecord(sampleInsert({ id: "vid-old", battleId: "1" }));
+    const newer = createQueuedRecord(sampleInsert({ id: "vid-new", battleId: "2" }));
+    await store.save(older);
+    await store.setVideoUrl(older.id, "https://cdn.example/videos/old.mp4");
+    await new Promise((r) => setTimeout(r, 5));
+    await store.save(newer);
+    await store.setVideoUrl(newer.id, "https://cdn.example/videos/new.mp4");
+
+    assert.equal(await store.getLatestVideoUrl(), "https://cdn.example/videos/new.mp4");
+  });
+
+  it("fails when the battle_results row is missing", async () => {
+    const store = new MemoryBattleQueueStore();
+    await assert.rejects(
+      () => store.setVideoUrl("missing-id", "https://cdn.example/videos/x.mp4"),
+      /battle_results row.*"missing-id".*missing/u,
+    );
+  });
+});
