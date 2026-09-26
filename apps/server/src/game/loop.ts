@@ -562,6 +562,7 @@ export class GameLoop {
         rationale: battle.rationale,
         videoUrl: battle.videoUrl,
         recordedAt: battle.recordedAt,
+        statusTx: battle.statusTxHash,
       }));
   }
 

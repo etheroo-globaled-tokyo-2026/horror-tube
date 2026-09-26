@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { S, mmss, note, type Character } from "./game.ts";
+import { ENS_PARENT, S, mmss, note, type Character } from "./game.ts";
 import { fetchTapes } from "./round-client.ts";
 import type { Tape } from "../server/src/types.ts";
 import { blotch, ctx2d, scratches, seeded } from "./sprites.ts";
@@ -37,11 +37,16 @@ export function refreshTapes(): void {
 const who = (label: string): Character | undefined => S.chars.find((c) => c.label === label);
 const nameOf = (label: string): string => who(label)?.name ?? label;
 const shortOf = (label: string): string => who(label)?.short ?? label.toUpperCase();
+const ensName = (label: string): string => `${label}.${ENS_PARENT}`;
 export const loserOf = (t: Tape): string =>
   t.fighters[0] === t.winner ? t.fighters[1] : t.fighters[0];
 export const boutTitle = (t: Tape): string => `${shortOf(t.winner)} V ${shortOf(loserOf(t))}`;
 const coverKey = (t: Tape): string =>
-  [boutNumber(t), ...t.fighters.map((f) => `${nameOf(f)}${String(who(f)?.alive)}`)].join();
+  [
+    boutNumber(t),
+    t.statusTx,
+    ...t.fighters.map((f) => `${nameOf(f)}${String(who(f)?.alive)}`),
+  ].join();
 
 const DECK = { w: 0.42, h: 0.086, d: 0.3, px: [420, 86] };
 const deckCanvas = document.createElement("canvas");
@@ -245,6 +250,12 @@ function face(g: G, label: string, x: number, won: boolean): void {
   let size = 16;
   while (g.measureText(short).width > 130 && size > 8) g.font = `700 ${--size}px Silkscreen`;
   g.fillText(short, x + 60, 204);
+  const ens = ensName(label);
+  size = 12;
+  do g.font = `${size--}px DotGothic16`;
+  while (g.measureText(ens).width > 140 && size > 7);
+  g.fillStyle = won ? COL.bone : COL.grime;
+  g.fillText(ens, x + 60, 222);
 }
 
 const pad = (n: number): string => String(n).padStart(2, "0");
@@ -277,24 +288,35 @@ function drawCover(t: Tape): void {
   g.textAlign = "left";
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
-  g.fillText("WALKED OUT", 24, 238);
+  g.fillText("WALKED OUT", 24, 254);
   g.fillStyle = COL.sulfur;
   g.font = "24px DotGothic16";
-  wrap(g, nameOf(t.winner), 24, 266, VW - 48, 28);
-  const injuries = t.injuries.join(", ") || "None recorded.",
-    top = 312,
+  wrap(g, nameOf(t.winner), 24, 280, VW - 48, 28);
+  const hurt = `${ensName(t.winner)} · injuries = ${t.injuries.join(", ") || "none"}`,
+    tx = t.statusTx === null ? "" : `tx ${t.statusTx.slice(0, 10)}…${t.statusTx.slice(-6)}`,
+    top = 322,
+    deadH = 46,
     bottom = VH - 40;
   const lh = fitFont(g, "DotGothic16", 18, 9, (lh) => {
-    const n = lines(g, injuries, VW - 48).length + lines(g, t.rationale, VW - 48).length;
-    return top + 26 + 34 + (n - 1) * lh <= bottom;
+    const n = [hurt, t.rationale].reduce((sum, s) => sum + lines(g, s, VW - 48).length, 0);
+    return top + 26 + deadH + (tx ? lh : 0) + 34 + (n - 1) * lh <= bottom;
   });
   const body = g.font;
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
-  g.fillText("INJURIES", 24, top);
+  g.fillText("ON RECORD", 24, top);
+  g.fillStyle = COL.blood;
+  g.font = "18px DotGothic16";
+  g.fillText(ensName(loserOf(t)), 24, top + 26);
+  g.font = "700 18px Silkscreen";
+  g.fillText("STATUS = DEAD", 24, top + 26 + 22);
   g.fillStyle = COL.bone;
   g.font = body;
-  let y = wrap(g, injuries, 24, top + 24, VW - 48, lh);
+  let y = wrap(g, hurt, 24, top + 26 + deadH, VW - 48, lh);
+  if (tx) {
+    g.fillStyle = COL.grime;
+    y = wrap(g, tx, 24, y, VW - 48, lh);
+  }
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
   g.fillText("ON THE TAPE", 24, y + 10);

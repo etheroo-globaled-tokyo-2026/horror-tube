@@ -86,6 +86,7 @@ const TapeSchema = v.object({
   rationale: v.string(),
   videoUrl: v.pipe(v.string(), v.minLength(1)),
   recordedAt: v.number(),
+  statusTx: v.nullable(v.string()),
 }) satisfies v.GenericSchema<Tape>;
 
 export async function fetchTapes(fetchImpl: typeof fetch = fetch): Promise<Tape[]> {
