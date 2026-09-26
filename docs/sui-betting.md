@@ -28,7 +28,7 @@ repository variables of the same names.
 | `packages/betting/src/cli`          | `deploy`, `pool`, `e2e`, `player`                                                                             |
 | `packages/test-usdc`                | `test_usdc::usdc`, a free testnet stand-in for USDC with no value, and its CLIs                               |
 | `apps/server/src/battle-betting.ts` | The server's operator                                                                                         |
-| `apps/server/src/tx-policy.ts`      | What `POST /tx` pays gas for: USDC to the coin box, or calls into the betting package                         |
+| `apps/server/src/tx-policy.ts`      | What Shinami pays gas for: `POST /tx` (USDC, betting calls) and `POST /sponsor-deposit` (USDC into the box)   |
 | `apps/web/betting.ts`               | Bet and claim transactions, winnings                                                                          |
 
 ## Objects
@@ -87,6 +87,8 @@ repository variables of the same names.
 - The server knows the winner while people bet and declares it on chain. Players trust the operator.
 - `POST /tx` spends USDC only from the wallet's address balance, so `claim` and coin-box deposits pay with
   `coin::send_funds`.
+- Deposits come from the player's own wallet through `POST /sponsor-deposit`: Shinami sponsors the gas and the
+  player's wallet signs. See "The wallet" in `apps/web/DESIGN.md`.
 
 ## Game server and web
 

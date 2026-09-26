@@ -11,7 +11,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `main.ts`         | The 3D room (Three.js from npm), the TV picture and the remote.                                             |
 | `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
 | `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
-| `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
+| `wallet.ts`       | The server-held Shinami wallet: `getGameWallet()`, USDC balance, and `runKind` → `POST /tx`.                |
 | `coinbox.ts`      | The slot meter: credit window, coin dial, Sui token tray, PAY BY PHONE sticker, padlocked drawer.           |
 | `room-power.ts`   | The remote's POWER key (`O`): the set dies, films you from the TV, and a face lunges at you when you turn.  |
 | `sfx.ts`          | Sounds made live with Web Audio, plus `sample()` for the POWER scare files in `assets/scare/`.              |
@@ -51,12 +51,18 @@ backs, the log names each bot bet, and a bot failure shows in the hint bar witho
 
 Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC**. Researched 2026-09-26.
 
-**Now:** `wallet.ts` is a Sui burner. `getGameWallet()` returns `{ address, signer, client }`, and `getUsdcBalance()`
-reads the meter:
+`wallet.ts` is a **Shinami Invisible Wallet**, one per World ID human, held by the server. The browser has no key.
+`getGameWallet()` returns `{ address, client, session }`, and `getUsdcBalance()` reads the meter:
 
-- `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
-  `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
-  gone, and JSON-RPC is already off on public testnet nodes.
+- After the waiver scan, `POST /auth/world-id` verifies the proof and returns a session (the nullifier, signed with
+  `WALLET_SECRET_PEPPER`). The browser keeps it in `localStorage` (`horror-tube.wallet-session`). `POST /wallet` opens
+  the Shinami wallet whose id is the nullifier, so the same human gets the same wallet on any device. We hold the
+  keys (custodial): OK for testnet.
+- Every money move from the in-game wallet goes through `runKind` → `POST /tx`: the browser builds only the
+  transaction kind, `tx-policy.ts` checks it, and Shinami `executeGaslessTransaction` signs it and pays the gas from
+  the Shinami Gas Station fund. The in-game wallet never holds SUI.
+- Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is gone, and JSON-RPC is already
+  off on public testnet nodes.
 - Bets and claims: `betting.ts` builds kinds with `@horror-tube/betting` (`betTx` / `claimTx`) and sends them through
   `runKind` → `POST /tx`. `runKind` waits for the digest and throws the chain's error when the transaction failed
   (a bet that lands after `close_betting` aborts with `EBettingClosed`). IDs come from `GET /betting`. Odds use
@@ -77,21 +83,23 @@ reads the meter:
 - **USDsui** (Sui's own dollar, issued by Bridge) is the coin for mainnet:
   `0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI`, 6 decimals. It is **not on
   testnet** (checked 2026-09-26: no coin metadata there). Moving to it means a new house for that `SUI_USDC_TYPE`.
-- Gas: the burner needs a little SUI to send anything. **Not built:** a faucet that sends testnet SUI and the first
-  USDC after World ID, one time per nullifier (needs a backend). Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
-  co-signs), so users hold only USDC.
-- The game only calls one function that returns the signer and the client. Only that function changes later.
+- **Not built:** a faucet that sends the first USDC after World ID, one time per nullifier.
 
 **Deposits (the coin box):**
 
 - Coin dial: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Turning the dial pays for the
   tokens waiting in it. If no wallet is connected, `<mysten-dapp-kit-connect-modal>` opens; the game checks that the
-  paying wallet has SUI for gas and enough USDC for the tokens; then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
-  `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one
-  `0x2::coin::send_funds<USDC>` on a `coinWithBalance({ type: USDC, balance })` coin (`usdcDeposit`), so the USDC lands in
-  the in-game wallet's address balance. Bets and the coin return spend only that balance; `POST /tx` rejects coin
-  objects. Use Slush.
-  Phantom dropped Sui on 2026-09-24.
+  paying wallet holds enough USDC for the tokens. It needs no SUI.
+- Sponsored deposit (`depositUsdc` in `wallet.ts`): the browser builds only the transaction kind, one
+  `0x2::coin::send_funds<USDC>` on a `coinWithBalance({ type: USDC, balance })` coin (`usdcDeposit`), with the paying
+  wallet as sender. `POST /sponsor-deposit` checks it with `assertDepositKind` and asks Shinami Gas Station to sponsor
+  it. The paying wallet signs the sponsored bytes (`dAppKit.signTransaction`), and the browser sends both signatures
+  to the chain. The USDC lands in the in-game wallet's address balance. Bets and the coin return spend only that
+  balance; `POST /tx` rejects coin objects. Use Slush. Phantom dropped Sui on 2026-09-24.
+- `assertDepositKind` pays gas only for USDC from the sender into the session's coin box: the sender's own coin
+  objects or address balance, change back to the sender, nothing else. It does not read the coin objects' types.
+  Shinami dry-runs the transaction to price the gas and refuses one that would fail, so a wrong coin costs nothing
+  (HTTP 400).
 - The connect modal is themed from our tokens: `ht.css` sets the shadcn names dApp Kit reads (all of them, because
   our `--muted` is a text colour and would leak in), and `coinbox.ts` adds the title font and backdrop to its shadow root.
 - PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
@@ -102,27 +110,13 @@ reads the meter:
 - Coin return: the in-game wallet sends its whole address balance back through `POST /tx` (`coinWithBalance` +
   `transferObjects`, built with `assumeSufficientAddressBalances`) to the wallet that last paid in
   (`horror-tube.payout-address`), or to the connected wallet.
-- **Not tested on testnet yet:** a `send_funds` deposit from Slush followed by the coin return.
+- Sponsored deposits are tested on testnet from a wallet with no SUI, from its address balance and from its coin
+  objects. **Not tested yet:** a deposit signed in Slush, and the coin return.
 
-**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. The Sui skills say
-never keep keys in the browser. We break that rule on purpose, for testnet only. The server wallet fixes it.
-
-**Later: a wallet that follows the human, not the browser.** World ID must stay the only login, with no popups.
-Researched 2026-09-26:
-
-- **Next step (when our backend exists):** move the key to the server. One Ed25519 key per World ID nullifier, encrypted
-  with a Worker secret, kept in a Durable Object. The same human gets the same wallet on any device. We hold the keys
-  (custodial): OK for testnet.
-- **Later pick: Shinami Invisible Wallets + Gas Station.** Sui-native, backend-only, the wallet id is our nullifier,
-  gas sponsorship built in. Almost the same flow as our own server keys, so the move is small. Not confirmed: free
-  testnet limits.
-- **Privy (was the pick):** custom JWT login is free, but needs a "Request access" approval, also for test apps. Sui is
-  server-only raw signing, and the browser SDK without React has no Sui. Too much friction for Sui.
-- **Not usable:** zkLogin / Enoki (fixed OAuth providers only), Crossmint (no Sui), Dynamic (own login is enterprise
-  only). **Costly:** Turnkey (25 free signatures a month), Web3Auth (custom JWT is $69/mo), Para (custom OIDC server).
-
-**Options we did not pick:** blink.cash (ignored). World App wallet (a confirm screen per transaction). Enoki gas
-sponsorship (paid tiers only; testnet pricing unclear).
+**Why Shinami:** World ID must stay the only login, with no popups for bets. Shinami is Sui-native, backend-only,
+takes our nullifier as the wallet id, and sponsors gas. **Not picked:** Privy (needs an access approval; Sui is
+server-only raw signing), zkLogin / Enoki (fixed OAuth providers only), Crossmint (no Sui), Dynamic (own login is
+enterprise only), Turnkey, Web3Auth and Para (cost), World App wallet (a confirm screen per transaction).
 
 ## Onboarding: the waiver
 
@@ -241,11 +235,9 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   in-game wallet signs them.
 - Keys: `D` zooms in, `P` leans in on the sticker, `W` opens the padlock, `1`–`3` drop a token, `Enter` turns the dial.
   While zoomed, the remote and the held tape are out of view and the remote keys are off. Stakes are 1, 3 and 5 USDC.
-- **Gas today:** the paying wallet needs testnet SUI for a deposit. The coin return goes through `POST /tx`, which
-  Shinami sponsors, so the in-game wallet holds no SUI.
-  Errors zoom onto the meter and stay in the hint bar (`COIN BOX NOTICE …`) until you step back.
-- **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
-  Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
+- Errors zoom onto the meter and stay in the hint bar (`COIN BOX NOTICE …`) until you step back.
+- **Gas:** Shinami pays all of it. Deposits go through `POST /sponsor-deposit`; bets, claims and the coin return go
+  through `POST /tx`. Players need only USDC, never SUI.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
 
 ## Sound
@@ -291,14 +283,14 @@ cool, so shadows and lit sides do not look alike.
 
 The warm set:
 
-| Token                         | Job                                                 |
-| ----------------------------- | --------------------------------------------------- |
-| `--soot`, `--char`, `--grime` | The room: darkness, surfaces, dirt.                 |
-| `--rust`, `--rust-deep`       | Rust, wood, metal, the OK key.                      |
-| `--blood`, `--blood-deep`     | Death, REC, the remote's LED.                       |
-| `--sulfur`                    | Light, case file numbers, the B key, highlights.    |
-| `--bone`                      | Text on the TV, the A key.                          |
-| `--enamel`                    | The Sui logo only: old, chipped blue enamel.        |
+| Token                         | Job                                              |
+| ----------------------------- | ------------------------------------------------ |
+| `--soot`, `--char`, `--grime` | The room: darkness, surfaces, dirt.              |
+| `--rust`, `--rust-deep`       | Rust, wood, metal, the OK key.                   |
+| `--blood`, `--blood-deep`     | Death, REC, the remote's LED.                    |
+| `--sulfur`                    | Light, case file numbers, the B key, highlights. |
+| `--bone`                      | Text on the TV, the A key.                       |
+| `--enamel`                    | The Sui logo only: old, chipped blue enamel.     |
 
 `--cold` is only for the ghost in the logo.
 
