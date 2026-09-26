@@ -160,8 +160,8 @@ async function readText(
 
 /**
  * Read look/brief/injuries/status for each subname from Sepolia ENS.
- * Fail closed on missing ENS_LABEL / SEPOLIA_RPC_URL or a blank look/brief.
- * Only returns cards whose status is not `dead`.
+ * Fail closed on missing ENS_LABEL / SEPOLIA_RPC_URL, a blank look/brief, or a
+ * status that is `dead` or not a known value.
  */
 export async function loadLivingCardsFromEns(
   subnames: readonly string[],
@@ -222,10 +222,16 @@ export async function loadLivingCardsFromEns(
         `${trimmed}: brief text record is blank. Refusing to narrate without a brief.`,
       );
     }
-    const status = statusRaw.trim() === "" ? "alive" : statusRaw.trim();
+    // Blank status means never fought; the ENS roster scripts treat it as living too.
+    const status = statusRaw.trim();
     if (status === "dead") {
       throw new Error(
         `${trimmed}: ENS status is dead. Fight job requires a living card.`,
+      );
+    }
+    if (status !== "" && status !== "alive") {
+      throw new Error(
+        `${trimmed}: ENS status must be "alive", "dead", or blank. Got ${JSON.stringify(statusRaw)}.`,
       );
     }
     cards.push({

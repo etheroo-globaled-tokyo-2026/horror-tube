@@ -109,7 +109,6 @@ export class GameLoop {
   /** Set when the fight's video duration has elapsed. */
   private playbackFinishedGate = false;
   private holdingCopyApplied = false;
-  private fightJobInFlight = false;
 
   constructor(options: GameLoopOptions) {
     if (options.ensLabels.length < 2) {
@@ -762,20 +761,17 @@ export class GameLoop {
   /**
    * Fire-and-forget fight generation for the open bout. Success → attachAgentResult,
    * setOutcome, setVideoReady. Failure → failVideo (refund / cancel / leave bet).
+   * Called once per bet open; a result is applied only to the bout that started it.
    */
   private kickFightJob(): void {
-    if (this.fightJobInFlight) {
-      return;
-    }
-    this.fightJobInFlight = true;
-    void this.runFightJob()
-      .catch((cause: unknown) => {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        console.error(`fight job failed unexpectedly: ${detail}`);
-      })
-      .finally(() => {
-        this.fightJobInFlight = false;
-      });
+    void this.runFightJob().catch((cause: unknown) => {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(`fight job failed unexpectedly: ${detail}`);
+    });
+  }
+
+  private isSameBetBout(onChainBattleId: bigint): boolean {
+    return this.phase === "bet" && this.onChainBattleId === onChainBattleId;
   }
 
   private async runFightJob(): Promise<void> {
@@ -807,7 +803,8 @@ export class GameLoop {
         }
         return label;
       });
-    const battleId = String(this.onChainBattleId);
+    const onChainBattleId = this.onChainBattleId;
+    const battleId = String(onChainBattleId);
     const priorFrameUrl = this.frameUrl;
     console.log(
       `fight job start round=${String(this.round)} battleId=${battleId} fighters=${fighterA},${fighterB} priorFrame=${priorFrameUrl === null ? "none" : "set"}`,
@@ -821,13 +818,19 @@ export class GameLoop {
         priorFrameUrl,
         round: this.round,
       });
-      if (this.phase !== "bet") {
+      if (!this.isSameBetBout(onChainBattleId)) {
         console.log(
-          `fight job finished after phase left bet (phase=${this.phase}); ignoring result.`,
+          `fight job battleId=${battleId} finished after its bout ended (phase=${this.phase} currentBattleId=${String(this.onChainBattleId)}); ignoring result.`,
         );
         return;
       }
       await this.attachAgentResult(result.insert);
+      if (!this.isSameBetBout(onChainBattleId)) {
+        console.log(
+          `fight job battleId=${battleId} bout ended while saving the agent result (phase=${this.phase}); ignoring result.`,
+        );
+        return;
+      }
       this.setOutcome(result.winnerSide, result.damage);
       this.setVideoReady(result.videoUrl, result.durationMs, result.frameUrl);
       console.log(
@@ -835,9 +838,9 @@ export class GameLoop {
       );
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      if (this.phase !== "bet") {
+      if (!this.isSameBetBout(onChainBattleId)) {
         console.error(
-          `fight job error after phase left bet (phase=${this.phase}): ${detail}`,
+          `fight job battleId=${battleId} failed after its bout ended (phase=${this.phase} currentBattleId=${String(this.onChainBattleId)}): ${detail}`,
         );
         return;
       }

@@ -9,7 +9,7 @@ import {
 
 import type { BattleBettingPorts } from "../src/battle-betting.js";
 import { readSkipBattleSettlement } from "../src/env.js";
-import type { FightJobRequest } from "../src/fight-job.js";
+import type { FightJobRequest, FightJobResult } from "../src/fight-job.js";
 import {
   readGameLoopConfig,
   readRosterEnsLabels,
@@ -756,6 +756,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/job.mp4");
     assert.equal(loop.getState().frameUrl, "https://cdn.example/frames/job.jpg");
     assert.equal(loop.getState().error, null);
+    assert.equal(loop.getState().phase, "bet", "bet stays open until BET_MIN_SECONDS");
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
@@ -800,6 +801,62 @@ describe("GameLoop phases", () => {
       () => loop.bet(0, 1),
       /bet is only allowed in the bet phase|video failure/u,
     );
+  });
+
+  it("a late fight job result is not applied to the next bout", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const requests: FightJobRequest[] = [];
+    const pending: Array<(result: FightJobResult) => void> = [];
+    let n = 0;
+    const loop = new GameLoop({
+      config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: (request) => {
+        requests.push(request);
+        return new Promise((resolve) => pending.push(resolve));
+      },
+      skipSettlement: true,
+      verifyWorldId: async () => {
+        n += 1;
+        return { nullifier: `late-${String(n)}` };
+      },
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    now += baseConfig.videoTimeoutSeconds * 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+
+    loop.resetFromOver();
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    await flushFightJob();
+    assert.deepEqual(
+      requests.map((r) => r.battleId),
+      ["1", "2"],
+    );
+
+    pending[0]?.({
+      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: "1" }),
+      winnerSide: 0,
+      damage: 1,
+      videoUrl: "https://cdn.example/videos/late.mp4",
+      durationMs: 1_000,
+      frameUrl: "https://cdn.example/frames/late.jpg",
+    });
+    await flushFightJob();
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().videoUrl, null);
+    assert.equal(loop.getState().error, null);
   });
 
   it("stage 2 fight job receives priorFrameUrl for image-to-video", async () => {
