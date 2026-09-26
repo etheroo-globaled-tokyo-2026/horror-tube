@@ -12,15 +12,14 @@ const NumberPair = v.tuple([v.number(), v.number()]);
 
 const RoundStateSchema = v.object({
   round: v.number(),
-  phase: v.picklist(["waiting", "pick", "vote", "countdown", "bet", "fight", "settle", "over"]),
+  phase: v.picklist(["waiting", "pick", "bet", "fight", "settle", "over"]),
   endsAt: v.nullable(v.number()),
   champion: v.nullable(v.number()),
-  voters: v.number(),
-  quorum: v.number(),
-  votes: NumberPair,
-  tally: v.nullable(NumberPair),
   fighters: v.nullable(NumberPair),
   selectable: v.array(v.number()),
+  votes: v.array(v.number()),
+  voters: v.number(),
+  quorum: v.number(),
   battleId: v.nullable(v.string()),
   poolId: v.nullable(v.string()),
   pool: NumberPair,
@@ -30,10 +29,10 @@ const RoundStateSchema = v.object({
   bettingClosesAt: v.nullable(v.number()),
   frameUrl: v.nullable(v.string()),
   error: v.nullable(v.string()),
+  bookError: v.nullable(v.string()),
   bots: v.array(
     v.object({
       address: v.string(),
-      pick: v.nullable(v.number()),
       bet: v.nullable(
         v.object({ side: v.picklist([0, 1]), units: v.number(), digest: v.string() }),
       ),
@@ -168,65 +167,36 @@ function storedSession(store: SessionStore): string {
   return session;
 }
 
-async function postWithSession(
-  path: "/start" | "/next-fighter" | "/vote" | "/playback-start",
-  payload: Record<string, never> | { battleId: string } | { pick: number } | { fighter: number },
-  store: SessionStore,
+export async function postVote(
+  fighter: number,
+  store: SessionStore = localStorage,
 ): Promise<ServerRoundState> {
   const session = storedSession(store);
-  const res = await fetch(path, {
+  const res = await fetch("/vote", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${session}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ fighter }),
   });
   const parsed = v.safeParse(SessionPostResponse, await res.json());
   if (!parsed.success) {
     throw new Error(
-      `POST ${path} sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
+      `POST /vote sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
     );
   }
   const body = parsed.output;
   if (!res.ok || body.ok === false) {
     throw new SessionPostError(
-      path,
+      "/vote",
       res.status,
       body.code,
-      body.error ?? `POST ${path} failed: HTTP ${String(res.status)}`,
+      body.error ?? `POST /vote failed: HTTP ${String(res.status)}`,
     );
   }
   if (body.state === undefined) {
-    throw new Error(`POST ${path} response missing state.`);
+    throw new Error(`POST /vote response missing state.`);
   }
   return body.state;
-}
-
-export function postStart(
-  fighter: number,
-  store: SessionStore = localStorage,
-): Promise<ServerRoundState> {
-  return postWithSession("/start", { fighter }, store);
-}
-
-export function postNextFighter(
-  fighter: number,
-  store: SessionStore = localStorage,
-): Promise<ServerRoundState> {
-  return postWithSession("/next-fighter", { fighter }, store);
-}
-
-export function postVote(
-  pick: number,
-  store: SessionStore = localStorage,
-): Promise<ServerRoundState> {
-  return postWithSession("/vote", { pick }, store);
-}
-
-export function postPlaybackStart(
-  battleId: string,
-  store: SessionStore = localStorage,
-): Promise<ServerRoundState> {
-  return postWithSession("/playback-start", { battleId }, store);
 }

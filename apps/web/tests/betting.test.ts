@@ -9,6 +9,7 @@ import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui
 import * as v from "valibot";
 
 import {
+  betOutcome,
   canBet,
   canCollect,
   fetchBettingIds,
@@ -232,15 +233,19 @@ describe("winnings", () => {
   const open = ticket(`0x${"d4".repeat(32)}`, OPEN_POOL, 0n, 5_000_000n);
 
   it("sums payouts over finished pools and leaves open pools alone", () => {
-    const claim = tally([won, lostEarlier, open], pools, POOL);
+    const claim = tally([won, lostEarlier, open], pools);
     assert.deepEqual(claim.tickets, [won, lostEarlier]);
     assert.equal(claim.units, payout(round, won) + payout(earlier, lostEarlier));
   });
 
-  it("counts lost stake only on the round's pool", () => {
-    assert.equal(tally([won, lostEarlier], pools, POOL).lost, 0n);
-    assert.equal(tally([lostNow, lostEarlier], pools, POOL).lost, lostNow.stake);
-    assert.equal(tally([lostEarlier, open], pools, OPEN_POOL).lost, 0n);
+  it("calls a bet at settle the way the pool will pay it", () => {
+    const usdc = (units: bigint): number => Number(units) / 1_000_000;
+    const totals: [number, number] = [Number(round.totals[0]), Number(round.totals[1])];
+    const call = (t: Ticket, winner: 0 | 1, pool = totals) =>
+      betOutcome({ side: Number(t.side), amt: usdc(t.stake) }, winner, pool, Number(round.feeBps));
+    assert.deepEqual(call(won, 0), { kind: "won", usdc: usdc(payout(round, won)) });
+    assert.deepEqual(call(lostNow, 0), { kind: "lost", usdc: usdc(lostNow.stake) });
+    assert.deepEqual(call(won, 0, [totals[0], 0]), { kind: "refund", usdc: usdc(won.stake) });
   });
 
   it("is checked on every phase change and on every settle update", () => {
