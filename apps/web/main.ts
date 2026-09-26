@@ -6,16 +6,13 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import {
   $,
-  DUR,
   S,
   char,
-  countdown,
   face,
   usd,
   film,
   hooks,
   living,
-  mmss,
   newSeason,
   odds,
   pick,
@@ -1816,7 +1813,6 @@ function drawTV(): void {
           COL.bloodDeep,
         );
       }
-      text(`closes in ${mmss(S.t)}`, 450, 20, COL.rustDeep, "DotGothic16", 400);
     } else if (S.phase === "fight") {
       if (!vidMode && S.frame % 28 >= 22) {
         fill(COL.soot);
@@ -1918,12 +1914,12 @@ function hintText(): void {
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
+          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY · NEXT ${b("ENTER")}`
           : W8.step === "done" && S.noteKind === "bad"
             ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
             : W8.step === "done"
               ? "WARMING UP"
-              : ""
+              : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK TWO · NUMBER ${b("OK")}`
         : S.phase === "bet" && !S.bet && S.credit > 0
@@ -1933,8 +1929,8 @@ function hintText(): void {
             : S.phase === "over"
               ? `AGAIN ${b("OK")}`
               : S.credit <= 0
-                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")}`
-                : "";
+                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -2078,21 +2074,22 @@ function sign(): void {
     if (W8.ink < 1) return;
     clearInterval(inkTimer);
     step("scan");
-    scanTimer = window.setTimeout(verified, 2800);
   }, 30);
 }
-let scanTimer = 0;
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
-  setTimeout(
-    () =>
-      cut(() => {
-        enterRoom();
-        walkTo(0);
-      }),
-    1400,
-  );
+}
+function nextGateStep(): void {
+  if (W8.step === "scan") verified();
+  else if (W8.step === "signed")
+    cut(() => {
+      enterRoom();
+      walkTo(0);
+    });
+  else if (W8.step === "off") step("burn");
+  else if (W8.step === "burn") step("dark");
+  else if (W8.step === "dark") retry();
 }
 function enterRoom(): void {
   step("done");
@@ -2168,7 +2165,6 @@ const WALK: WalkStep[] = [
 ];
 function walkTo(n: number): void {
   walk = n < WALK.length ? n : -1;
-  countdown.hold = walk >= 0;
   hintText();
 }
 function zoom(at: CoinBoxView | null, pick = false): void {
@@ -2202,10 +2198,7 @@ $("#hint").addEventListener("click", (e) => {
 });
 function noOrb(): void {
   if (W8.step !== "read" && W8.step !== "scan") return;
-  clearTimeout(scanTimer);
   step("off");
-  setTimeout(() => step("burn"), LOW ? 0 : 500);
-  setTimeout(() => step("dark"), LOW ? 0 : 3100);
 }
 function retry(): void {
   cut(() => {
@@ -2285,7 +2278,7 @@ addEventListener(
     if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
-      else if (k === "enter" && W8.step === "dark") retry();
+      else if (k === "enter") nextGateStep();
       else if (k === "x") noOrb();
       else return;
       e.preventDefault();
@@ -2425,9 +2418,8 @@ renderer.setAnimationLoop(() => {
   ambience(tvNoise, flick, lightsOut);
   const ms = performance.now();
   if (S.phase === "bet" && ms >= nextBeat) {
-    const k = Math.max(0, Math.min(1, 1 - S.t / DUR.bet));
-    sfx.beat(0.5 + 0.5 * k);
-    nextBeat = ms + 1000 - 520 * k;
+    sfx.beat(0.75);
+    nextBeat = ms + 740;
   }
   if (S.phase === "fight" && !vidMode && S.frame !== lastFrame && S.frame % 12 === 9) sfx.hit();
   lastFrame = S.frame;
@@ -2440,7 +2432,7 @@ renderer.setAnimationLoop(() => {
 
 const PHASE_SOUND = new Map<Phase, () => void>([
   ["vote", sfx.bell],
-  ["story", () => sfx.type(DUR.story)],
+  ["story", () => sfx.type(4)],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
