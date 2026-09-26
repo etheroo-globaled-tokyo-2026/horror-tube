@@ -738,7 +738,7 @@ def build_parser() -> argparse.ArgumentParser:
     redeploy_p = sub.add_parser(
         "redeploy",
         help=(
-            "Propose the 12 cast fighters from live Fandom pages, upload face icons, "
+            "Propose the 10 cast fighters from live Fandom pages, upload face icons, "
             "and register them with display_name, injury_places, and injuries."
         ),
     )

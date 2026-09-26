@@ -165,10 +165,6 @@
     "Vest pockets emptied",
     "boot-leg cut so flashlight and ammo cannot reach the next monster"
   ],
-  "myers": [
-    "Mask cracked open",
-    "knife hand ruined so the Shape loses stealth silhouette"
-  ],
   "jason": [
     "Hockey mask shattered",
     "machete arm severed so the silhouette reads as exposed and slowed"
@@ -180,10 +176,6 @@
   "leatherface": [
     "Skin mask torn away",
     "chainsaw seized so he fights bare-faced and tool-less"
-  ],
-  "ghostface": [
-    "Voice-changer smashed",
-    "mask ripped off so the wearer is exposed mid-fight"
   ],
   "chucky": [
     "Doll body dismembered",

@@ -120,7 +120,7 @@ Writes a normalized import plan. Does not submit a transaction.
 
 `wipe` unregisters every character subname under `ENS_LABEL`. It does not read text records and it does not remove the parent `.eth` name.
 
-`redeploy` proposes the 12 fighters in `packages/roster/roster/cast.json` from live Fandom pages, uploads face icons, and registers them with `display_name`, `injury_places`, and `injuries`. It stops if a page has no look or brief section. It does not invent those fields.
+`redeploy` proposes the 10 fighters in `packages/roster/roster/cast.json` from live Fandom pages, uploads face icons, and registers them with `display_name`, `injury_places`, and `injuries`. It stops if a page has no look or brief section. It does not invent those fields.
 
 ```bash
 python3 -m roster wipe
