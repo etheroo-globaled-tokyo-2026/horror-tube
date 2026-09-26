@@ -609,11 +609,16 @@ function drawCaseFile(ch: Character): void {
   g.fillStyle = COL.bone;
   g.font = "20px DotGothic16";
   wrap(g, ch.injuries || "None recorded.", 32, y + 26, W - 64, 26);
+  const booking =
+    (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") &&
+    S.selectable.includes(ch.id);
   const [footer, color] = !ch.alive
     ? ["THIS ROOM IS EMPTY", COL.rust]
-    : S.champion !== null && ch.id === S.champion
-      ? ["THE SURVIVOR STAYS ON", COL.rust]
-      : ["CLR TO GO BACK", COL.sulfur];
+    : booking
+      ? ["OK", COL.sulfur]
+      : S.champion !== null && ch.id === S.champion
+        ? ["THE SURVIVOR STAYS ON", COL.rust]
+        : ["CLR TO GO BACK", COL.sulfur];
   g.textAlign = "center";
   g.fillStyle = color;
   g.font = "700 22px Silkscreen";
@@ -744,7 +749,7 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (T.buf && S.phase !== "waiting" && S.phase !== "pick") {
+  } else if (T.buf) {
     fill(COL.soot);
     noise = 0.14;
     const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
@@ -769,7 +774,7 @@ export function drawTV(): void {
       text("TYPE THE NUMBER  ·  OK", Math.min(H - 24, end + 28), 24, COL.sulfur);
     } else {
       const ids = S.selectable.filter((id) => S.chars[id] !== undefined);
-      text(S.phase === "pick" ? "PICK THE NEXT FIGHTER" : "PICK ONE FIGHTER", 56, 28, COL.sulfur);
+      text("PICK ONE FIGHTER", 56, 28, COL.sulfur);
       if (S.phase === "waiting" && ids.length > 0) {
         text("THE OTHER IS AT RANDOM", 96, 18, COL.bone, "DotGothic16", 400);
       }
@@ -789,8 +794,7 @@ export function drawTV(): void {
         ids.forEach((id, i) => {
           const resident = S.chars[id];
           if (resident === undefined) return;
-          const chosen = T.buf.length === 2 && Number(T.buf) - 1 === id;
-          g.fillStyle = chosen ? COL.sulfur : COL.bone;
+          g.fillStyle = COL.bone;
           g.fillText(
             `${num(id + 1)}  ${resident.short}`,
             i < 8 ? 36 : 340,
