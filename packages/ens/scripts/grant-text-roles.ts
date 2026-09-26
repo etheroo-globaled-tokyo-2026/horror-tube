@@ -6,6 +6,8 @@ import {
   type PublicClient,
   type Transport,
   encodeFunctionData,
+  keccak256,
+  stringToBytes,
 } from "viem";
 
 import { permissionedResolverAbi } from "./abis.js";
@@ -17,9 +19,15 @@ export const REGISTER_BOOTSTRAP_TEXT_KEYS = [
   "injury_places",
 ] as const;
 
+export const ROLE_SET_TEXT = 1n << 4n;
+
+export function textKeyResource(key: string): bigint {
+  return BigInt(keccak256(stringToBytes(key)));
+}
+
 type TxClient = Pick<
   PublicClient<Transport, Chain | undefined, Account | undefined>,
-  "simulateContract" | "waitForTransactionReceipt"
+  "simulateContract" | "waitForTransactionReceipt" | "readContract"
 >;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,7 +72,23 @@ export async function grantTextSetterRoles(args: {
       args: [setter, account],
       account: walletClient.account,
     });
-    assertWritePermissionGranted(result, key, account);
+    if (result !== true) {
+      // Already holding the role returns false and changes nothing.
+      const already = await publicClient.readContract({
+        address: resolver,
+        abi: permissionedResolverAbi,
+        functionName: "hasRoles",
+        args: [textKeyResource(key), ROLE_SET_TEXT, account],
+      });
+      if (already === true) {
+        console.log(
+          `grantSetterRoles skip key=${key} account=${account}: already holds ROLE_SET_TEXT`,
+        );
+        granted.push(false);
+        continue;
+      }
+      assertWritePermissionGranted(result, key, account);
+    }
     const hash = await walletClient.writeContract(request);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") {
