@@ -73,6 +73,75 @@ const verifySuccessSchema = z.object({
   ),
 });
 
+const portalErrorSchema = z.object({
+  code: z.string().optional(),
+  detail: z.string().optional(),
+  attribute: z.string().nullish(),
+});
+
+const CONFIG_ERROR_CODES = new Set(["environment_not_allowed", "app_not_migrated"]);
+const CONFIG_ERROR_STATUSES = new Set([401, 403, 404]);
+
+export type PortalFault = "misconfigured" | "unavailable" | "rejected";
+
+export class WorldIdPortalError extends Error {
+  readonly fault: PortalFault;
+  readonly detail: string;
+  constructor(fault: PortalFault, message: string, detail: string) {
+    super(message);
+    this.name = "WorldIdPortalError";
+    this.fault = fault;
+    this.detail = detail;
+  }
+}
+
+function readPortalError(text: string): z.output<typeof portalErrorSchema> {
+  try {
+    const parsed = portalErrorSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+}
+
+function configFix(
+  environment: WorldIdEnvironment,
+  code: string | undefined,
+  status: number,
+): string {
+  if (code === "app_not_migrated") {
+    return "Migrate the Developer Portal app behind WORLD_ID_RP_ID to World ID 4.0.";
+  }
+  if (status === 404) {
+    return "Set WORLD_ID_RP_ID to the rp_id of an active Developer Portal app.";
+  }
+  if (environment === "staging") {
+    return "Renew WORLD_ID_STAGING_TOKEN: open a staging verification window in the Developer Portal and set its token, or set WORLD_ID_ENVIRONMENT to production or sandbox.";
+  }
+  return `Set WORLD_ID_ENVIRONMENT to an environment the Developer Portal app allows (now ${environment}).`;
+}
+
+function portalRejection(
+  rpId: string,
+  environment: WorldIdEnvironment,
+  status: number,
+  text: string,
+): WorldIdPortalError {
+  const failed = `World ID verify failed for rp_id=${rpId}: HTTP ${String(status)} body=${text}`;
+  if (status >= 500) return new WorldIdPortalError("unavailable", failed, `HTTP ${String(status)}`);
+  const portal = readPortalError(text);
+  const detail = portal.detail ?? portal.code ?? `HTTP ${String(status)}`;
+  const ours =
+    CONFIG_ERROR_STATUSES.has(status) ||
+    (portal.code !== undefined && CONFIG_ERROR_CODES.has(portal.code));
+  if (!ours) return new WorldIdPortalError("rejected", failed, detail);
+  return new WorldIdPortalError(
+    "misconfigured",
+    `${failed} This server's World ID configuration was refused, not the player's proof. ${configFix(environment, portal.code, status)}`,
+    detail,
+  );
+}
+
 export function parseProofOfHumanResult(input: IdkitResultJson): ProofOfHumanResult {
   const parsed = proofOfHumanResultSchema.safeParse(input);
   if (!parsed.success) {
@@ -129,18 +198,18 @@ export async function verifyProofOfHuman(args: {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `World ID verify failed for rp_id=${rpId}: HTTP ${String(response.status)} body=${text}`,
-    );
+    throw portalRejection(rpId, args.environment, response.status, text);
   }
 
   let json: unknown;
   try {
     json = JSON.parse(text);
   } catch (error) {
-    throw new Error(
-      `World ID verify returned non-JSON for rp_id=${rpId}: HTTP ${String(response.status)} body=${text}`,
-      { cause: error },
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new WorldIdPortalError(
+      "unavailable",
+      `World ID verify returned non-JSON for rp_id=${rpId}: HTTP ${String(response.status)} (${reason}) body=${text}`,
+      `HTTP ${String(response.status)} non-JSON`,
     );
   }
   const verified = verifySuccessSchema.safeParse(json);
