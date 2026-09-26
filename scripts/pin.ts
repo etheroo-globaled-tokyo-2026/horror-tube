@@ -22,6 +22,12 @@ const REQUIRED_NAMES = [
   "StandardRentPriceOracle",
 ] as const;
 
+const SUBNAME_REQUIRED_NAMES = [
+  "UserRegistryImpl",
+  "VerifiableFactory",
+  "PermissionedResolverImpl",
+] as const;
+
 const BANNED_OLD_ADDRESSES = [
   "0xdce5205a553573ffd47629327dddf36186022ffa",
   "0x7e4b2d59938930168024201752ee5503df402303",
@@ -33,6 +39,12 @@ export type PinAddresses = {
   MockDAI: `0x${string}`;
   MockUSDC: `0x${string}`;
   StandardRentPriceOracle: `0x${string}`;
+};
+
+export type SubnamePinAddresses = PinAddresses & {
+  UserRegistryImpl: `0x${string}`;
+  VerifiableFactory: `0x${string}`;
+  PermissionedResolverImpl: `0x${string}`;
 };
 
 function fail(message: string): never {
@@ -54,7 +66,7 @@ function parsePinnedAddress(markdown: string, name: string): `0x${string}` {
   return getAddress(match[1]);
 }
 
-export function loadPinAddresses(): PinAddresses {
+function readPinMarkdown(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const markdown = readFileSync(
     join(here, "pin", "sepolia-addresses.md"),
@@ -75,13 +87,28 @@ export function loadPinAddresses(): PinAddresses {
     }
   }
 
+  return markdown;
+}
+
+export function loadPinAddresses(): PinAddresses {
+  const markdown = readPinMarkdown();
   const addresses = {} as PinAddresses;
   for (const name of REQUIRED_NAMES) {
     const address = parsePinnedAddress(markdown, name);
     rejectBannedAddress(name, address);
     addresses[name] = address;
   }
+  return addresses;
+}
 
+export function loadSubnamePinAddresses(): SubnamePinAddresses {
+  const markdown = readPinMarkdown();
+  const addresses = {} as SubnamePinAddresses;
+  for (const name of [...REQUIRED_NAMES, ...SUBNAME_REQUIRED_NAMES]) {
+    const address = parsePinnedAddress(markdown, name);
+    rejectBannedAddress(name, address);
+    addresses[name] = address;
+  }
   return addresses;
 }
 

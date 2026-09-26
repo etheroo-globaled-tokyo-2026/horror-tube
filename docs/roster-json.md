@@ -1,12 +1,23 @@
-# Roster JSON import and removal plans
+# Roster JSON, plans, and character subname register/unregister
 
-Part of #23: propose character sheets from Fandom, validate JSON, and emit
-**plans**. This does **not** read chain state or send register/unregister
-transactions. On-chain subname register/unregister is not implemented yet.
+Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
+and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
+
+| Command | Chain? | Role |
+| --- | --- | --- |
+| `propose` | no | Build roster JSON from Fandom `api.php` |
+| `import` | no | Validate JSON and write an import **plan** (`chain_writes: false`) |
+| `plan-remove` | no | Validate labels and write a removal **plan** (`chain_writes: false`) |
+| `register` | **yes** | Read chain text/status, then `UserRegistry.register` + `setText` |
+| `remove` | **yes** | `UserRegistry.unregister` for each label |
+
+`import` / `plan-remove` never send transactions. `register` / `remove` always hit
+chain (after validating input). Do not confuse them.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
-`label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL` fails with an error that
-names the variable. `propose` does not require `ENS_LABEL` and does not call ENS.
+`label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
+`PRIVATE_KEY` fails with an error that names the variable. The CLI loads `.env`
+via `python-dotenv` when present. `propose` does not require ENS env vars.
 
 ## Schemas
 
@@ -47,64 +58,23 @@ Install deps once:
 
 ```bash
 python3 -m pip install -r roster/requirements.txt
+pnpm install
 ```
 
 ### propose
 
 Reads N pages through `https://<wiki>.fandom.com/api.php?action=parse` and
-writes proposed roster JSON that matches the schemas above. It never fetches
-`/wiki/` HTML (Fandom returns 403) and never falls through to another site.
-`--n` must equal the number of sources. A `/wiki/<Title>` URL is only parsed for
-host and title.
-
-The command fails, naming the page, when:
-
-- the page is a disambiguation page (`disambiguation` page property or a
-  `*Disambiguation*` category)
-- there is no `Appearance` / `Physical Appearance` section
-- there is no `Powers and Abilities` section
-- a section has no paragraph or list text, or `api.php` returns an error
+writes proposed roster JSON. It never fetches `/wiki/` HTML and never falls
+through to another site. `--n` must equal the number of sources.
 
 ```bash
-# One character (full URL)
 python3 -m roster propose \
   --n 1 \
   --source 'https://villains.fandom.com/wiki/Pinhead_(Hellraiser)' \
   --out /tmp/pinhead.json
-
-# Bulk list of N (titles need --wiki)
-python3 -m roster propose \
-  --n 2 \
-  --wiki villains.fandom.com \
-  --source 'Pinhead (Hellraiser)' \
-  --source 'Michael Myers (Halloween)' \
-  --out /tmp/roster.json
 ```
 
-`--sources-file` takes one URL or title per line (`#` comments allowed).
-
-Field rules for proposed sheets:
-
-- `label`: first lowercase word of the page title, parenthetical dropped
-- `look`: first sentence of the Appearance section
-- `brief`: first sentence of the Powers and Abilities section
-- `injuries` / `status` / `icon`: always `""`. Icons are Spaces CDN URLs set
-  separately.
-
-Duplicate labels across the N proposed characters are an error.
-
-Pass the output file straight into `import`:
-
-```bash
-ENS_LABEL=horrortube python3 -m roster import \
-  --input /tmp/roster.json \
-  --out /tmp/import-plan.json
-```
-
-Dead/injured restore behavior is owned by `import` (`--on-existing`); `propose`
-does not silently restore names.
-
-### import
+### import (plan only)
 
 ```bash
 ENS_LABEL=horrortube python3 -m roster import \
@@ -112,51 +82,43 @@ ENS_LABEL=horrortube python3 -m roster import \
   --out /tmp/import-plan.json
 ```
 
-- Validates JSON against the schemas and extra rules.
-- Fails on duplicate `label` values inside the input file.
-- Writes a normalized import plan JSON describing the intended ENS register/update
-  action per character. Does not submit a transaction.
+Writes a normalized import plan. Does not submit a transaction.
 
-#### Existing dead / injured names
+### register (sends transactions)
 
-Chain reads are **not** implemented here. To exercise dead/injured handling, pass an
-optional second file with the same character schema:
+Ensures the parent has a UserRegistry subregistry and PermissionedResolver
+(deployed via pin `VerifiableFactory` if missing), reads chain status/text for
+each label, then registers and writes `look` / `brief` / `injuries` / `status` /
+`icon` via `setText`.
 
 ```bash
-ENS_LABEL=horrortube python3 -m roster import \
-  --input incoming.json \
-  --existing already-known.json \
-  --on-existing skip \
-  --out /tmp/import-plan.json
+python3 -m roster register --input /tmp/one-character.json
 ```
 
-If any label in `--input` appears in `--existing` with `status=dead` or a
-non-empty `injuries` string:
+If a label is already registered on chain, the command fails unless
+`--on-existing=skip` or `--on-existing=restore` is passed. Chain text records
+are the source of prior `status` / `injuries` (not only a local file).
 
-- Missing `--on-existing` is an **error** (no silent default).
-- `--on-existing=skip` omits that label from the plan and lists it under `skipped`.
-- `--on-existing=restore` puts the character in the plan with `status` cleared to
-  `""` and `injuries` taken from the **input file** as supplied (not invented).
+- `skip`: leave chain unchanged and report the label
+- `restore`: clear `status` to `""` and write `injuries` from the **input file**
+  (the file must include `injuries` explicitly)
 
-If `--existing` is omitted, the script does not pretend to know chain state.
-
-### remove
+### plan-remove (plan only)
 
 ```bash
-ENS_LABEL=horrortube python3 -m roster remove \
+ENS_LABEL=horrortube python3 -m roster plan-remove \
   --input labels.json \
   --out /tmp/remove-plan.json
 ```
 
-`labels.json` must be a JSON array of label strings, for example:
+### remove (sends transactions)
 
-```json
-["fixture-one", "fixture-two"]
+```bash
+python3 -m roster remove --input labels.json
 ```
 
-- Fails on duplicate labels in the list.
-- Writes a removal plan that describes unregister of each
-  `label.<ENS_LABEL>.eth`. Does not invent or send a transaction.
+`labels.json` is a JSON array of label strings. Sends `UserRegistry.unregister`
+for each. Use `plan-remove` if you only want the JSON plan.
 
 ## Tests
 
