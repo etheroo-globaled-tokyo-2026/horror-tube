@@ -17,6 +17,7 @@ import {
   stakeWeiForUnits,
   type BattleBettingPorts,
 } from "../battle-betting.js";
+import type { FightJobRunner } from "../fight-job.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import {
@@ -48,6 +49,11 @@ export type GameLoopOptions = {
   chainWritePorts: ChainWritePorts;
   /** Sepolia BattleBetting openBattle / placeBet. Required — no in-memory-only bet path. */
   battleBetting: BattleBettingPorts;
+  /**
+   * Starts when betting opens. Calls setOutcome / setVideoReady on success,
+   * failVideo on failure. Tests inject a mock; production uses createFightJobRunner.
+   */
+  fightJob: FightJobRunner;
   skipSettlement: boolean;
 };
 
@@ -102,6 +108,7 @@ export class GameLoop {
   private readonly battleQueueStore: BattleQueueStore;
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
+  private readonly fightJob: FightJobRunner;
   private readonly skipSettlement: boolean;
   private readonly listeners = new Set<Listener>();
 
@@ -156,6 +163,7 @@ export class GameLoop {
     this.battleQueueStore = options.battleQueueStore;
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
+    this.fightJob = options.fightJob;
     this.skipSettlement = options.skipSettlement;
     this.chars = buildChars(options.ensLabels, options.ensStatuses);
     this.initialAlive = this.chars.map((c) => c.alive);
@@ -530,6 +538,7 @@ export class GameLoop {
     this.endsAt = null;
     await this.openOnChainBattle(now);
     this.emit();
+    this.kickFightJob();
   }
 
   private rankCandidates(): number[] {
@@ -751,6 +760,7 @@ export class GameLoop {
     this.endsAt = null;
     await this.openOnChainBattle(now);
     this.emit();
+    this.kickFightJob();
   }
 
   /**
@@ -782,6 +792,96 @@ export class GameLoop {
     console.log(
       `BattleBetting.openBattle battleId=${String(this.onChainBattleId)} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
     );
+  }
+
+  /**
+   * Fire-and-forget fight generation for the open bout. Success → attachAgentResult,
+   * setOutcome, setVideoReady. Failure → failVideo (refund / cancel / leave bet).
+   * Called once per bet open; a result is applied only to the bout that started it.
+   */
+  private kickFightJob(): void {
+    void this.runFightJob().catch((cause: unknown) => {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(`fight job failed unexpectedly: ${detail}`);
+    });
+  }
+
+  private isSameBetBout(onChainBattleId: bigint): boolean {
+    return this.phase === "bet" && this.onChainBattleId === onChainBattleId;
+  }
+
+  private async runFightJob(): Promise<void> {
+    if (this.phase !== "bet") {
+      return;
+    }
+    if (this.fighters === null || this.onChainBattleId === null) {
+      await this.failVideo(
+        "Fight job cannot start: fighters or on-chain battle id missing after bet open.",
+      );
+      return;
+    }
+    const fighterA = this.ensLabels[this.fighters[0]];
+    const fighterB = this.ensLabels[this.fighters[1]];
+    if (fighterA === undefined || fighterB === undefined) {
+      await this.failVideo(
+        `Fight job cannot start: missing ENS labels for fighters ${JSON.stringify(this.fighters)}.`,
+      );
+      return;
+    }
+    const livingSubnames = this.chars
+      .filter((c) => c.alive)
+      .map((c) => {
+        const label = this.ensLabels[c.id];
+        if (label === undefined) {
+          throw new Error(
+            `Fight job: character id ${String(c.id)} has no ENS label.`,
+          );
+        }
+        return label;
+      });
+    const onChainBattleId = this.onChainBattleId;
+    const battleId = String(onChainBattleId);
+    const priorFrameUrl = this.frameUrl;
+    console.log(
+      `fight job start round=${String(this.round)} battleId=${battleId} fighters=${fighterA},${fighterB} priorFrame=${priorFrameUrl === null ? "none" : "set"}`,
+    );
+    try {
+      const result = await this.fightJob({
+        battleId,
+        fighterASubname: fighterA,
+        fighterBSubname: fighterB,
+        livingSubnames,
+        priorFrameUrl,
+        round: this.round,
+      });
+      if (!this.isSameBetBout(onChainBattleId)) {
+        console.log(
+          `fight job battleId=${battleId} finished after its bout ended (phase=${this.phase} currentBattleId=${String(this.onChainBattleId)}); ignoring result.`,
+        );
+        return;
+      }
+      await this.attachAgentResult(result.insert);
+      if (!this.isSameBetBout(onChainBattleId)) {
+        console.log(
+          `fight job battleId=${battleId} bout ended while saving the agent result (phase=${this.phase}); ignoring result.`,
+        );
+        return;
+      }
+      this.setOutcome(result.winnerSide, result.damage);
+      this.setVideoReady(result.videoUrl, result.durationMs, result.frameUrl);
+      console.log(
+        `fight job ready battleId=${battleId} winnerSide=${String(result.winnerSide)} video=${result.videoUrl}`,
+      );
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      if (!this.isSameBetBout(onChainBattleId)) {
+        console.error(
+          `fight job battleId=${battleId} failed after its bout ended (phase=${this.phase} currentBattleId=${String(this.onChainBattleId)}): ${detail}`,
+        );
+        return;
+      }
+      await this.failVideo(`Fight job failed: ${detail}`);
+    }
   }
 
   private enterVote(): void {
