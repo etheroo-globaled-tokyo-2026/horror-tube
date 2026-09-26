@@ -1,5 +1,5 @@
 variable "do_token" {
-  description = "DigitalOcean API token. Set only via TF_VAR_do_token for the terraform command (or rely on DIGITALOCEAN_TOKEN with the provider). Never put this in *.tfvars or commit it."
+  description = "DigitalOcean API token. Set only via TF_VAR_do_token from DO_KEY in the repo-root .env. Never put this in *.tfvars or commit it."
   type        = string
   sensitive   = true
 }
