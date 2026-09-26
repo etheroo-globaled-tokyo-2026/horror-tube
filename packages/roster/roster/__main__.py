@@ -368,7 +368,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(ON_EXISTING_VALUES),
         help=(
             "Required when --existing marks any input label as dead or injured. "
-            "skip: omit from plan. restore: clear status to \"\"; keep injuries from input."
+            "skip: omit from plan. restore: set status to \"alive\"; keep injuries from input."
         ),
     )
     import_p.set_defaults(func=cmd_import)
@@ -418,7 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Required when any input label is already registered on chain. "
             "skip: leave chain unchanged and report. "
-            "restore: clear status to \"\"; write injuries from the input file."
+            "restore: set status to \"alive\"; write injuries from the input file."
         ),
     )
     register_p.set_defaults(func=cmd_register)
