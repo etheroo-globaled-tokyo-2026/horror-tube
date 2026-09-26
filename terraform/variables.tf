@@ -221,11 +221,6 @@ variable "sui_operator_cap_id" {
   type        = string
 }
 
-variable "bet_fee_bps" {
-  description = "BET_FEE_BPS fee in basis points (house lock). Set via TF_VAR_bet_fee_bps from .env. Required; no default."
-  type        = string
-}
-
 variable "sui_operator_private_key" {
   description = "SUI_OPERATOR_PRIVATE_KEY (suiprivkey1…). Server-only. Set via TF_VAR_sui_operator_private_key from .env. Required; no default. Never commit."
   type        = string

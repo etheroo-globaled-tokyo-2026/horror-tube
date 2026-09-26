@@ -10,7 +10,6 @@ import {
   loadRepoDotenv,
   readGamePort,
   readStaticDir,
-  requiredEnv,
 } from "../src/env.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 
@@ -62,13 +61,6 @@ describe("GAME_PORT", () => {
         assert.match(err.message, /\.env\.example/u);
         return true;
       },
-    );
-  });
-
-  it("requiredEnv names the variable", () => {
-    assert.throws(
-      () => requiredEnv("GAME_PORT", {}),
-      /GAME_PORT is required\. Set it in \.env\. See \.env\.example\./u,
     );
   });
 });

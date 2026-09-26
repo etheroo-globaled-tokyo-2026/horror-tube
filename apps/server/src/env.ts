@@ -1,18 +1,6 @@
+import { requiredEnv } from "@horror-tube/betting";
 import { config as loadDotenv } from "dotenv";
 import { existsSync, statSync } from "node:fs";
-
-export function requiredEnv(
-  name: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const value = env[name];
-  if (value === undefined || value.trim() === "") {
-    throw new Error(
-      `${name} is required. Set it in .env. See .env.example.`,
-    );
-  }
-  return value;
-}
 
 /**
  * Load a `.env` file only when it exists (laptop checkout).

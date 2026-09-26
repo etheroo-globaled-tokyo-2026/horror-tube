@@ -2,6 +2,7 @@ import {
   createChain,
   createClient,
   createOperator,
+  getHouse,
   readBettingConfig,
   requiredEnv,
   readKeypair,
@@ -24,8 +25,8 @@ export type BattleBettingPorts = {
   cancelBattle: (battleId: string) => Promise<void>;
   /** Operator: end betting early. */
   closeBetting: (battleId: string) => Promise<void>;
-  /** Operator: settle with the winning side (0 or 1). */
-  settle: (battleId: string, side: 0 | 1) => Promise<void>;
+  /** Operator: settle with the winning side (0 or 1). Returns the settle transaction digest. */
+  settle: (battleId: string, side: 0 | 1) => Promise<string>;
   /** Derived pool object id for a battle. */
   poolIdFor: (battleId: string) => string;
   /** Live pool totals in USDC base units. Throws if the pool is missing. */
@@ -68,11 +69,30 @@ export function createBattleBettingPorts(
       await operator.closeBetting(battleId);
     },
     async settle(battleId, side) {
-      await operator.settle(battleId, side);
+      const digest = await operator.settle(battleId, side);
+      if (digest === null) {
+        throw new Error(
+          `Battle ${battleId}: pool ${operator.poolId(battleId)} was already settled for side ${String(side)} before this call, so this process has no settle digest to record. Find the settle transaction on the explorer and record it by hand.`,
+        );
+      }
+      return digest;
     },
     async readPoolTotals(battleId) {
       const pool = await operator.read(battleId);
       return pool.totals;
     },
   };
+}
+
+export async function readHouseFeeBps(config: BettingConfig): Promise<number> {
+  try {
+    const house = await getHouse(createClient(config), config);
+    return Number(house.feeBps);
+  } catch (cause) {
+    const detail = (cause instanceof Error ? cause.message : String(cause)).replace(/\.$/u, "");
+    throw new Error(
+      `Cannot read the betting House BETTING_HOUSE_ID=${config.houseId} on Sui ${config.network} (${config.grpcUrl}): ${detail}. Check BETTING_HOUSE_ID in .env. See .env.example.`,
+      { cause },
+    );
+  }
 }

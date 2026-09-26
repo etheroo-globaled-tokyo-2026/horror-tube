@@ -79,6 +79,7 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
     },
     async settle(battleId, side) {
       calls.push(`settle:${battleId}:${String(side)}`);
+      return `digest-${battleId}`;
     },
     async readPoolTotals(battleId) {
       calls.push(`read:${battleId}`);

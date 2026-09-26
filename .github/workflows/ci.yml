@@ -159,15 +159,13 @@ jobs:
       ROSTER_ENS_LABELS: "jason,freddy"
       # ENS settle writes (not Sui betting).
       AGENT_PRIVATE_KEY: "0xabababababababababababababababababababababababababababababababab"
-      # Sui betting (apps/server/src/battle-betting.ts). Public testnet IDs from deploy;
-      # CI operator key is throwaway and never used for a live openPool in this job.
+      # Sui betting (apps/server/src/battle-betting.ts). Public testnet IDs from deploy.
+      # The server reads the House fee_bps at startup. The operator key is generated in the job.
       SUI_NETWORK: "testnet"
       SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443"
       BETTING_PACKAGE_ID: "0xc451dc1ad607c088b96ebc9b29cdff892a2e13c9275346838664391851213daf"
       BETTING_HOUSE_ID: "0xa116a4711f6cf51515ba5551c4c5b78b4fc85882a3941ccdc43f65a7dfc68892"
       SUI_OPERATOR_CAP_ID: "0x9719983f791ebd479c0127299aaa685a1e02e63fce330e9587e543d7d5b46847"
-      BET_FEE_BPS: "200"
-      SUI_OPERATOR_PRIVATE_KEY: "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q"
       # Startup requires these. The key and pepper are not real. The coin type is public testnet USDC so the tag check passes. CI does not send a transaction.
       SHINAMI_ACCESS_KEY: "ci-not-a-real-shinami-key"
       WALLET_SECRET_PEPPER: "ci-wallet-pepper"
@@ -224,6 +222,9 @@ jobs:
             fi
             sleep 1
           done
+          SUI_OPERATOR_PRIVATE_KEY="$(docker run --rm --entrypoint node -w /app/apps/server horror-tube:ci \
+            -e 'import("@mysten/sui/keypairs/ed25519").then((m) => console.log(m.Ed25519Keypair.generate().getSecretKey()))')"
+          echo "::add-mask::${SUI_OPERATOR_PRIVATE_KEY}"
           DATABASE_URL="postgres://ci:ci@ht-pg:5432/ci"
           DATABASE_CA_CERT="$(docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
             cat /certs/ca.crt | base64 -w0 2>/dev/null || docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
@@ -251,7 +252,6 @@ jobs:
             -e "BETTING_PACKAGE_ID=${BETTING_PACKAGE_ID}" \
             -e "BETTING_HOUSE_ID=${BETTING_HOUSE_ID}" \
             -e "SUI_OPERATOR_CAP_ID=${SUI_OPERATOR_CAP_ID}" \
-            -e "BET_FEE_BPS=${BET_FEE_BPS}" \
             -e "SUI_OPERATOR_PRIVATE_KEY=${SUI_OPERATOR_PRIVATE_KEY}" \
             -e "SHINAMI_ACCESS_KEY=${SHINAMI_ACCESS_KEY}" \
             -e "WALLET_SECRET_PEPPER=${WALLET_SECRET_PEPPER}" \
