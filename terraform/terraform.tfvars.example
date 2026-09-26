@@ -2,6 +2,7 @@
 # DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
 # for that one terraform command only. See README.md.
 
-region             = "sgp1"
-spaces_bucket_name = "horror-tube-icons-REPLACE_ME"
-db_size            = "db-s-1vcpu-2gb"
+region                          = "sgp1"
+spaces_bucket_name              = "horror-tube-icons-REPLACE_ME"
+spaces_fight_media_bucket_name  = "horror-tube-fight-media-REPLACE_ME"
+db_size                         = "db-s-1vcpu-2gb"

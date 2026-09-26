@@ -1,6 +1,6 @@
 # Horror Tube — DigitalOcean Terraform
 
-Provisions a Spaces bucket with CDN (character icons) and a Managed PostgreSQL cluster (battle state) with a database firewall.
+Provisions Spaces buckets with CDN (character icons; fight videos/frames) and a Managed PostgreSQL cluster (battle state) with a database firewall.
 
 ## Auth (token never on disk, never pasted into shell history)
 
@@ -74,15 +74,33 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
 
 Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publicly fetchable. Do not commit Spaces key values.
 
+### Spaces API keys (fight-media uploads)
+
+Fight video uploads use a **separate** bucket and a **bucket-scoped** Spaces key created by Terraform (`digitalocean_spaces_key.fight_media`, grant `readwrite` on the fight-media bucket only). Do not widen the icons key to the whole account.
+
+After `terraform apply`, copy the sensitive outputs into `.env` (and into 1Password when you create the item). There is no 1Password path yet for these values — `.env.example` says so:
+
+| Terraform output | `.env` variable |
+| --- | --- |
+| `spaces_fight_media_access_key_id` | `FIGHT_MEDIA_SPACES_ACCESS_KEY_ID` |
+| `spaces_fight_media_secret_key` | `FIGHT_MEDIA_SPACES_SECRET` |
+| `spaces_fight_media_bucket_name` | `FIGHT_MEDIA_SPACES_BUCKET` |
+| `spaces_fight_media_cdn_endpoint` | `FIGHT_MEDIA_SPACES_CDN_HOST` |
+
+Also set `FIGHT_MEDIA_SPACES_ENDPOINT` to `https://<region>.digitaloceanspaces.com` for the same `region` tfvar (operator value `sgp1` → `https://sgp1.digitaloceanspaces.com`). If any of those variables is missing or blank, the upload package stops and names `.env.example`. Do not commit the secret.
+
+Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, app uploads use only `FIGHT_MEDIA_SPACES_*`.
+
 ## Required tfvars (no defaults)
 
-Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, or bucket name:
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, or bucket names:
 
 | Variable | Operator value for this project |
 | --- | --- |
 | `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
 | `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
 | `spaces_bucket_name` | globally unique name |
+| `spaces_fight_media_bucket_name` | globally unique name; not the icons bucket |
 
 The Managed Postgres firewall is hardcoded public in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`, covering all IPv4) because hackathon developers are not on one IP. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
 
@@ -93,6 +111,10 @@ There is no Tokyo DO region. Pick the geographically closest region where **both
 ## Spaces icons: public read + CDN
 
 The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cdn_endpoint` output). Uploads still must set each object’s ACL to **`public-read`** (see the Spaces API keys section above). Public icon URLs use `https://` + CDN endpoint + object key. Applied bucket: `horror-tube-icons-sgp1-m4k9` (CDN: `horror-tube-icons-sgp1-m4k9.sgp1.cdn.digitaloceanspaces.com`, region `sgp1`).
+
+## Spaces fight media: public read + CDN
+
+The fight-media bucket is created the same way (`acl = public-read`, CDN at `spaces_fight_media_cdn_endpoint`). Video object keys live under `videos/` (a new key per upload; never overwrite). Issue #53 will use `frames/` in this same bucket. Public URLs use `https://` + CDN endpoint + object key. Uploads must set object ACL **`public-read`**.
 
 ## Validate
 
