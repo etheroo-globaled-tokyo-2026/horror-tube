@@ -105,4 +105,49 @@ describe("HTTP server", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("returns 400 for a badly encoded static path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "horror-tube-static-bad-"));
+    try {
+      await writeFile(join(dir, "ok.txt"), "ok\n", "utf8");
+      const staticDir = readStaticDir({ STATIC_DIR: dir });
+      const server = createGameServer({
+        port: 0,
+        host: "127.0.0.1",
+        staticDir,
+      });
+      servers.push(server);
+      await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
+      const addr = server.address() as AddressInfo;
+      const res = await fetch(`http://127.0.0.1:${String(addr.port)}/%E0%A4%A`);
+      assert.equal(res.status, 400);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves files when STATIC_DIR is a relative path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "horror-tube-static-rel-"));
+    const prev = process.cwd();
+    try {
+      await writeFile(join(dir, "rel.txt"), "relative\n", "utf8");
+      process.chdir(dir);
+      const staticDir = readStaticDir({ STATIC_DIR: "." });
+      assert.equal(staticDir, ".");
+      const server = createGameServer({
+        port: 0,
+        host: "127.0.0.1",
+        staticDir,
+      });
+      servers.push(server);
+      await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
+      const addr = server.address() as AddressInfo;
+      const res = await fetch(`http://127.0.0.1:${String(addr.port)}/rel.txt`);
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), "relative\n");
+    } finally {
+      process.chdir(prev);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

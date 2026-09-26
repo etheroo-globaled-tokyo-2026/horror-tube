@@ -42,11 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GAME_PORT: "8080"
+      # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
+      ENS_LABEL: "ci"
+      VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t horror-tube:ci .
-      - name: Run container and check health + ffmpeg
+        run: >
+          docker build
+          --build-arg "ENS_LABEL=${ENS_LABEL}"
+          --build-arg "VITE_SEPOLIA_RPC_URL=${VITE_SEPOLIA_RPC_URL}"
+          -t horror-tube:ci .
+      - name: Run container and check health + ffmpeg + index
         run: |
           set -euo pipefail
           cid="$(docker run -d -e "GAME_PORT=${GAME_PORT}" -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
@@ -64,6 +71,12 @@ jobs:
             sleep 1
           done
           curl -fsS "http://127.0.0.1:${GAME_PORT}/health"
+          index_code="$(curl -sS -o /tmp/horror-tube-index.html -w "%{http_code}" "http://127.0.0.1:${GAME_PORT}/")"
+          if [ "${index_code}" != "200" ]; then
+            echo "GET / expected 200, got ${index_code}" >&2
+            docker logs "$cid" >&2
+            exit 1
+          fi
           docker exec "$cid" ffmpeg -version
 
   contracts:
