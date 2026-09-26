@@ -57,8 +57,7 @@ export async function generateFightVideo(
   try {
     result = await client.subscribe(config.model, { input });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new FightError(`fal video generation failed: ${detail}`, {
+    throw new FightError(`fal video generation failed: ${formatFalError(err)}`, {
       cause: err,
     });
   }
@@ -91,4 +90,31 @@ function defaultFalClient(apiKey: string): FalClient {
       };
     },
   };
+}
+
+function formatFalError(err: unknown): string {
+  if (err !== null && typeof err === "object") {
+    const anyErr = err as {
+      message?: string;
+      status?: number;
+      body?: unknown;
+    };
+    const parts: string[] = [];
+    if (typeof anyErr.status === "number") {
+      parts.push(`status=${anyErr.status}`);
+    }
+    if (typeof anyErr.message === "string" && anyErr.message.trim() !== "") {
+      parts.push(anyErr.message);
+    }
+    if (anyErr.body !== undefined) {
+      parts.push(`body=${JSON.stringify(anyErr.body)}`);
+    }
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+  }
+  if (err instanceof Error && err.message.trim() !== "") {
+    return err.message;
+  }
+  return String(err);
 }
