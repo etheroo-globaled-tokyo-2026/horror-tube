@@ -89,12 +89,21 @@ const textResolverAbi = parseAbi([
 export type CharacterSheet = {
   label: string;
   name: string;
+  owner: string;
   look: string;
   brief: string;
   injuries: string;
   status: string;
   icon: string;
 };
+
+export function ensAppUrl(name: string): string {
+  return `https://app.ens.dev/${encodeURI(name)}`;
+}
+
+export function sepoliaAddressUrl(address: string): string {
+  return `https://sepolia.etherscan.io/address/${address}`;
+}
 
 function fail(message: string): never {
   console.error(message);
@@ -330,7 +339,8 @@ export function renderDashboardHtml(
     .map((sheet) => {
       return [
         `<article class="sheet">`,
-        `<h2>${escapeHtml(sheet.name)}</h2>`,
+        `<h2><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></h2>`,
+        `<p class="addr"><a href="${escapeHtml(sepoliaAddressUrl(sheet.owner))}">${escapeHtml(sheet.owner)}</a></p>`,
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
@@ -391,7 +401,15 @@ h1 {
 .sheet h2 {
   color: var(--bone);
   font-size: 1.1rem;
+  margin-bottom: 0.35rem;
+}
+.sheet h2 a,
+.addr a {
+  color: var(--sulfur);
+}
+.addr {
   margin-bottom: 0.75rem;
+  word-break: break-all;
 }
 dt {
   color: var(--rust);
@@ -584,12 +602,26 @@ async function loadCharacterSheets(
   for (const label of labels) {
     const name = subname(label, ensLabel);
     const dnsName = dnsEncodeName(name);
+    let owner: Address;
+    try {
+      const state = await publicClient.readContract({
+        address: subregistry,
+        abi: userRegistryAbi,
+        functionName: "getState",
+        args: [labelId(label)],
+      });
+      owner = getAddress(state.latestOwner);
+    } catch (error) {
+      throw new Error(
+        `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     const look = await readText(publicClient, resolver, dnsName, "look");
     const brief = await readText(publicClient, resolver, dnsName, "brief");
     const injuries = await readText(publicClient, resolver, dnsName, "injuries");
     const status = await readText(publicClient, resolver, dnsName, "status");
     const icon = await readText(publicClient, resolver, dnsName, "icon");
-    sheets.push({ label, name, look, brief, injuries, status, icon });
+    sheets.push({ label, name, owner, look, brief, injuries, status, icon });
   }
   return sheets;
 }
