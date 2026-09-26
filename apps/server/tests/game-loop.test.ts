@@ -129,7 +129,7 @@ function unusedSettleDeps(skipSettlement = true) {
     chainWritePorts: trackingPorts(calls),
     battleBetting: trackingBattleBetting(betCalls),
     // Hang so tests that drive setOutcome/setVideoReady themselves are not raced.
-    fightJob: async () => new Promise(() => {}),
+    fightJob: (): Promise<FightJobResult> => new Promise(() => {}),
     skipSettlement,
     calls,
     betCalls,
@@ -239,6 +239,7 @@ describe("GameLoop ENS status", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "dead-vote" }),
     });
@@ -259,6 +260,7 @@ describe("GameLoop ENS status", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
     });
     assert.equal(loop.getState().chars[0]?.alive, true);
@@ -276,6 +278,7 @@ describe("GameLoop ENS status", () => {
           battleQueueStore: settle.battleQueueStore,
           chainWritePorts: settle.chainWritePorts,
           battleBetting: settle.battleBetting,
+          fightJob: settle.fightJob,
           skipSettlement: true,
         }),
       /bravo.*ghost|ghost.*bravo/u,
@@ -301,6 +304,7 @@ describe("GameLoop ENS status", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "reset-dead" }),
     });
@@ -515,7 +519,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: store,
       chainWritePorts: ports,
       battleBetting: trackingBattleBetting([]),
-      fightJob: async () => new Promise(() => {}),
+      fightJob: (): Promise<FightJobResult> => new Promise(() => {}),
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "ens-fail" }),
     });
@@ -843,6 +847,7 @@ describe("GameLoop phases", () => {
         betMinSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -898,6 +903,7 @@ describe("GameLoop phases", () => {
         betMinSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -937,6 +943,7 @@ describe("GameLoop phases", () => {
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -999,6 +1006,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
