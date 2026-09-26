@@ -5,13 +5,11 @@ import {
   type Hex,
   createPublicClient,
   createWalletClient,
-  decodeAbiParameters,
   encodeFunctionData,
   formatEther,
   getAddress,
   http,
   keccak256,
-  parseAbi,
   parseEventLogs,
   stringToBytes,
   toHex,
@@ -25,11 +23,7 @@ import {
   userRegistryAbi,
   verifiableFactoryAbi,
 } from "./abis.js";
-import {
-  CONTRACTS_V2_COMMIT,
-  PIN_DEPLOYED_AT,
-  loadSubnamePinAddresses,
-} from "./pin.js";
+import { CONTRACTS_V2_COMMIT, PIN_DEPLOYED_AT, loadSubnamePinAddresses } from "./pin.js";
 import {
   parseInjuries,
   parseInjuryPlaces,
@@ -48,24 +42,23 @@ import {
   loadRosterKey,
   requiredEnv as requiredEnvFromMap,
 } from "./process-keys.js";
+import { classifyInjuriesRewrite, rewriteEmptyInjuriesValues } from "./rewrite-empty-injuries.js";
 import {
-  classifyInjuriesRewrite,
-  rewriteEmptyInjuriesValues,
-} from "./rewrite-empty-injuries.js";
+  type SetTextResult,
+  type TextWriterRole,
+  readTextRecord,
+  setTextIfChanged,
+} from "./set-text-if-changed.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const STATUS_REGISTERED = 2;
-const ALL_ROLES =
-  0x1111111111111111111111111111111111111111111111111111111111111111n;
+const ALL_ROLES = 0x1111111111111111111111111111111111111111111111111111111111111111n;
 const ROLE_SET_SUBREGISTRY = 1n << 20n;
 const ROLE_SET_RESOLVER = 1n << 24n;
 const ROLE_UNREGISTER = 1n << 12n;
-const CHARACTER_ROLE_BITMAP =
-  ROLE_SET_SUBREGISTRY | ROLE_SET_RESOLVER | ROLE_UNREGISTER;
+const CHARACTER_ROLE_BITMAP = ROLE_SET_SUBREGISTRY | ROLE_SET_RESOLVER | ROLE_UNREGISTER;
 const TEXT_KEYS = [
   "display_name",
   "look",
@@ -75,10 +68,6 @@ const TEXT_KEYS = [
   "status",
   "icon",
 ] as const;
-
-const textResolverAbi = parseAbi([
-  "function text(bytes32 node, string key) view returns (string)",
-]);
 
 type Command =
   | "ensure"
@@ -138,9 +127,7 @@ function parseLabel(value: string | undefined): string {
   }
   const trimmed = value.trim();
   if (trimmed.includes(".")) {
-    fail(
-      `ENS_LABEL must be one label, not a full name. Got: ${trimmed}`,
-    );
+    fail(`ENS_LABEL must be one label, not a full name. Got: ${trimmed}`);
   }
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(trimmed)) {
     fail(
@@ -199,9 +186,7 @@ function parseIconUpdates(path: string): IconUpdate[] {
       fail(`--updates entry has a blank label in ${path}`);
     }
     if (!icon.startsWith("https://")) {
-      fail(
-        `set-icon for ${label}: icon must be an https URL. Got: ${icon}`,
-      );
+      fail(`set-icon for ${label}: icon must be an https URL. Got: ${icon}`);
     }
     updates.push({ label, icon });
   }
@@ -337,9 +322,7 @@ async function main(): Promise<void> {
       `Sepolia RPC failed at ${rpcUrl}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  console.log(
-    `ethBalanceWei=${ethBalance.toString()} ethBalanceEther=${formatEther(ethBalance)}`,
-  );
+  console.log(`ethBalanceWei=${ethBalance.toString()} ethBalanceEther=${formatEther(ethBalance)}`);
 
   if (ethBalance === 0n) {
     fail(
@@ -415,9 +398,7 @@ async function main(): Promise<void> {
       functionName: "initialize",
       args: [[{ account: account.address, roleBitmap: ALL_ROLES }]],
     });
-    const salt = BigInt(
-      keccak256(stringToBytes(`horror-tube:UserRegistry:${ensLabel}`)),
-    );
+    const salt = BigInt(keccak256(stringToBytes(`horror-tube:UserRegistry:${ensLabel}`)));
     let hash: Hex;
     try {
       hash = await walletClient.writeContract({
@@ -453,9 +434,7 @@ async function main(): Promise<void> {
       functionName: "initialize",
       args: [[{ account: account.address, roleBitmap: ALL_ROLES }], []],
     });
-    const salt = BigInt(
-      keccak256(stringToBytes(`horror-tube:PermissionedResolver:${ensLabel}`)),
-    );
+    const salt = BigInt(keccak256(stringToBytes(`horror-tube:PermissionedResolver:${ensLabel}`)));
     let hash: Hex;
     try {
       hash = await walletClient.writeContract({
@@ -541,39 +520,11 @@ async function main(): Promise<void> {
     return { subregistry: nextSub, resolver: nextResolver };
   }
 
-  async function readText(
-    resolverAddress: Address,
-    dnsName: Hex,
-    key: string,
-  ): Promise<string> {
-    const data = encodeFunctionData({
-      abi: textResolverAbi,
-      functionName: "text",
-      args: [ZERO_BYTES32, key],
-    });
-    let encoded: Hex;
+  async function readText(resolverAddress: Address, dnsName: Hex, key: string): Promise<string> {
     try {
-      encoded = (await publicClient.readContract({
-        address: resolverAddress,
-        abi: permissionedResolverAbi,
-        functionName: "resolve",
-        args: [dnsName, data],
-      })) as Hex;
+      return await readTextRecord(publicClient, resolverAddress, dnsName, key);
     } catch (error) {
-      fail(
-        `PermissionedResolver.resolve(text ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    try {
-      const [value] = decodeAbiParameters(
-        [{ type: "string" }],
-        encoded,
-      );
-      return value;
-    } catch (error) {
-      fail(
-        `Failed to decode text(${key}) resolve result: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -629,31 +580,61 @@ async function main(): Promise<void> {
     return out;
   }
 
+  const textWrites = { sent: 0, skipped: 0 };
+
   async function writeTextWithWallet(
-    wallet: typeof walletClient,
+    role: TextWriterRole,
     resolverAddress: Address,
     dnsName: Hex,
     label: string,
     key: string,
     value: string,
   ): Promise<void> {
-    let textHash: Hex;
+    const wallet =
+      role === "bootstrap" ? walletClient : role === "roster" ? rosterWallet : agentWallet;
+    let result: SetTextResult;
     try {
-      textHash = await wallet.writeContract({
-        address: resolverAddress,
-        abi: permissionedResolverAbi,
-        functionName: "setText",
-        args: [dnsName, key, value],
+      result = await setTextIfChanged({
+        publicClient,
+        walletClient: wallet,
+        role,
+        resolver: resolverAddress,
+        dnsName,
+        label,
+        key,
+        value,
       });
     } catch (error) {
-      fail(
-        `PermissionedResolver.setText(${label}, ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(error instanceof Error ? error.message : String(error));
     }
+    if (result.action === "skip") {
+      textWrites.skipped += 1;
+    } else {
+      textWrites.sent += 1;
+    }
+  }
+
+  function logTextWriteSummary(): void {
     console.log(
-      `setTextTxHash=${textHash} label=${label} key=${key} writer=${wallet.account.address}`,
+      `setTextSummary command=${command} sent=${textWrites.sent} skipped=${textWrites.skipped}`,
     );
-    await waitSuccess(publicClient, textHash, `setText ${label} ${key}`);
+  }
+
+  async function writeCharacterText(
+    resolverAddress: Address,
+    label: string,
+    sheet: CharacterSheet,
+  ): Promise<void> {
+    const dnsName = dnsEncodeName(subname(label, ensLabel));
+    for (const key of REGISTER_BOOTSTRAP_TEXT_KEYS) {
+      await writeTextWithWallet("bootstrap", resolverAddress, dnsName, label, key, sheet[key]);
+    }
+    for (const key of ROSTER_TEXT_KEYS) {
+      await writeTextWithWallet("roster", resolverAddress, dnsName, label, key, sheet[key]);
+    }
+    for (const key of AGENT_TEXT_KEYS) {
+      await writeTextWithWallet("agent", resolverAddress, dnsName, label, key, sheet[key]);
+    }
   }
 
   async function grantRestrictedTextRoles(resolverAddress: Address): Promise<void> {
@@ -673,9 +654,7 @@ async function main(): Promise<void> {
         `grantSetterRoles for roster failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    console.log(
-      `grantSetterRoles agent=${agentAccount.address} keys=${AGENT_TEXT_KEYS.join(",")}`,
-    );
+    console.log(`grantSetterRoles agent=${agentAccount.address} keys=${AGENT_TEXT_KEYS.join(",")}`);
     try {
       await grantTextSetterRoles({
         publicClient,
@@ -720,11 +699,7 @@ async function main(): Promise<void> {
     }
     const labels = raw as string[];
     const ensured = await ensureParentInfrastructure();
-    const existing = await snapshotLabels(
-      labels,
-      ensured.subregistry,
-      ensured.resolver,
-    );
+    const existing = await snapshotLabels(labels, ensured.subregistry, ensured.resolver);
     writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
     console.log(`Wrote chain snapshot: ${outPath}`);
     console.log(`registered=${Object.keys(existing).length}`);
@@ -811,37 +786,7 @@ async function main(): Promise<void> {
         );
       }
 
-      const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
-      for (const key of REGISTER_BOOTSTRAP_TEXT_KEYS) {
-        await writeTextWithWallet(
-          walletClient,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
-      for (const key of ROSTER_TEXT_KEYS) {
-        await writeTextWithWallet(
-          rosterWallet,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
-      for (const key of AGENT_TEXT_KEYS) {
-        await writeTextWithWallet(
-          agentWallet,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
+      await writeCharacterText(ensured.resolver, entry.label, entry);
 
       const post = await publicClient.readContract({
         address: ensured.subregistry,
@@ -871,6 +816,7 @@ async function main(): Promise<void> {
         console.log(`skipped ${skipped.label}: ${skipped.reason}`);
       }
     }
+    logTextWriteSummary();
     return;
   }
 
@@ -884,9 +830,7 @@ async function main(): Promise<void> {
       !("characters" in raw) ||
       !Array.isArray((raw as RegisterPlan).characters)
     ) {
-      fail(
-        `--plan must be an object with characters[] of text sheets. Got: ${planPath}`,
-      );
+      fail(`--plan must be an object with characters[] of text sheets. Got: ${planPath}`);
     }
     const plan = raw as RegisterPlan;
     if (plan.characters.length === 0) {
@@ -935,41 +879,12 @@ async function main(): Promise<void> {
         );
       }
 
-      const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
-      for (const key of REGISTER_BOOTSTRAP_TEXT_KEYS) {
-        await writeTextWithWallet(
-          walletClient,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
-      for (const key of ROSTER_TEXT_KEYS) {
-        await writeTextWithWallet(
-          rosterWallet,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
-      for (const key of AGENT_TEXT_KEYS) {
-        await writeTextWithWallet(
-          agentWallet,
-          ensured.resolver,
-          dnsName,
-          entry.label,
-          key,
-          entry[key],
-        );
-      }
+      await writeCharacterText(ensured.resolver, entry.label, entry);
       console.log(
         `apply-text complete label=${entry.label} name=${subname(entry.label, ensLabel)}`,
       );
     }
+    logTextWriteSummary();
     return;
   }
 
@@ -1146,11 +1061,7 @@ async function main(): Promise<void> {
       console.log(
         `setTextTxHash=${textHash} label=${update.label} key=icon icon=${update.icon} writer=${rosterAccount.address}`,
       );
-      await waitSuccess(
-        publicClient,
-        textHash,
-        `setText ${update.label} icon`,
-      );
+      await waitSuccess(publicClient, textHash, `setText ${update.label} icon`);
       results.push({
         label: update.label,
         icon: update.icon,
@@ -1224,16 +1135,14 @@ async function main(): Promise<void> {
       }
       const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
       await writeTextWithWallet(
-        agentWallet,
+        "agent",
         ensured.resolver,
         dnsName,
         entry.label,
         "injuries",
         entry.next,
       );
-      console.log(
-        `rewrote ${subname(entry.label, ensLabel)} injuries "" -> [] via agent key`,
-      );
+      console.log(`rewrote ${subname(entry.label, ensLabel)} injuries "" -> [] via agent key`);
     }
     console.log(
       JSON.stringify(
