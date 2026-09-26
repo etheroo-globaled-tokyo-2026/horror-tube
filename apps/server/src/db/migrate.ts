@@ -6,7 +6,6 @@ import { createPgClient } from "./pg-client.js";
 
 export function migrationsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  // src/db -> ../../migrations ; dist/db -> ../../migrations
   return join(here, "..", "..", "migrations");
 }
 
@@ -29,10 +28,6 @@ export type MigrateResult = {
   skipped: string[];
 };
 
-/**
- * Applies pending *.sql files under migrations/ against DATABASE_URL.
- * Creates schema_migrations if needed. TLS verifies with DATABASE_CA_CERT.
- */
 export async function migrate(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<MigrateResult> {

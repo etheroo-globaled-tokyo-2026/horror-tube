@@ -12,34 +12,19 @@ import {
 import { randomUUID } from "node:crypto";
 
 export type BattleBettingPorts = {
-  /**
-   * Operator: open a Sui pool for a fresh battle id.
-   * Returns the battle id string used as the pool key (not a Sepolia uint256).
-   */
   openBattle: (
     fighterA: string,
     fighterB: string,
     closesAtUnix: bigint,
   ) => Promise<string>;
-  /** Operator: cancel an open pool so stakes refund. */
   cancelBattle: (battleId: string) => Promise<void>;
-  /** Operator: end betting early. */
   closeBetting: (battleId: string) => Promise<void>;
-  /** Operator: settle with the winning side (0 or 1). Returns the settle transaction digest. */
   settle: (battleId: string, side: 0 | 1) => Promise<string>;
-  /** Derived pool object id for a battle. */
   poolIdFor: (battleId: string) => string;
-  /** Live pool totals in USDC base units. Throws if the pool is missing. */
   readPoolTotals: (battleId: string) => Promise<[bigint, bigint]>;
-  /** Public config the web needs to build bet/claim kinds. */
   config: BettingConfig;
 };
 
-/**
- * Sui betting operator for open / cancel / close / settle.
- * Players place bets through POST /tx (Shinami), not through this port.
- * Missing env fails by name — no Sepolia BATTLE_BETTING_ADDRESS fallback.
- */
 export function createBattleBettingPorts(
   env: NodeJS.ProcessEnv = process.env,
 ): BattleBettingPorts {

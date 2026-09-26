@@ -1,9 +1,5 @@
 import { createPgClient } from "./pg-client.js";
 
-/**
- * Fail closed before the HTTP server listens: verified TLS + SELECT 1.
- * Uses DATABASE_URL and DATABASE_CA_CERT with rejectUnauthorized true.
- */
 export async function assertDatabaseReady(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {

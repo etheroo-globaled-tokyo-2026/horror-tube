@@ -108,7 +108,7 @@ function objectId(input: TxInput): string | undefined {
   return undefined;
 }
 
-/** Pool object ids of every `betting::bet` call in a kind already checked by assertSponsorableKind. */
+// WARNING: sees only betting::bet calls; run assertSponsorableKind on the kind first.
 export function betPoolIds(txKind: string, bettingPackageId: string): string[] {
   const betting = normalizeSuiAddress(bettingPackageId);
   const data = Transaction.fromKind(txKind).getData();
