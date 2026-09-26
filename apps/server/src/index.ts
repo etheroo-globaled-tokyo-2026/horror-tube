@@ -28,7 +28,9 @@ import {
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-loadRepoDotenv(join(repoRoot, ".env"));
+console.log(
+  `env: loaded [${loadRepoDotenv(repoRoot).join(", ")}]; shell values win, then the first file`,
+);
 
 loadWorldIdEnv();
 

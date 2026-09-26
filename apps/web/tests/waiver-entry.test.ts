@@ -114,7 +114,7 @@ describe("enter-room after the World ID proof", () => {
       },
     });
     const error = await rejection(enterWithProof(PROOF, steps, new AbortController().signal));
-    assert.equal(entryFailLine(error), "This World ID already used its one entry.");
+    assert.equal(entryFailLine(error), "An entry is already registered to this World ID.");
     assert.equal(entryDownDetail(error), null);
   });
 

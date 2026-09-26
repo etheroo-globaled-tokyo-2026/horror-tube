@@ -171,7 +171,7 @@ pnpm workspace; Turborepo runs the tasks defined in `turbo.json`.
 - Monorepo tech is turborepo
 - Web room is **Vite** + TypeScript (no React)
 - Lint is **oxlint** (`pnpm lint`); format is **oxfmt** (`pnpm format`)
-- Root scripts: `dev`, `test`, `typecheck`, `lint`, `format`, `ens:*`, `dashboard`, `betting:*`, `test-usdc:*`
+- Root scripts: `dev`, `test`, `typecheck`, `lint`, `format`, `ens:*`, `dashboard`, `betting:*`, `test-usdc:*`, `db:local`
 
 ### Git
 

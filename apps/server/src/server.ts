@@ -7,6 +7,7 @@ import * as v from "valibot";
 import { StartRefusedError, StoreWriteError, type GameLoop } from "./game/loop.js";
 import { HttpError, type HttpErrorBody } from "./http-error.js";
 import { readSession } from "./human-session.js";
+import { isApiPath } from "./routes.js";
 import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
 import { handleWorldIdRequest, type WorldIdHandlerDeps } from "./world-id-handler.js";
@@ -252,7 +253,13 @@ async function handleRequest(
   const path = url.split("?")[0] ?? "/";
 
   try {
-    if (method === "GET" && (path === "/health" || url.startsWith("/health?"))) {
+    if (!isApiPath(path)) {
+      if (opts.staticDir !== undefined && method === "GET") serveStatic(res, opts.staticDir, url);
+      else sendNotFound(res);
+      return;
+    }
+
+    if (method === "GET" && path === "/health") {
       sendJson(res, 200, { ok: true });
       return;
     }
@@ -371,11 +378,6 @@ async function handleRequest(
 
     const handled = await handleWorldIdRequest(req, res, opts.worldId ?? {});
     if (handled || res.headersSent) return;
-
-    if (opts.staticDir !== undefined && method === "GET") {
-      serveStatic(res, opts.staticDir, url);
-      return;
-    }
 
     sendNotFound(res);
   } catch (err) {

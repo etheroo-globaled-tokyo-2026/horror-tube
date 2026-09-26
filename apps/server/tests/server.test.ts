@@ -5,35 +5,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import {
-  loadRepoDotenv,
-  readGamePort,
-  readStaticDir,
-} from "../src/env.js";
+import { loadRepoDotenv, readGamePort, readStaticDir } from "../src/env.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import { baseUrl } from "./base-url.js";
 
 describe("loadRepoDotenv", () => {
-  it("does not require a .env file to exist", () => {
-    const missing = join(
-      tmpdir(),
-      `horror-tube-no-dotenv-${String(Date.now())}`,
-      ".env",
-    );
-    assert.deepEqual(loadRepoDotenv(missing), { loaded: false });
+  it("does not require an env file to exist", () => {
+    const missing = join(tmpdir(), `horror-tube-no-dotenv-${String(Date.now())}`);
+    assert.deepEqual(loadRepoDotenv(missing), []);
   });
 
-  it("loads variables when the file exists", async () => {
+  it("lets .env.local override .env, and the shell override both", async () => {
     const dir = await mkdtemp(join(tmpdir(), "horror-tube-dotenv-"));
-    const envPath = join(dir, ".env");
     const marker = `HT_DOTENV_TEST_${String(Date.now())}`;
+    const base = `${marker}_BASE`;
+    const local = `${marker}_LOCAL`;
+    const shell = `${marker}_SHELL`;
+    const names = [base, local, shell];
     try {
-      await writeFile(envPath, `${marker}=from-file\n`, "utf8");
-      delete process.env[marker];
-      assert.deepEqual(loadRepoDotenv(envPath), { loaded: true });
-      assert.equal(process.env[marker], "from-file");
+      await writeFile(join(dir, ".env"), `${base}=env\n${local}=env\n${shell}=env\n`, "utf8");
+      await writeFile(join(dir, ".env.local"), `${local}=env-local\n${shell}=env-local\n`, "utf8");
+      process.env[shell] = "shell";
+      assert.deepEqual(loadRepoDotenv(dir), [".env.local", ".env"]);
+      assert.deepEqual(
+        names.map((name) => process.env[name]),
+        ["env", "env-local", "shell"],
+      );
     } finally {
-      delete process.env[marker];
+      for (const name of names) delete process.env[name];
       await rm(dir, { recursive: true, force: true });
     }
   });

@@ -280,7 +280,7 @@ export function createCoinBox(
     tb.globalAlpha = 1;
     tb.fillStyle = colors.soot;
     tb.font = "700 11px Silkscreen";
-    const ring = "MINUTES PER COIN";
+    const ring = "VIEWER CREDIT";
     [...ring].forEach((ch, i) => {
       const a = -Math.PI / 2 + (i - (ring.length - 1) / 2) * 0.13;
       tb.save();
@@ -316,12 +316,12 @@ export function createCoinBox(
     dg.textBaseline = "middle";
     dg.font = "11px DotGothic16";
     [
-      "TURN HANDLE TO LEFT",
-      "INSERT COIN IN SLOT",
-      "TURN HANDLE TO RIGHT.",
-      "DO NOT INSERT MORE COINS",
-      "AFTER POINTER INDICATES FULL.",
-      "DO NOT USE DAMAGED COINS",
+      "VIEWING IS COMPLIMENTARY.",
+      "WAGERS REQUIRE CREDIT.",
+      "SELECT SLOT TO DEPOSIT.",
+      "SELECT LOCK TO WITHDRAW.",
+      "PLEASE CHECK YOUR WAGER.",
+      "THE RESIDENTS CANNOT.",
     ].forEach((line, i) => dg.fillText(line, FW / 2, RULES[1] + 14 + i * 14.5));
     dg.save();
     stickerSpace();
@@ -469,7 +469,7 @@ export function createCoinBox(
       if (v % 4 === 0) g.fillText(String(v), x, wy + 30);
     }
     g.font = "12px DotGothic16";
-    g.fillText("USDC PAID FOR", wx + ww / 2 - 20, wy + 51);
+    g.fillText("USDC CREDIT", wx + ww / 2 - 20, wy + 51);
     const nx = x0 + (Math.min(credit, FULL) / FULL) * span;
     g.fillStyle = colors.bloodDeep;
     g.fillRect(nx - 1, wy + 2, 3, wh - 4);
@@ -526,7 +526,7 @@ export function createCoinBox(
   async function deposit(dollars: number): Promise<void> {
     const { wallet, coinType } = linked();
     const payer = await connectBrowserWallet();
-    if (payer === null) throw new Error("No wallet connected. The slot stays shut.");
+    if (payer === null) throw new Error("Deposit cancelled. No wallet was connected.");
     const gas = await dAppKit.getClient().core.getBalance({ owner: payer });
     if (BigInt(gas.balance.balance) === 0n)
       throw new Error(
@@ -541,19 +541,20 @@ export function createCoinBox(
     await dAppKit.getClient().core.waitForTransaction({ digest: result.Transaction.digest });
     rememberPayout(payer);
     sfx.coin();
-    say(`${dollars} USDC in. The meter ticks up.`);
+    say(`${dollars} USDC deposited. Thank you.`);
   }
 
   async function withdraw(): Promise<void> {
     const { wallet, coinType } = linked();
     const units = await getUsdcBalance(wallet, coinType);
-    if (units === 0n) return say("Nothing to give back.");
+    if (units === 0n) return say("No credit remains in the meter.");
     const to = storedPayout() ?? (await connectBrowserWallet());
-    if (to === null) throw new Error("No wallet connected to pay back to.");
+    if (to === null)
+      throw new Error("Withdrawal cancelled. Connect a wallet to receive your credit.");
     setStatus("RETURNING");
     await sendUsdc(wallet, coinType, to, units);
     sfx.coins(10);
-    say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
+    say(`${fromUsdcUnits(units).toFixed(2)} USDC returned to your wallet.`);
   }
 
   function run(task: () => Promise<void>): void {
