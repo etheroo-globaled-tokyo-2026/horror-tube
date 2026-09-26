@@ -78,10 +78,7 @@ describe("fightJobResultFromTurn", () => {
             style: "gritty",
           },
         ],
-        ensLines: ["bravo|status=dead", 'alpha|injuries=["cut"]'] as [
-          string,
-          string,
-        ],
+        ensLines: ["bravo|status=dead", 'alpha|injuries=["cut"]'],
         rationale: "alpha wins",
         winnerSubname: "alpha",
         loserSubname: "bravo",
@@ -108,7 +105,7 @@ describe("fightJobResultFromTurn", () => {
           baseRequest(),
           {
             shots: [],
-            ensLines: ["x|status=dead", "y|injuries=[]"] as [string, string],
+            ensLines: ["x|status=dead", "y|injuries=[]"],
             rationale: "bad",
             winnerSubname: "charlie",
             loserSubname: "bravo",
@@ -126,11 +123,9 @@ describe("fightJobResultFromTurn", () => {
 
 describe("createFightJobRunner", () => {
   it("loads cards, passes priorFrameUrl, and maps runFightTurn without calling fal", async () => {
-    const seen: {
-      priorFrameUrl?: string;
-      falModel?: string;
-      subnames?: string[];
-    } = {};
+    let seenPriorFrameUrl: string | undefined;
+    let seenFalModel: string | undefined;
+    let seenSubnames: string[] = [];
     const turnResult: FightTurnResult = {
       turn: {
         shots: [
@@ -148,10 +143,7 @@ describe("createFightJobRunner", () => {
         rationale: "alpha by a cut",
         next_opponent_subname: "charlie",
       },
-      ensLines: ["bravo|status=dead", 'alpha|injuries=["bruise"]'] as [
-        string,
-        string,
-      ],
+      ensLines: ["bravo|status=dead", 'alpha|injuries=["bruise"]'],
       nextOpponentSubname: "charlie",
       rationale: "alpha by a cut",
       videoPrompt: "prompt",
@@ -162,12 +154,12 @@ describe("createFightJobRunner", () => {
     const runner = createFightJobRunner({
       env: falEnv,
       loadLivingCards: async (subnames) => {
-        seen.subnames = [...subnames].sort();
+        seenSubnames = [...subnames].sort();
         return [card("alpha"), card("bravo"), card("charlie")];
       },
       runTurn: async (_input, _env, opts) => {
-        seen.priorFrameUrl = opts?.priorFrameUrl;
-        seen.falModel = opts?.falConfig?.model;
+        seenPriorFrameUrl = opts?.priorFrameUrl;
+        seenFalModel = opts?.falConfig?.model;
         return turnResult;
       },
     });
@@ -175,9 +167,9 @@ describe("createFightJobRunner", () => {
       ...baseRequest(),
       priorFrameUrl: "https://cdn.example/frames/prior.jpg",
     });
-    assert.deepEqual(seen.subnames, ["alpha", "bravo", "charlie"]);
-    assert.equal(seen.priorFrameUrl, "https://cdn.example/frames/prior.jpg");
-    assert.equal(seen.falModel, "minimax/h3-max/text-to-video");
+    assert.deepEqual(seenSubnames, ["alpha", "bravo", "charlie"]);
+    assert.equal(seenPriorFrameUrl, "https://cdn.example/frames/prior.jpg");
+    assert.equal(seenFalModel, "minimax/h3-max/text-to-video");
     assert.equal(result.videoUrl, "https://cdn.example/videos/job.mp4");
     assert.equal(result.frameUrl, "https://cdn.example/frames/job.jpg");
     assert.equal(result.durationMs, 8000);
@@ -223,10 +215,7 @@ describe("createFightJobRunner", () => {
             rationale: "ok",
             next_opponent_subname: "alpha",
           },
-          ensLines: ["bravo|status=dead", "alpha|injuries=[]"] as [
-            string,
-            string,
-          ],
+          ensLines: ["bravo|status=dead", "alpha|injuries=[]"],
           nextOpponentSubname: "alpha",
           rationale: "ok",
           videoPrompt: "p",

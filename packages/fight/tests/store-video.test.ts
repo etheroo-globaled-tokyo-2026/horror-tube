@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FightError } from "../src/env.js";
 import { downloadFightVideoBytes } from "../src/store-video.js";
 
 describe("downloadFightVideoBytes", () => {
@@ -31,11 +30,7 @@ describe("downloadFightVideoBytes", () => {
         downloadFightVideoBytes("  ", async () => {
           throw new Error("fetch must not be called for a blank URL");
         }),
-      (err: unknown) => {
-        assert.ok(err instanceof FightError);
-        assert.match(err.message, /blank/u);
-        return true;
-      },
+      { name: "FightError", message: /blank/u },
     );
   });
 

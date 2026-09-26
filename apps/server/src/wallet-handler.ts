@@ -31,7 +31,6 @@ export type WalletHandlerDeps = {
   bettingPackageId: string | undefined;
   verifyProof: (rawBody: string) => Promise<string>;
   shinami: ShinamiPort;
-  /** Throws when a bet on this pool must be refused (GameLoop.assertBetAllowed). */
   assertBetAllowed: (poolId: string) => void;
 };
 

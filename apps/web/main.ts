@@ -13,7 +13,7 @@ import {
   type Phase,
 } from "./game.ts";
 import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
-import { getGameWallet, hasWalletSession } from "./wallet.ts";
+import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
@@ -79,14 +79,16 @@ function hintText(): void {
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY${W8.qrUri === "" ? "" : ` <a href="${esc(W8.qrUri)}" target="_blank" rel="noopener">OPEN LINK</a> <button data-copy-link>COPY LINK</button>`}`
-          : W8.fail !== ""
-            ? `NOT IN · TRY AGAIN ${b("ENTER")}`
-            : W8.step === "done" && S.noteKind === "bad"
-              ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
-              : W8.step === "done"
-                ? "WARMING UP"
-                : `NEXT ${b("ENTER")}`
+          ? `SCAN WITH ${b("WORLD APP")}${W8.qrUri === "" ? "" : ` <button data-copy-link>COPY LINK</button>`}`
+          : W8.step === "wallet"
+            ? `${b("VERIFIED")} · OPENING YOUR WALLET`
+            : W8.fail !== ""
+              ? `${b("NOT IN")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
+              : W8.step === "done" && S.noteKind === "bad"
+                ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
+                : W8.step === "done"
+                  ? "WARMING UP"
+                  : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast
@@ -193,11 +195,9 @@ function holdEnd(): void {
   pressKey("B", 0.022);
 }
 let coinBoxError = "";
-let chainCredit = 0;
 const coinBox = createCoinBox(
   (usdc) => {
     S.credit = usdc;
-    chainCredit = usdc;
     hintText();
   },
   say,
@@ -210,9 +210,8 @@ const coinBox = createCoinBox(
 coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
 shade(coinBox.group);
 scene.add(coinBox.group);
-async function mountCoinBox(): Promise<void> {
-  if (coinBox.address() !== null) return;
-  const wallet = await getGameWallet();
+let coinBoxMount: Promise<void> | null = null;
+async function connectCoinBox(wallet: GameWallet): Promise<void> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
   void refreshClaimable().catch((err: Error) =>
@@ -220,11 +219,26 @@ async function mountCoinBox(): Promise<void> {
   );
   coinBox.connect(wallet, coinType);
 }
-if (hasWalletSession()) {
-  void mountCoinBox().catch((err: Error) => {
-    coinBoxError = err.message;
-    console.error(`Shinami wallet failed: ${coinBoxError}`);
+async function mountCoinBox(wallet: GameWallet): Promise<void> {
+  coinBoxMount ??= connectCoinBox(wallet).catch((err: Error) => {
+    coinBoxMount = null;
+    throw err;
   });
+  await coinBoxMount;
+  const address = coinBox.address();
+  if (address !== wallet.address) {
+    throw new Error(
+      `The coin box is open for wallet ${address}, not yours (${wallet.address}). Reload the page to open yours.`,
+    );
+  }
+}
+if (hasWalletSession()) {
+  void getGameWallet()
+    .then(mountCoinBox)
+    .catch((err: Error) => {
+      coinBoxError = err.message;
+      console.error(`Shinami wallet failed: ${coinBoxError}`);
+    });
 }
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
@@ -491,7 +505,7 @@ renderer.setAnimationLoop(() => {
   const dark = waiver && W8.step === "dark";
   if (waiver) {
     camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
-    const up = W8.step === "scan" ? 1 : 0;
+    const up = W8.step === "scan" || W8.step === "wallet" ? 1 : 0;
     gaze = LOW ? up : gaze + (up - gaze) * 0.06;
     camera.lookAt(look.x * 0.06, 0.57 + gaze * (TV_Y - 0.55) - look.y * 0.04, -0.86 - gaze * 0.54);
     snap = true;
@@ -591,10 +605,8 @@ hooks.render = () => {
   renderPlaceholders();
   if (S.phase === "gate") return hintText();
   if (T.phase !== S.phase) {
-    const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && S.phase === "countdown") say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();

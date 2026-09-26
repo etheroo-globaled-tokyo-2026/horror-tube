@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { after, describe, it } from "node:test";
+
+import * as v from "valibot";
 
 import { createGameServer, listenGameServer } from "../src/server.js";
 import type { VerifyFetch } from "@horror-tube/world-id";
+import { baseUrl } from "./base-url.js";
 
 const SIGNING_KEY = `0x${"ab".repeat(32)}`;
 const TEST_ENV: NodeJS.ProcessEnv = {
@@ -13,6 +15,14 @@ const TEST_ENV: NodeJS.ProcessEnv = {
   WORLD_ID_SIGNING_KEY: SIGNING_KEY,
   WORLD_ID_ENVIRONMENT: "production",
 };
+
+const IdkitRequestJson = v.object({
+  app_id: v.string(),
+  action: v.string(),
+  environment: v.string(),
+  allow_legacy_proofs: v.boolean(),
+  rp_context: v.object({ rp_id: v.string(), signature: v.string(), nonce: v.string() }),
+});
 
 describe("World ID HTTP", () => {
   const servers: ReturnType<typeof createServer>[] = [];
@@ -36,21 +46,14 @@ describe("World ID HTTP", () => {
     });
     servers.push(server);
     await listenGameServer(server, { port: 0, host: "127.0.0.1" });
-    const addr = server.address() as AddressInfo;
-    return `http://127.0.0.1:${String(addr.port)}`;
+    return baseUrl(server);
   }
 
   it("POST /world-id/request returns a signed enter-room IDKit context", async () => {
     const base = await start();
     const res = await fetch(`${base}/world-id/request`, { method: "POST" });
     assert.equal(res.status, 200);
-    const body = (await res.json()) as {
-      app_id: string;
-      action: string;
-      environment: string;
-      allow_legacy_proofs: boolean;
-      rp_context: { rp_id: string; signature: string; nonce: string };
-    };
+    const body = v.parse(IdkitRequestJson, await res.json());
     assert.equal(body.app_id, "app_unit_test");
     assert.equal(body.action, "enter-room");
     assert.equal(body.environment, "production");

@@ -12,6 +12,7 @@ import { createGameServer, listenGameServer } from "../src/server.js";
 import type { ShinamiPort } from "../src/shinami-port.js";
 import { assertSponsorableKind, betPoolIds } from "../src/tx-policy.js";
 import { createWalletHandler, createWalletHandlerFromEnv } from "../src/wallet-handler.js";
+import { baseUrl } from "./base-url.js";
 
 const PEPPER = "test-pepper";
 const NULLIFIER = "11256099";
@@ -26,7 +27,6 @@ const POOL_ID = `0x${"66".repeat(32)}`;
 const shared = (objectId: string, mutable: boolean) =>
   Inputs.SharedObjectRef({ objectId, initialSharedVersion: 1, mutable });
 
-/** Same call as betTx in @horror-tube/betting, with objects already resolved as the web's client does. */
 function betKind(sender: string): Promise<string> {
   return kind(sender, (tx) => {
     tx.moveCall({
@@ -62,14 +62,6 @@ const SessionJson = v.object({ session: v.string() });
 const AddressJson = v.object({ address: v.string() });
 const DigestJson = v.object({ digest: v.string() });
 const ErrorJson = v.object({ error: v.string() });
-
-function boundPort(server: Server): number {
-  const address = server.address();
-  if (address === null || v.is(v.string(), address)) {
-    throw new Error("test server did not bind a TCP port");
-  }
-  return address.port;
-}
 
 describe("session", () => {
   it("round-trips the nullifier and rejects a tampered token", () => {
@@ -211,7 +203,7 @@ describe("wallet HTTP", () => {
     });
     servers.push(server);
     await listenGameServer(server, { port: 0, host: "127.0.0.1" });
-    return `http://127.0.0.1:${String(boundPort(server))}`;
+    return baseUrl(server);
   }
 
   it("returns a session, then the same address, then a digest", async () => {

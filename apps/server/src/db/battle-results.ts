@@ -4,6 +4,7 @@ import type {
   Shot,
 } from "@horror-tube/fight/battle-queue";
 import type { Client, Pool, PoolClient, QueryResultRow } from "pg";
+import * as v from "valibot";
 
 import { readDatabaseUrl } from "./database-url.js";
 
@@ -31,22 +32,22 @@ type BattleResultRow = QueryResultRow & {
   settlement_tx_hash: string | null;
 };
 
-function parseJsonArray<T>(value: T[] | string, field: string): T[] {
-  if (Array.isArray(value)) {
-    return value;
+const ShotRow = v.object({
+  time_range: v.string(),
+  characters: v.string(),
+  action: v.string(),
+  camera: v.string(),
+  style: v.string(),
+});
+
+function parseJsonArray<T>(item: v.GenericSchema<T>, value: T[] | string, field: string): T[] {
+  const parsed = v.safeParse(v.array(item), Array.isArray(value) ? value : JSON.parse(value));
+  if (!parsed.success) {
+    throw new Error(
+      `battle_results.${field} must be a JSON array. Got: ${JSON.stringify(value)}. ${v.summarize(parsed.issues)}`,
+    );
   }
-  if (typeof value === "string") {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      throw new Error(
-        `battle_results.${field} must be a JSON array. Got: ${JSON.stringify(value)}`,
-      );
-    }
-    return parsed as T[];
-  }
-  throw new Error(
-    `battle_results.${field} must be a JSON array. Got: ${JSON.stringify(value)}`,
-  );
+  return parsed.output;
 }
 
 function rowToRecord(row: BattleResultRow): BattleQueueRecord {
@@ -55,12 +56,12 @@ function rowToRecord(row: BattleResultRow): BattleQueueRecord {
     battleId: row.battle_id,
     fighterASubname: row.fighter_a_subname,
     fighterBSubname: row.fighter_b_subname,
-    shots: parseJsonArray<Shot>(row.shots, "shots"),
+    shots: parseJsonArray(ShotRow, row.shots, "shots"),
     ensLines: [row.ens_line_loser, row.ens_line_winner],
     rationale: row.rationale,
     winnerSubname: row.winner_subname,
     loserSubname: row.loser_subname,
-    winnerInjuries: parseJsonArray<string>(row.winner_injuries, "winner_injuries"),
+    winnerInjuries: parseJsonArray(v.string(), row.winner_injuries, "winner_injuries"),
     nextOpponentSubname: row.next_opponent_subname,
     bettingClosed: row.betting_closed,
     playbackFinished: row.playback_finished,
@@ -72,10 +73,6 @@ function rowToRecord(row: BattleResultRow): BattleQueueRecord {
   };
 }
 
-/**
- * Postgres-backed battle-result queue. Requires DATABASE_URL (see .env.example).
- * This is not a second database — same Managed Postgres as seasons/rounds.
- */
 export class PostgresBattleQueueStore implements BattleQueueStore {
   constructor(private readonly db: PgQueryable) {}
 
@@ -157,7 +154,6 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
   }
 }
 
-/** Fail closed when DATABASE_URL is missing or blank. */
 export function requireDatabaseUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string {

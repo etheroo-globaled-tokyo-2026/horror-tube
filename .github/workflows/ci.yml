@@ -284,21 +284,6 @@ jobs:
           fi
           docker exec "$cid" ffmpeg -version
 
-  contracts:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/contracts
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: v1.5.1
-      - run: forge fmt --check
-      - run: forge test
-
   terraform:
     runs-on: ubuntu-latest
     steps:

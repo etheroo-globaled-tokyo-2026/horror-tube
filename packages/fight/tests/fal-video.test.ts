@@ -1,9 +1,11 @@
+import { ApiError } from "@fal-ai/client";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
   buildFalInput,
   generateFightVideo,
+  type FalVideoInput,
 } from "../src/fal-video.js";
 import {
   resolveFalSubscribeModel,
@@ -97,7 +99,7 @@ describe("generateFightVideo", () => {
     const turn = validTurn();
     const frameUrl = "https://cdn.example/frames/seed.jpg";
     let subscribedModel = "";
-    let subscribedInput: Record<string, unknown> | undefined;
+    let subscribedInput: FalVideoInput | undefined;
     const result = await generateFightVideo(
       turn,
       falCfg,
@@ -116,8 +118,9 @@ describe("generateFightVideo", () => {
       { priorFrameUrl: frameUrl },
     );
     assert.equal(subscribedModel, "minimax/h3-max/image-to-video");
-    assert.equal(subscribedInput?.image_url, frameUrl);
-    assert.equal(subscribedInput?.aspect_ratio, undefined);
+    assert.ok(subscribedInput !== undefined && "image_url" in subscribedInput);
+    assert.equal(subscribedInput.image_url, frameUrl);
+    assert.equal("aspect_ratio" in subscribedInput, false);
     assert.equal(result.model, "minimax/h3-max/image-to-video");
   });
 
@@ -138,13 +141,11 @@ describe("generateFightVideo", () => {
       () =>
         generateFightVideo(validTurn(), falCfg, {
           subscribe: async () => {
-            const err = new Error("") as Error & {
-              status: number;
-              body: { detail: string };
-            };
-            err.status = 401;
-            err.body = { detail: "invalid key credentials" };
-            throw err;
+            throw new ApiError({
+              message: "",
+              status: 401,
+              body: { detail: "invalid key credentials" },
+            });
           },
         }),
       /status=401.*invalid key credentials/,
