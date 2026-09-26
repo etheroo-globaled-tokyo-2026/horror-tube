@@ -1,30 +1,49 @@
-const $ = (s) => document.querySelector(s);
-const C = Object.fromEntries(
-  [
-    "bone",
-    "blood",
-    "blood-deep",
-    "cold",
-    "cold-deep",
-    "rust",
-    "rust-deep",
-    "sulfur",
-    "dim",
-    "muted",
-    "alive",
-    "panel",
-    "rule",
-  ].map((k) => [k, HT.css("--" + k)]),
-);
+import {
+  A,
+  L,
+  PORTRAITS,
+  css,
+  paint,
+  type Ctx,
+  type Draw,
+  type Kind,
+  type Layer,
+} from "./sprites.ts";
+
+export const $ = (s: string): HTMLElement => {
+  const el = document.querySelector<HTMLElement>(s);
+  if (!el) throw new Error(`missing element ${s}`);
+  return el;
+};
+export const hooks = { render: (): void => {} };
+const render = (): void => hooks.render();
+
+const C = {
+  bone: css("--bone"),
+  blood: css("--blood"),
+  "blood-deep": css("--blood-deep"),
+  cold: css("--cold"),
+  "cold-deep": css("--cold-deep"),
+  rust: css("--rust"),
+  "rust-deep": css("--rust-deep"),
+  sulfur: css("--sulfur"),
+  dim: css("--dim"),
+  muted: css("--muted"),
+  alive: css("--alive"),
+  panel: css("--panel"),
+  rule: css("--rule"),
+};
 let seed = 666;
 const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-const hex = (n) =>
+export const hex = (n: number): string =>
   "0x" + Array.from({ length: n }, () => "0123456789abcdef"[(rnd() * 16) | 0]).join("");
-const eth = (n) => n.toFixed(n < 0.1 ? 3 : 4);
-const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.ceil(s) % 60).padStart(2, "0")}`;
+export const usd = (n: number): string => n.toFixed(2);
+export const mmss = (s: number): string =>
+  `${Math.floor(s / 60)}:${String(Math.ceil(s) % 60).padStart(2, "0")}`;
 
-const HUES = ["blood", "cold", "rust"];
-const CAST = [
+const HUES = ["blood", "cold", "rust"] as const;
+type Hue = (typeof HUES)[number];
+const CAST: [name: string, handle: string, kind: Kind, bio: string[]][] = [
   [
     "Jason Voorhees",
     "jason",
@@ -86,7 +105,7 @@ const CAST = [
     ["Old money. Old country.", "No reflection in mirrors.", "Only enters if invited."],
   ],
 ];
-const CAPS = {
+export const CAPS = {
   mask: ["machete", "regrowth", "silence"],
   hat: ["claws", "dream walk", "burns"],
   blank: ["kitchen knife", "patience", "the mask"],
@@ -95,17 +114,25 @@ const CAPS = {
   pins: ["chains", "the box", "pain"],
   ghost: ["knife", "phone call", "the mask"],
   clown: ["shapeshift", "fear feed", "sewers"],
+  hook: ["hook", "bees", "the mirror"],
   girl: ["the tape", "the well", "seven days"],
+  hair: ["kitchen knife", "run", "survive"],
+  pony: ["traps", "stay awake", "nerve"],
+  short: ["flamethrower", "motion tracker", "nerve"],
   chin: ["chainsaw hand", "boomstick", "one-liners"],
-};
-const DEMO = {
+  straw: ["stakes", "crossbow", "holy water"],
+  cross: ["crucifix", "faith", "research"],
+} satisfies Record<Kind, [string, string, string]>;
+export const DEMO = {
   a: CAST.findIndex((c) => c[1] === "frankenstein"),
   b: CAST.findIndex((c) => c[1] === "dracula"),
   video: "assets/demo-fight.mp4",
 };
-const isDemo = (pair) => !!pair && pair.includes(DEMO.a) && pair.includes(DEMO.b);
+export const isDemo = (pair: Pair | null): boolean =>
+  !!pair && pair.includes(DEMO.a) && pair.includes(DEMO.b);
 const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
-const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"];
+const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
+type Place = (typeof PLACES)[number];
 const CHAPTERS = [
   "finds {b} at the old mill.",
   "follows {b} into the cellar.",
@@ -114,7 +141,54 @@ const CHAPTERS = [
   "knocks twice. {b} opens the door.",
 ];
 
-const S = {
+export type Character = {
+  id: number;
+  name: string;
+  short: string;
+  ens: string;
+  hue: Hue;
+  kind: Kind;
+  bio: string[];
+  fights: number;
+  alive: boolean;
+  kills: number;
+  damage: number;
+  lost: number;
+};
+export type Pair = [number, number];
+export type Phase = "gate" | "vote" | "story" | "bet" | "fight" | "settle" | "over";
+export type Shot = { fighters: Pair; winner: number; round: number };
+export type LogEntry = { round: number; text: string; cls: string };
+export type GameState = {
+  view: number;
+  phase: Phase;
+  t: number;
+  round: number;
+  chars: Character[];
+  picks: number[];
+  cast: string | null;
+  votes: Record<number, number>;
+  fighters: Pair | null;
+  story: string;
+  winner: number;
+  dmg: number;
+  lost: string;
+  bet: { side: number; amt: number } | null;
+  side: number;
+  amt: number;
+  pool: [number, number];
+  result: number;
+  claim: number;
+  credit: number;
+  focus: number;
+  last: Shot | null;
+  note: string;
+  noteKind: string;
+  frame: number;
+  log: LogEntry[];
+};
+
+export const S: GameState = {
   view: 1,
   phase: "gate",
   t: 0,
@@ -134,8 +208,7 @@ const S = {
   pool: [0, 0],
   result: 0,
   claim: 0,
-  credit: 0.1,
-  wallet: "",
+  credit: 0,
   focus: 0,
   last: null,
   note: "",
@@ -143,31 +216,32 @@ const S = {
   frame: 0,
   log: [],
 };
-const col = (ch) => C[ch.hue];
-const living = () => S.chars.filter((c) => c.alive);
-const caps = (ch) => CAPS[ch.kind].slice(0, 3 - ch.lost);
-const deadEns = (ch) => (ch.alive ? ch.ens : ch.ens.replace(".horrortube", ".deadpool.horrortube"));
-const pair = () => {
+const col = (ch: Character): string => C[ch.hue];
+export const living = (): Character[] => S.chars.filter((c) => c.alive);
+const deadEns = (ch: Character): string =>
+  ch.alive ? ch.ens : ch.ens.replace(".horrortube", ".deadpool.horrortube");
+const pair = (): Pair | null => {
   const sorted = living().sort((a, b) => (S.votes[b.id] || 0) - (S.votes[a.id] || 0));
-  return sorted.length > 1 ? [sorted[0].id, sorted[1].id] : null;
+  const [a, b] = sorted;
+  return a && b ? [a.id, b.id] : null;
 };
-const place = (round) => PLACES[round % PLACES.length];
-const log = (text, cls = "") => {
+const place = (round: number): Place => PLACES[round % PLACES.length];
+export const log = (text: string, cls = ""): void => {
   S.log.unshift({ round: S.round, text, cls });
   S.log.length = Math.min(S.log.length, 80);
 };
-const note = (text, kind = "") => {
+export const note = (text: string, kind = ""): void => {
   if (kind === "bad") log(text, "t-dead");
   S.note = text;
   S.noteKind = kind;
   render();
 };
 
-function newSeason() {
+export function newSeason(): void {
   S.chars = CAST.map(([name, handle, kind, bio], id) => ({
     id,
     name,
-    short: name.split(" ").at(-1).toUpperCase(),
+    short: (name.split(" ").at(-1) ?? name).toUpperCase(),
     ens: handle + ".horrortube.eth",
     hue: HUES[id % 3],
     kind,
@@ -182,7 +256,7 @@ function newSeason() {
   log("NEW SEASON · every subname reset to status=alive", "t-house");
   startVote();
 }
-function startVote() {
+function startVote(): void {
   Object.assign(S, {
     phase: "vote",
     t: DUR.vote,
@@ -196,49 +270,62 @@ function startVote() {
     note: "",
   });
   for (const c of living()) S.votes[c.id] = (rnd() * 6) | 0;
-  if (S.round === 1) for (const id of [DEMO.a, DEMO.b]) S.votes[id] += 24;
+  if (S.round === 1) for (const id of [DEMO.a, DEMO.b]) S.votes[id] = (S.votes[id] ?? 0) + 24;
   log(`ROUND ${S.round} · VOTE OPEN`, "t-house");
   render();
 }
-function startStory() {
+const char = (id: number): Character => {
+  const ch = S.chars[id];
+  if (!ch) throw new Error(`no character ${id}`);
+  return ch;
+};
+const fighters = (): Pair => {
+  if (!S.fighters) throw new Error("no fighters");
+  return S.fighters;
+};
+export { char, fighters };
+
+function startStory(): void {
   S.fighters = pair();
   if (!S.fighters) return end();
-  const [a, b] = S.fighters.map((i) => S.chars[i]);
+  const [a, b] = S.fighters.map(char);
+  if (!a || !b) return;
   const edge = 0.5 + (a.kills - b.kills) * 0.05 - (a.damage - b.damage) * 0.004;
   S.winner = isDemo(S.fighters) ? S.fighters.indexOf(DEMO.a) : rnd() < edge ? 0 : 1;
   S.dmg = 15 + ((rnd() * 35) | 0);
-  S.story = `${a.short} ${CHAPTERS[S.round % CHAPTERS.length].replace("{b}", b.short)}`;
+  S.story = `${a.short} ${(CHAPTERS[S.round % CHAPTERS.length] ?? "").replace("{b}", b.short)}`;
   log(`LOADED ${a.ens} + ${b.ens}`, "t-house");
   log("THE STORY IS BEING WRITTEN", "t-house");
   Object.assign(S, { phase: "story", t: DUR.story, note: "" });
   render();
 }
-function startBet() {
+function startBet(): void {
   log("VOTING CLOSED · BETTING OPEN", "t-house");
   Object.assign(S, {
     phase: "bet",
     t: DUR.bet,
-    pool: [0.2 + rnd() * 0.3, 0.2 + rnd() * 0.3],
+    pool: [20 + rnd() * 30, 20 + rnd() * 30],
     side: 0,
     note: "",
   });
   render();
 }
-function startFight() {
+function startFight(): void {
   Object.assign(S, { phase: "fight", t: DUR.fight, frame: 0, note: "" });
   log(`ON AIR · ${S.story}`, "t-yours");
   render();
 }
-function startSettle() {
-  const w = S.chars[S.fighters[S.winner]],
-    l = S.chars[S.fighters[1 - S.winner]];
+function startSettle(): void {
+  const f = fighters();
+  const w = char(f[S.winner] ?? -1),
+    l = char(f[1 - S.winner] ?? -1);
   l.alive = false;
   w.fights++;
   l.fights++;
   w.kills++;
   w.damage = Math.min(95, w.damage + S.dmg);
   const lost = (w.damage >= 67 ? 2 : w.damage >= 34 ? 1 : 0) - w.lost;
-  S.lost = lost > 0 ? CAPS[w.kind][3 - w.lost - 1] : "";
+  S.lost = lost > 0 ? (CAPS[w.kind][3 - w.lost - 1] ?? "") : "";
   w.lost += Math.max(0, lost);
   log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
   log(`${deadEns(l)} · status=dead`, "t-house");
@@ -246,24 +333,24 @@ function startSettle() {
   S.result = 0;
   if (S.bet) {
     const total = S.pool[0] + S.pool[1];
-    S.result = S.bet.side === S.winner ? (S.bet.amt * total) / S.pool[S.winner] : -S.bet.amt;
+    S.result = S.bet.side === S.winner ? (S.bet.amt * total) / (S.pool[S.winner] ?? 0) : -S.bet.amt;
     if (S.result > 0) S.claim += S.result;
     log(
-      S.result > 0 ? `CLAIMABLE +${eth(S.result)} Ξ` : `LOST −${eth(S.bet.amt)} Ξ`,
+      S.result > 0 ? `CLAIMABLE +${usd(S.result)} USDC` : `LOST −${usd(S.bet.amt)} USDC`,
       S.result > 0 ? "t-alive" : "t-lost",
     );
   }
-  S.last = { fighters: S.fighters, winner: S.winner, round: S.round };
+  S.last = { fighters: f, winner: S.winner, round: S.round };
   S.focus = w.id;
   Object.assign(S, { phase: "settle", t: DUR.settle });
   render();
 }
-function end() {
+function end(): void {
   Object.assign(S, { phase: "over", t: 0 });
   log("SEASON OVER", "t-yours");
   render();
 }
-function next() {
+export function next(): void {
   if (S.phase === "vote") startStory();
   else if (S.phase === "story") startBet();
   else if (S.phase === "bet") startFight();
@@ -281,26 +368,19 @@ setInterval(() => {
   if (S.phase === "vote" && rnd() < 0.8) {
     const l = living(),
       c = l[(rnd() * l.length) | 0];
-    S.votes[c.id] = (S.votes[c.id] || 0) + 1 + ((rnd() * 2) | 0);
+    if (c) S.votes[c.id] = (S.votes[c.id] || 0) + 1 + ((rnd() * 2) | 0);
   }
-  if (S.phase === "bet") S.pool[(rnd() * 2) | 0] += rnd() * 0.02;
-  if (S.t <= 0) return next();
-  tick();
+  if (S.phase === "bet") S.pool[rnd() < 0.5 ? 0 : 1] += rnd() * 2;
+  if (S.t <= 0) next();
 }, 250);
 
-const replaying = () => (S.phase === "vote" || S.phase === "story") && !!S.last;
-const rendered = () =>
-  S.phase === "bet"
-    ? Math.min(1, 1 - S.t / DUR.bet)
-    : S.phase === "fight" || S.phase === "settle"
-      ? 1
-      : 0;
+export const replaying = (): boolean => (S.phase === "vote" || S.phase === "story") && !!S.last;
 setInterval(() => {
   if (S.phase === "fight" || replaying()) S.frame++;
   if (S.phase !== "gate") paintFilm();
 }, 125);
 
-function figure(c, ch, i, f, dead, moving) {
+function figure(c: Ctx, ch: Character, i: number, f: number, dead: boolean, moving: boolean): void {
   c.save();
   if (i === 1) {
     c.translate(160, 0);
@@ -310,16 +390,16 @@ function figure(c, ch, i, f, dead, moving) {
     c.translate(12, 86);
     c.rotate(-Math.PI / 2);
   } else c.translate(22 + (moving ? (f % 6 < 3 ? 2 : 0) : 0), 20 + (moving ? (f >> 1) % 2 : 0));
-  HT.PORTRAITS[ch.kind](c);
-  HT.L(c, 16, 33, 16, 48);
-  HT.L(c, 16, 48, 10, 63);
-  if (ch.damage >= 50) HT.L(c, 16, 48, 20, 56, 18, 63);
-  else HT.L(c, 16, 48, 22, 63);
-  if (ch.lost < 2) HT.L(c, 16, 38, 29, moving ? 30 + (f % 4 < 2 ? 0 : 3) : 40);
-  else HT.L(c, 16, 38, 20, 46);
+  PORTRAITS[ch.kind](c);
+  L(c, 16, 33, 16, 48);
+  L(c, 16, 48, 10, 63);
+  if (ch.damage >= 50) L(c, 16, 48, 20, 56, 18, 63);
+  else L(c, 16, 48, 22, 63);
+  if (ch.lost < 2) L(c, 16, 38, 29, moving ? 30 + (f % 4 < 2 ? 0 : 3) : 40);
+  else L(c, 16, 38, 20, 46);
   c.restore();
 }
-const tri = (c, ...p) => {
+const tri = (c: Ctx, ...p: number[]): void => {
   c.beginPath();
   c.moveTo(p[0], p[1]);
   for (let i = 2; i < p.length; i += 2) c.lineTo(p[i], p[i + 1]);
@@ -365,8 +445,8 @@ const SCENERY = {
     },
     (c) => c.fillRect(78, 30, 4, 4),
   ],
-};
-function paintFilm() {
+} satisfies Record<Place, [fill: Draw, lamp: Draw]>;
+function paintFilm(): void {
   const f = S.frame,
     rep = replaying(),
     shot = rep
@@ -375,19 +455,19 @@ function paintFilm() {
         ? { fighters: S.fighters, winner: S.winner, round: S.round }
         : null,
     [fill, lamp] = SCENERY[place(shot ? shot.round : S.round)],
-    layers = [
+    layers: Layer[] = [
       [C.rule, fill],
       [C.panel, (c) => c.fillRect(0, 85, 160, 5)],
       [C["rust-deep"], lamp],
       [
         C["rust-deep"],
         (c) => {
-          HT.L(c, 0, 85, 20, 84, 40, 86, 60, 84, 80, 85, 100, 84, 120, 86, 140, 84, 160, 85);
+          L(c, 0, 85, 20, 84, 40, 86, 60, 84, 80, 85, 100, 84, 120, 86, 140, 84, 160, 85);
           for (const x of [68, 84, 100]) {
-            HT.L(c, x, 84, x, 75);
-            HT.L(c, x - 3, 78, x + 3, 78);
+            L(c, x, 84, x, 75);
+            L(c, x - 3, 78, x + 3, 78);
           }
-          HT.A(c, 132, 16, 7, 0, 2);
+          A(c, 132, 16, 7, 0, 2);
         },
       ],
     ];
@@ -397,7 +477,7 @@ function paintFilm() {
       dead =
         S.phase === "settle" || S.phase === "over" || (rep && loop >= 64) ? 1 - shot.winner : -1;
     shot.fighters.forEach((id, i) =>
-      layers.push([col(S.chars[id]), (c) => figure(c, S.chars[id], i, f, dead === i, moving)]),
+      layers.push([col(char(id)), (c) => figure(c, char(id), i, f, dead === i, moving)]),
     );
     if (moving) {
       layers.push([
@@ -412,7 +492,7 @@ function paintFilm() {
           if (f % 12 > 8) {
             const x = (f / 12) % 2 < 1 ? 120 : 40;
             for (let a = 0; a < 8; a++)
-              HT.L(
+              L(
                 c,
                 x + Math.cos(a) * 5,
                 48 + Math.sin(a) * 5,
@@ -424,126 +504,73 @@ function paintFilm() {
       ]);
     }
   }
-  HT.paint($("#film"), 160, 90, layers);
+  paint(film(), 160, 90, layers);
 }
 
-const face = (id, size = 32) =>
-  `<canvas data-face="${id}" width="32" height="32" style="width:${size}px;height:${size}px"></canvas>`;
-function paintFaces(root) {
-  for (const cv of root.querySelectorAll("canvas[data-face]")) {
-    const ch = S.chars[+cv.dataset.face];
-    HT.portrait(cv, ch.kind, col(ch), { dead: !ch.alive });
-  }
-}
-const odds = (i) => ((S.pool[0] + S.pool[1]) / S.pool[i]).toFixed(2);
-const pct = () => `${Math.round(rendered() * 100)}%`;
-const stripLabel = () =>
-  replaying()
-    ? `LAST BATTLE · ROUND ${S.last.round}`
-    : {
-        vote: "NO BATTLE YET · THE CROWD DECIDES",
-        story: `ROUND ${S.round} · THE STORY IS BEING WRITTEN`,
-        bet: `ROUND ${S.round} · BETS OPEN · VIDEO ${pct()}`,
-        fight: `CHAPTER ${S.round} · ON AIR`,
-        settle: `ROUND ${S.round} · RESULT`,
-        over: "THE END",
-      }[S.phase] || "";
-const plates = () => {
-  if (!S.fighters || (S.phase !== "bet" && S.phase !== "settle")) return "";
-  const state = (i) => (S.phase === "settle" ? (i === S.winner ? " chosen" : " struck") : "");
-  const sub = (i) =>
-    S.bet && S.bet.side === i ? "YOUR BET" : S.phase === "bet" ? `×${odds(i)}` : "";
-  return `<div class="plates">${S.fighters
-    .map(
-      (id, i) =>
-        `<div class="plate ${S.chars[id].hue}${state(i)}"><b>${S.chars[id].short}</b><small data-plate="${i}">${sub(i)}</small></div>`,
-    )
-    .join("")}</div>`;
+export const odds = (i: number): string => ((S.pool[0] + S.pool[1]) / (S.pool[i] ?? 0)).toFixed(2);
+export const film = (): HTMLCanvasElement => {
+  const el = $("#film");
+  if (!(el instanceof HTMLCanvasElement)) throw new Error("#film is not a canvas");
+  return el;
 };
-const redacted = () =>
-  `${S.story} <span class="redact">WINNER: ${"█".repeat(8)} · DAMAGE: ██</span>`;
-const pipbar = () =>
-  `<p class="pipbar">LIVING <b>${living().length}</b> OF ${S.chars.length}<span class="pips-row" aria-hidden="true">${S.chars
-    .map((ch) => `<i class="${ch.alive ? ch.hue : "dead"}"></i>`)
-    .join("")}</span></p>`;
-
-function gate(step) {
-  const g = $("#gate");
-  g.hidden = false;
-  if (step === "wallet")
-    g.innerHTML = `<p class="osd t-alive lit">■ VERIFIED · HUMAN 18+</p><h1 class="lit">CONNECT A WALLET</h1>
-    <p>Voting is free. To bet, you need test ETH on Sepolia.</p>
-    <div class="row"><button class="btn primary" data-act="wallet">CONNECT BROWSER WALLET</button><button class="btn" data-act="empty">CONNECT AN EMPTY WALLET</button></div>`;
-  if (step === "funds")
-    g.innerHTML = `<p class="osd t-alive lit">■ ${S.wallet}</p><h1 class="lit">${S.credit > 0 ? "FUNDS OK" : "NO FUNDS"}</h1>
-    <p class="ens">check_funds(${S.wallet}) → ${S.credit.toFixed(4)} Ξ on Sepolia</p>
-    <p>${S.credit > 0 ? "You can vote and bet." : "You can vote, but you cannot bet. Get Sepolia ETH from a faucet, then connect again."}</p>
-    <div class="row"><button class="btn primary" data-act="enter">ENTER</button></div>`;
-}
 
 document.addEventListener("click", (e) => {
-  const el = e.target.closest("[data-act]");
-  if (!el || el.disabled) return;
+  const el = e.target instanceof Element ? e.target.closest<HTMLElement>("[data-act]") : null;
+  if (!el || (el instanceof HTMLButtonElement && el.disabled)) return;
   const act = el.dataset.act;
-  if (act === "wallet" || act === "empty") {
-    S.wallet = hex(4) + "…" + hex(2).slice(2);
-    S.credit = act === "wallet" ? 0.1 : 0;
-    gate("funds");
-  } else if (act === "enter") {
-    $("#gate").hidden = true;
-    newSeason();
-  } else if (act === "skip") {
+  if (act === "skip") {
     if (S.phase !== "gate") next();
   } else if (act === "view") {
-    S.view = +el.dataset.v || (S.view === 1 ? 2 : 1);
+    S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
   } else if (act === "reset") newSeason();
-  else if (act === "ring") pick(+el.dataset.id);
+  else if (act === "ring") pick(Number(el.dataset.id));
   else if (act === "cast") {
     S.cast = hex(10);
     log(`VOTE CAST · nullifier ${S.cast}`, "t-alive");
     note("Proof checked on the server.", "good");
   } else if (act === "side") {
-    S.side = +el.dataset.i;
+    S.side = Number(el.dataset.i);
     render();
   } else if (act === "amt") {
-    S.amt = +el.dataset.a;
+    S.amt = Number(el.dataset.a);
     render();
   } else if (act === "bet") {
     if (S.bet || S.phase !== "bet" || S.amt > S.credit) return;
     S.bet = { side: S.side, amt: S.amt };
     S.credit -= S.amt;
-    S.pool[S.side] += S.amt;
-    log(`BET ${S.amt} Ξ ON ${S.chars[S.fighters[S.side]].short}`, "t-yours");
+    S.pool[S.side ? 1 : 0] += S.amt;
+    log(`BET ${S.amt} USDC ON ${char(fighters()[S.side] ?? -1).short}`, "t-yours");
     render();
   } else if (act === "claim") {
     if (!S.claim) return;
-    log(`CLAIMED +${eth(S.claim)} Ξ`, "t-alive");
+    log(`CLAIMED +${usd(S.claim)} USDC`, "t-alive");
     S.credit += S.claim;
     S.claim = 0;
     render();
   }
 });
 document.addEventListener("mouseover", (e) => {
-  const el = e.target.closest('[data-act="ring"]');
-  if (el && S.focus !== +el.dataset.id) {
-    S.focus = +el.dataset.id;
-    (window.onFocus || render)();
+  const el =
+    e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act="ring"]') : null;
+  if (el && S.focus !== Number(el.dataset.id)) {
+    S.focus = Number(el.dataset.id);
+    render();
   }
 });
-function pick(id) {
+export function pick(id: number): void {
   S.focus = id;
-  const ch = S.chars[id];
+  const ch = char(id);
   if (S.phase !== "vote" || S.cast) return render();
   if (!ch.alive) return note(`${ch.short} is dead. Dead characters cannot get votes.`, "bad");
   if (S.picks.includes(id)) {
     S.picks = S.picks.filter((p) => p !== id);
-    S.votes[id]--;
+    S.votes[id] = (S.votes[id] ?? 0) - 1;
     return note("");
   }
   if (S.picks.length === 2) return note("Two picks max. Tap one to drop it.", "bad");
   S.picks.push(id);
-  S.votes[id]++;
+  S.votes[id] = (S.votes[id] ?? 0) + 1;
   note("");
 }
 

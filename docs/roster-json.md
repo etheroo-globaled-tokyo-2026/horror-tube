@@ -143,6 +143,19 @@ python3 -m roster remove --input labels.json
 `labels.json` is a JSON array of label strings. Sends `UserRegistry.unregister`
 for each. Use `plan-remove` if you only want the JSON plan.
 
+## Character sheet dashboard
+
+Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
+and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
+`ENS_LABEL`, `SEPOLIA_RPC_URL`, and `DASHBOARD_PORT`. Does not need
+`PRIVATE_KEY` and does not send transactions.
+
+```bash
+pnpm --filter @horror-tube/ens dashboard
+```
+
+Then open `http://127.0.0.1:<DASHBOARD_PORT>/`. Each GET re-reads the chain.
+
 ## Tests
 
 ```bash
