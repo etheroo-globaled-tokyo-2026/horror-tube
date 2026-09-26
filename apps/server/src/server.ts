@@ -7,10 +7,16 @@ import {
 } from "node:http";
 import { extname, resolve, sep } from "node:path";
 
+import {
+  handleWorldIdRequest,
+  type WorldIdHandlerDeps,
+} from "./world-id-handler.js";
+
 export type GameServerOptions = {
   port: number;
   host: string;
   staticDir?: string;
+  worldId?: WorldIdHandlerDeps;
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -121,7 +127,7 @@ function serveStatic(
 }
 
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir } = options;
+  const { staticDir, worldId } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const method = req.method ?? "GET";
@@ -132,12 +138,14 @@ export function createGameServer(options: GameServerOptions): Server {
       return;
     }
 
-    if (staticDir !== undefined && method === "GET") {
-      serveStatic(res, staticDir, url);
-      return;
-    }
-
-    sendNotFound(res);
+    void handleWorldIdRequest(req, res, worldId ?? {}).then((handled) => {
+      if (handled) return;
+      if (staticDir !== undefined && method === "GET") {
+        serveStatic(res, staticDir, url);
+        return;
+      }
+      sendNotFound(res);
+    });
   });
 
   return server;

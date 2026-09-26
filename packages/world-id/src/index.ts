@@ -1,4 +1,4 @@
-export { stakeActionForBattle, voteActionForRound } from "./action.js";
+export { enterRoomAction, stakeActionForBattle, voteActionForRound } from "./action.js";
 export { loadWorldIdEnv, requireEnv, type WorldIdEnv, type WorldIdEnvironment } from "./env.js";
 export { claimHumanAction } from "./gate.js";
 export {

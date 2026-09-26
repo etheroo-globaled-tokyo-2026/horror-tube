@@ -6,6 +6,11 @@ function requireId(kind: string, value: string): string {
   return trimmed;
 }
 
+/** Waiver gate on the web app: one Orb proof of human to enter the room. */
+export function enterRoomAction(): string {
+  return "enter-room";
+}
+
 export function voteActionForRound(roundId: string): string {
   return `vote-round-${requireId("roundId", roundId)}`;
 }
