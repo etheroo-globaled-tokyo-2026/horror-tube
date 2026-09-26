@@ -403,6 +403,12 @@ export const small = document.createElement("canvas");
 small.width = 160;
 small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
+const DRAWN_W = 256,
+  DRAWN_H = 144;
+const drawn = document.createElement("canvas");
+drawn.width = DRAWN_W;
+drawn.height = DRAWN_H;
+const dg = ctx2d(drawn);
 export let vidMode: "" | "live" | "rec" = "";
 export function syncVideo(): void {
   const url = S.videoUrl;
@@ -447,7 +453,41 @@ export function crop(
   }
   return [(sw0 - sw) / 2, (sh0 - sh) / 2, sw, sh];
 }
+function tearDraw(
+  src: HTMLCanvasElement,
+  [sx, sy, sw, sh]: [number, number, number, number],
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): void {
+  const g = tvCtx,
+    k = dh / sh;
+  g.imageSmoothingEnabled = false;
+  if (Math.random() < 0.05) {
+    const y = (Math.random() * (sh - 10)) | 0;
+    g.drawImage(src, sx, sy, sw, y, dx, dy, dw, y * k);
+    g.drawImage(src, sx, sy + y, sw, 10, dx + 24, dy + y * k, dw, 10 * k);
+    g.drawImage(
+      src,
+      sx,
+      sy + y + 10,
+      sw,
+      sh - y - 10,
+      dx,
+      dy + (y + 10) * k,
+      dw,
+      (sh - y - 10) * k,
+    );
+  } else g.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
+}
 export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
+  if (S.videoStyle === "rotoscope") {
+    dg.imageSmoothingEnabled = false;
+    dg.drawImage(video, 0, 0, DRAWN_W, DRAWN_H);
+    tearDraw(drawn, crop(DRAWN_W, DRAWN_H, dw, dh), dx, dy, dw, dh);
+    return;
+  }
   const w = 160,
     h = Math.round((160 * dh) / dw);
   if (small.height !== h) small.height = h;
@@ -473,15 +513,7 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     }
   }
   sg.putImageData(img, 0, 0);
-  const g = tvCtx,
-    sy = dh / h;
-  g.imageSmoothingEnabled = false;
-  if (Math.random() < 0.05) {
-    const y = (Math.random() * (h - 10)) | 0;
-    g.drawImage(small, 0, 0, w, y, dx, dy, dw, y * sy);
-    g.drawImage(small, 0, y, w, 10, dx + 24, dy + y * sy, dw, 10 * sy);
-    g.drawImage(small, 0, y + 10, w, h - y - 10, dx, dy + (y + 10) * sy, dw, (h - y - 10) * sy);
-  } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
+  tearDraw(small, [0, 0, w, h], dx, dy, dw, dh);
 }
 export function drawGuide(now: number): void {
   const g = tvCtx,

@@ -2,6 +2,9 @@
 
 export type Phase = "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 
+export const VIDEO_STYLES = ["rotoscope", "film"] as const;
+export type VideoStyle = (typeof VIDEO_STYLES)[number];
+
 export type RoundState = {
   round: number;
   phase: Phase;
@@ -15,6 +18,7 @@ export type RoundState = {
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;
+  videoStyle: VideoStyle | null;
   /**
    * CDN URL of the most recent fight's last frame under frames/.
    * Null before the first successful video. Kept across bout transitions so

@@ -17,7 +17,12 @@ import {
   stakeWeiForUnits,
   type BattleBettingPorts,
 } from "../battle-betting.js";
-import type { Phase, RoundState } from "../types.js";
+import {
+  VIDEO_STYLES,
+  type Phase,
+  type RoundState,
+  type VideoStyle,
+} from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import {
   refuseUnverifiedWorldId,
@@ -87,7 +92,7 @@ export class GameLoop {
   /** On-chain BattleBetting id while this bout's betting window is open. */
   private onChainBattleId: bigint | null = null;
   private winner: 0 | 1 | null = null;
-  private videoUrl: string | null = null;
+  private video: { url: string; style: VideoStyle } | null = null;
   /** Last-frame CDN URL for the next bout's image-to-video seed. */
   private frameUrl: string | null = null;
   private error: string | null = null;
@@ -155,7 +160,8 @@ export class GameLoop {
       fighters: this.fighters,
       pool: [...this.pool] as [number, number],
       winner: this.phase === "settle" || this.phase === "over" ? this.winner : null,
-      videoUrl: this.videoUrl,
+      videoUrl: this.video?.url ?? null,
+      videoStyle: this.video?.style ?? null,
       frameUrl: this.frameUrl,
       error: this.error,
       chars: this.chars.map((c) => ({
@@ -311,11 +317,17 @@ export class GameLoop {
   }
 
   /**
-   * Video job seam: record the CDN video URL, playback duration (ms), and the
-   * last-frame CDN URL that seeds the next bout. Does not build a fal client.
+   * Video job seam: record the CDN video URL, playback duration (ms), the
+   * last-frame CDN URL that seeds the next bout, and how the video is drawn.
+   * Does not build a fal client.
    * Bet closes when this is set, outcome is set, and BET_MIN_SECONDS has passed.
    */
-  setVideoReady(url: string, durationMs: number, frameUrl: string): void {
+  setVideoReady(
+    url: string,
+    durationMs: number,
+    frameUrl: string,
+    videoStyle: VideoStyle,
+  ): void {
     if (this.phase !== "bet") {
       throw new Error(
         `setVideoReady is only allowed in the bet phase. Current phase: ${this.phase}.`,
@@ -334,7 +346,12 @@ export class GameLoop {
         `setVideoReady durationMs must be an integer >= 1. Got: ${String(durationMs)}.`,
       );
     }
-    this.videoUrl = url.trim();
+    if (!VIDEO_STYLES.includes(videoStyle)) {
+      throw new Error(
+        `setVideoReady videoStyle must be one of ${VIDEO_STYLES.map((s) => JSON.stringify(s)).join(", ")}. Got: ${JSON.stringify(videoStyle)}.`,
+      );
+    }
+    this.video = { url: url.trim(), style: videoStyle };
     this.frameUrl = frameUrl.trim();
     this.videoDurationMs = durationMs;
     // Success path only advances to fight (or waits for BET_MIN_SECONDS); it does not failVideo.
@@ -385,7 +402,7 @@ export class GameLoop {
     const battleId = this.onChainBattleId;
     this.error = message.trim();
     this.pool = [0, 0];
-    this.videoUrl = null;
+    this.video = null;
     this.videoDurationMs = null;
     this.onChainBattleId = null;
     this.betOpenedAt = null;
@@ -422,7 +439,7 @@ export class GameLoop {
     }));
     this.champion = null;
     this.round = 1;
-    this.videoUrl = null;
+    this.video = null;
     this.frameUrl = null;
     this.error = null;
     this.winner = null;
@@ -480,7 +497,7 @@ export class GameLoop {
     this.fighters = [ranked[0]!, ranked[1]!];
     this.winner = null;
     this.outcome = null;
-    this.videoUrl = null;
+    this.video = null;
     this.videoDurationMs = null;
     this.error = null;
     this.pool = [0, 0];
@@ -515,7 +532,7 @@ export class GameLoop {
   private async maybeLeaveBet(now: number): Promise<void> {
     if (this.phase !== "bet" || this.betOpenedAt === null) return;
     if (this.error !== null) return;
-    if (this.videoUrl === null || this.videoDurationMs === null) {
+    if (this.video === null || this.videoDurationMs === null) {
       if (now - this.betOpenedAt >= this.config.videoTimeoutSeconds * 1000) {
         await this.failVideo(
           `Video was not ready within VIDEO_TIMEOUT_SECONDS (${String(this.config.videoTimeoutSeconds)}). Bets refunded.`,
@@ -704,7 +721,7 @@ export class GameLoop {
       );
     }
     this.fighters = [championId, challengerId];
-    this.videoUrl = null;
+    this.video = null;
     this.error = null;
     this.onChainBattleId = null;
     this.bettingClosedGate = false;
