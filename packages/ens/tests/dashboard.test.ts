@@ -9,10 +9,12 @@ import {
   MIN_LOG_BLOCK,
   DASHBOARD_PORT,
   decodeRegisterLabel,
+  ensAppUrl,
   parseDashboardPort,
   parseListenerPids,
   recentLogScanChunks,
   renderDashboardHtml,
+  sepoliaAddressUrl,
   type CharacterSheet,
 } from "../scripts/dashboard.js";
 
@@ -69,9 +71,11 @@ describe("dashboard recent log windows (unit, no network)", () => {
 
 describe("dashboard HTML (unit, no network)", () => {
   it("rendered HTML escapes < and quotes in look/brief", () => {
+    const owner = "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02";
     const sheet: CharacterSheet = {
       label: "pinhead",
       name: "pinhead.horrortube.eth",
+      owner,
       look: `<script>alert("x")</script>`,
       brief: `He said "boo" & left`,
       injuries: "",
@@ -83,6 +87,9 @@ describe("dashboard HTML (unit, no network)", () => {
     assert.ok(html.includes("&lt;script&gt;"));
     assert.ok(html.includes("&quot;boo&quot;"));
     assert.ok(html.includes("&amp; left"));
+    assert.ok(html.includes(`href="${ensAppUrl(sheet.name)}"`));
+    assert.ok(html.includes(`href="${sepoliaAddressUrl(owner)}"`));
+    assert.ok(html.includes(owner));
   });
 });
 
