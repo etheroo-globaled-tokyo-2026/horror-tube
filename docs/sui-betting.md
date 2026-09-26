@@ -1,7 +1,7 @@
 # Sui betting
 
 Parimutuel bets on Horror Tube battles, in USDC on Sui testnet. Sui holds only the money: pools, bets,
-payouts and fees. Fighters, votes, the winner and damage stay in ENS and Postgres.
+payouts and fees. Fighters, the winner and damage stay in ENS and Postgres.
 
 ## IDs
 

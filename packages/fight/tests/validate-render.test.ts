@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { ARENA_VIDEO_PROMPT_PREFIX, formatShotList, renderEnsLines, videoPromptFromTurn } from "../src/render.js";
 import { validateFightInput, validateNarrationTurn } from "../src/validate.js";
-import { sampleFightInput, validModelTurn, validTurn } from "./fixtures.js";
+import { sampleFightInput, validModelTurn } from "./fixtures.js";
 
 describe("validateFightInput", () => {
   it("accepts two living fighters and living eligible opponents", () => {
@@ -79,7 +79,7 @@ describe("validateNarrationTurn", () => {
 
 describe("renderEnsLines", () => {
   it("renders loser status=dead first and winner injuries JSON last", () => {
-    const [loser, winner] = renderEnsLines(validTurn());
+    const [loser, winner] = renderEnsLines(validModelTurn());
     assert.equal(loser, "freddy|status=dead");
     assert.equal(
       winner,
@@ -88,7 +88,7 @@ describe("renderEnsLines", () => {
   });
 
   it("puts the winner line last", () => {
-    const lines = renderEnsLines(validTurn());
+    const lines = renderEnsLines(validModelTurn());
     assert.equal(lines.length, 2);
     assert.match(lines[1]!, /\|injuries=/);
     assert.match(lines[0]!, /\|status=dead/);
@@ -97,7 +97,7 @@ describe("renderEnsLines", () => {
 
 describe("videoPromptFromTurn", () => {
   it("starts with the arena prefix, then the shot list, and omits rationale and ENS lines", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const prompt = videoPromptFromTurn(turn);
     assert.equal(prompt.startsWith(ARENA_VIDEO_PROMPT_PREFIX), true);
     assert.equal(
@@ -114,13 +114,13 @@ describe("videoPromptFromTurn", () => {
   });
 
   it("keeps the arena prefix out of ENS lines", () => {
-    const [loser, winner] = renderEnsLines(validTurn());
+    const [loser, winner] = renderEnsLines(validModelTurn());
     assert.equal(loser.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
     assert.equal(winner.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
   });
 
   it("formats shots with look, timed beat, camera, and style", () => {
-    const text = formatShotList(validTurn().shots);
+    const text = formatShotList(validModelTurn().shots);
     assert.match(text, /0-4s/);
     assert.match(text, /Camera:/i);
     assert.match(text, /Style:/i);

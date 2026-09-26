@@ -1,6 +1,6 @@
 # Horror Tube design system
 
-A horror broadcast that people watch, shape through requests, and bet on. A television service preserves fictional
+A horror broadcast that people watch and bet on. A television service preserves fictional
 residents through living human attention. Death is routine work to its announcer. The viewer is complicit.
 The story and writing rules are in [the broadcast](../../docs/broadcast-story.md).
 
@@ -10,7 +10,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
 | `main.ts`         | The 3D room (Three.js from npm), the TV picture and the remote.                                             |
 | `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
-| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /vote`.                                                      |
+| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
 | `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
 | `coinbox.ts`      | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.                           |
 | `room-power.ts`   | The remote's POWER key (`O`): the set dies, films you from the TV, and a face lunges at you when you turn.  |
@@ -30,23 +30,22 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 `VITE_SEPOLIA_RPC_URL` in the repo-root `.env`. The RPC URL ships in the page, so use a public keyless one.
 
 - Name: the `display_name` record. A blank `display_name` stops the page load.
-- Face: the `icon` PNG, everywhere (tape, spine, guide, fight figures).
+- Face: the `icon` PNG, everywhere (tape, spine, case file, fight figures).
 - Case file: `brief` and current `injuries`. `injury_places` is the list of places that character can be injured. `look` is for the video model only.
-- `status=dead` shows the character crossed off and in black and white. It cannot get votes.
+- `status=dead` shows the character crossed off and in black and white.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
 - A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
-- **Limit:** the shelf has 10 slots and the guide has 10 rows. Characters after the tenth do not show. The layout must
+- **Limit:** the shelf has 10 slots. Characters after the tenth do not show. The layout must
   change before the roster batches (issues 11–13) go on chain.
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **panel** (a person books the first fighter; the model picks their opponent. Later, a person picks the next fighter and the champion stays) → **vote** (the room and house bots pick who they think wins; voting closes at quorum or after 15 seconds) → **bet** (hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
-House bots play too (`RoundState.bots`, rules in `docs/game-loop.md`). A bot votes after the first human, so one
-tester reaches the quorum, and bets against the human stake. The room never hides it: the countdown reads
-`1 human + house bot voted`, the bet screen prints `HOUSE BOT 0.50 USDC` under the side it backs, the log names each
-bot vote and bet, and a bot failure shows in the hint bar without stopping the round.
+House bots play too (`RoundState.bots`, rules in `docs/game-loop.md`). A bot bets against the human stake once a
+human has started the bout. The room never hides it: the bet screen prints `HOUSE BOT 0.50 USDC` under the side it
+backs, the log names each bot bet, and a bot failure shows in the hint bar without stopping the round.
 
 ## The wallet
 
@@ -64,11 +63,11 @@ reads the meter:
   `RoundState.pool` and `feeBps`.
 - Winnings: `game.ts` reads the wallet's tickets on every phase change and on every update during settle, because
   the server announces settle before the Sui pool is settled. Tickets in open pools wait. `YOU LOST` counts only the
-  stake lost in this round's pool (`RoundState.poolId`), and the result and the claim reset when voting starts.
+  stake lost in this round's pool (`RoundState.poolId`), and the result and the claim reset when a new season's first bout opens.
 - One money move at a time: a bet or a collect sets `S.pending` before it is sent and clears it when it lands or
   fails. Meanwhile A/B and OK do nothing, and the TV and the hint say `PLACING YOUR BET…` or `COLLECTING…`. Bets,
   claims and winnings reads run in order, never side by side.
-- A rejected bet, collect, vote or winnings read stays in the hint bar, escaped, until the phase changes or the next
+- A rejected bet, collect or winnings read stays in the hint bar, escaped, until the phase changes or the next
   bet or collect lands. `Collected.` and the coins sound only after the claim lands on chain.
 - The coin: the live game bets in the repo's own test USDC (`packages/test-usdc`, 6 decimals, no value), not Circle's
   testnet USDC. The web has no coin type of its own: it uses `coinType` from `GET /betting` (the server's
@@ -141,9 +140,8 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
   says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.
   1. The TV receives one channel.
   2. The shelf holds the residents' records, kept up to date.
-  3. The remote requests who fights next.
-  4. Watching is free; the meter funds optional bets.
-  5. Hold A or B to bet on the survivor.
+  3. Watching is free; the meter funds optional bets.
+  4. Hold A or B to bet on the survivor.
 - **Demo refusal:** the TV switches off, the lights go out, the waiver burns from the bottom up. Then
   NO VIEWER REGISTERED stays in the dark. ENTER cuts back to a new waiver.
 - **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (3 to 4 s on
@@ -153,7 +151,7 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Demo:** `X` or DEMO · REFUSE ENTRY runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
-The wallet opens after verification. Money lives on the coin box (below). Requests and bets stay on the remote.
+The wallet opens after verification. Money lives on the coin box (below). Bets stay on the remote.
 
 ## The room
 
@@ -177,7 +175,7 @@ The wallet opens after verification. Money lives on the coin box (below). Reques
   - The bulb casts hard shadows (`BasicShadowMap`). Ambient occlusion (`GTAOPass`) darkens the places where things
     touch. Exponential fog makes far things darker. The TV picture has no fog.
   - The tapes are real VHS cases (6 × 25 cm spines) in the room palette, never the resident's hue: black plastic,
-    a `--sulfur` number sticker (the same colour as the numbers in the TV guide), an aged paper label with the short
+    a `--sulfur` number sticker (the same colour as the case file number), an aged paper label with the short
     name, and the face at the bottom, tinted with the same warm ramp as the fight video. Plain dark tapes fill the
     rest of the shelf. A dead resident's tape stays, with a grey sticker and label and the name struck out. The
     spines are lit, with a little glow to stay readable.
@@ -187,24 +185,22 @@ The wallet opens after verification. Money lives on the coin box (below). Reques
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Vote: a TV-guide channel. Last night's fight on top with **REC**, the residents below (number and name, 2 pages).
-    Before the first fight of a season, the top flips through the cast instead: face, `CH 05`, name, `ALIVE` or
-    `DEAD`, with a static cut between cards.
+  - Waiting: colour bars and PLEASE STAND BY while the room's start request is in flight. A failed start shows
+    THE PROGRAMME DID NOT START, the server's reason, and OK to try again.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
-    injuries. Typing never lifts a tape, so the TV stays in view. The name shows again after OK.
+    injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
     record update, the deceased resident, and OK to collect.
-- **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
-  voting), hold A or B to bet, OK to collect.
+- **The remote:** the only thing you use for the game. Digits for a case file, VOL ± for the stake, hold A or B to
+  bet, OK to collect or to start again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
 
 Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
-- **Picking must not feel like a treat.** No glamour, no vote races, no faces before you choose.
 - **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
-  controls state the action (`REQUEST TWO RESIDENTS · NUMBER OK`, `STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
+  controls state the action (`STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
   Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.
@@ -237,7 +233,7 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
 - **The padlock and the drawer:** withdraw. Real meters had no coin return: the collector unlocked the drawer and paid
   back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, and the credit goes back to
   the wallet that paid in.
-- **Empty:** the needle rests at 0 and the drums read `00.00`. You can vote. A and B on the remote do nothing, the TV
+- **Empty:** the needle rests at 0 and the drums read `00.00`. A and B on the remote do nothing, the TV
   says `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
@@ -259,7 +255,7 @@ and buzzes when it flickers, and the TV hisses as loud as its static. Something 
 - The waiver: a pen scratch, the VERIFIED stamp, and on the fail path the TV clicks off, the paper burns, a deep boom.
 - The remote: a plastic click per key, a buzz when the TV says no, a ratchet while you hold A or B, a clunk when the bet
   locks.
-- The phases: a church bell opens the vote, a typewriter writes the story, a heartbeat while the bet is open,
+- The phases: a typewriter writes the story, a heartbeat while the bet is open,
   hits on the fight, the emergency-broadcast tone and a boom at "WE INTERRUPT THIS PROGRAM" (a tape stop if you lost),
   a 1 kHz test tone at END OF PROGRAMMING. The fight video plays its own sound.
 - The coin box: a coin drops in, the meter ticks, the padlock ratchets open, coins pour out, a buzz when the box
@@ -298,7 +294,7 @@ The warm set:
 | `--soot`, `--char`, `--grime` | The room: darkness, surfaces, dirt.                 |
 | `--rust`, `--rust-deep`       | Rust, wood, metal, the OK key.                      |
 | `--blood`, `--blood-deep`     | Death, REC, the remote's LED.                       |
-| `--sulfur`                    | Light, numbers on the guide, the B key, highlights. |
+| `--sulfur`                    | Light, case file numbers, the B key, highlights.    |
 | `--bone`                      | Text on the TV, the A key.                          |
 
 `--cold` is only for the ghost in the logo.

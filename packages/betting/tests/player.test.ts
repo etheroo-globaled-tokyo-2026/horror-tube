@@ -17,7 +17,7 @@ function round(phase: string, poolId: string | null = null) {
     phase,
     battleId: poolId === null ? null : "battle-7",
     poolId,
-    fighters: phase === "vote" ? null : [3, 9],
+    fighters: phase === "waiting" ? null : [3, 9],
   };
 }
 
@@ -116,9 +116,9 @@ describe("sides and amounts", () => {
 describe("waitForBetPhase", () => {
   it("polls /round until the bet phase has a pool, logging each new phase once", async () => {
     const game = fakeGame([
-      json(round("vote")),
-      json(round("vote")),
-      json(round("countdown")),
+      json(round("waiting")),
+      json(round("waiting")),
+      json(round("settle")),
       json(round("bet")),
       json(round("bet", "0xpool")),
     ]);

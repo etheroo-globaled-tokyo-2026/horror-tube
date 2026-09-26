@@ -19,16 +19,10 @@ import {
   type NarrationResult,
 } from "./narrate.js";
 import {
-  cryptoRandomInt,
-  nextRotationPair,
-  type RandomInt,
-  type RosterEntry,
-} from "./rotation.js";
-import {
   downloadFightVideoBytes,
   type FetchLike,
 } from "./store-video.js";
-import type { FightInput, FightTurnResult, LivingCard } from "./types.js";
+import type { FightInput, FightTurnResult } from "./types.js";
 
 export * from "./types.js";
 export * from "./env.js";
@@ -37,47 +31,10 @@ export * from "./render.js";
 export * from "./narrate.js";
 export * from "./fal-video.js";
 export * from "./rotation.js";
+export * from "./pairing.js";
 export * from "./battle-queue.js";
 export * from "./store-video.js";
 export * from "./extract-frame.js";
-
-export function fightInputFromRotation(
-  livingCards: readonly LivingCard[],
-  winnerSubname: string,
-  randomInt: RandomInt,
-): FightInput {
-  const roster: RosterEntry[] = livingCards.map((card) => ({
-    subname: card.subname,
-    status: "alive" as const,
-  }));
-  const pair = nextRotationPair(roster, winnerSubname, randomInt);
-  const champion = livingCards.find(
-    (card) => card.subname === pair.championSubname,
-  );
-  const challenger = livingCards.find(
-    (card) => card.subname === pair.challengerSubname,
-  );
-  if (champion === undefined) {
-    throw new Error(
-      `fightInputFromRotation: champion ${JSON.stringify(pair.championSubname)} missing from living cards.`,
-    );
-  }
-  if (challenger === undefined) {
-    throw new Error(
-      `fightInputFromRotation: challenger ${JSON.stringify(pair.challengerSubname)} missing from living cards.`,
-    );
-  }
-  const eligibleOpponents = livingCards.filter(
-    (card) =>
-      card.subname !== champion.subname &&
-      card.subname !== challenger.subname,
-  );
-  return {
-    fighterA: champion,
-    fighterB: challenger,
-    eligibleOpponents,
-  };
-}
 
 export async function runFightTurn(
   input: FightInput,
@@ -87,7 +44,6 @@ export async function runFightTurn(
     fal?: FalClient;
     narrationConfig?: NarrationConfig;
     falConfig?: FalVideoConfig;
-    randomInt?: RandomInt;
     fetch?: FetchLike;
     fightMediaConfig?: FightMediaConfig;
     putObject?: PutFightVideo;
@@ -101,13 +57,7 @@ export async function runFightTurn(
 ): Promise<FightTurnResult> {
   const narrationConfig = deps.narrationConfig ?? loadNarrationConfig(env);
   const falConfig = deps.falConfig ?? loadFalVideoConfig(env);
-  const randomInt = deps.randomInt ?? cryptoRandomInt;
-  const narrated: NarrationResult = await narrateFight(
-    input,
-    narrationConfig,
-    deps.narration,
-    randomInt,
-  );
+  const narrated: NarrationResult = await narrateFight(input, narrationConfig, deps.narration);
   const video = await generateFightVideo(
     narrated.turn,
     falConfig,
@@ -134,7 +84,6 @@ export async function runFightTurn(
   return {
     turn: narrated.turn,
     ensLines: narrated.ensLines,
-    nextOpponentSubname: narrated.nextOpponentSubname,
     rationale: narrated.rationale,
     videoPrompt: video.prompt,
     videoUrl,

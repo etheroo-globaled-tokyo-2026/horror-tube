@@ -285,6 +285,27 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "VOTE_TIMEOUT_SECONDS"
+        value = tostring(var.vote_timeout_seconds)
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "PAIRING_MAX_ATTEMPTS"
+        value = tostring(var.pairing_max_attempts)
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "PAIRING_TIMEOUT_SECONDS"
+        value = tostring(var.pairing_timeout_seconds)
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS"
         value = tostring(var.betting_close_after_video_start_seconds)
         scope = "RUN_TIME"

@@ -239,12 +239,27 @@ variable "house_bot_stake_units" {
 }
 
 variable "quorum_votes" {
-  description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
+  description = "QUORUM_VOTES: humans plus house bots needed before the vote countdown (docs/game-loop.md). Required; no default."
   type        = number
 }
 
 variable "vote_countdown_seconds" {
-  description = "VOTE_COUNTDOWN_SECONDS game-loop timing (docs/game-loop.md). Required; no default."
+  description = "VOTE_COUNTDOWN_SECONDS after quorum, never past the vote timeout (docs/game-loop.md). Required; no default."
+  type        = number
+}
+
+variable "vote_timeout_seconds" {
+  description = "VOTE_TIMEOUT_SECONDS: voting closes by then even without quorum (docs/game-loop.md). Required; no default."
+  type        = number
+}
+
+variable "pairing_max_attempts" {
+  description = "PAIRING_MAX_ATTEMPTS: pairing model answers before the round stops (docs/game-loop.md). Required; no default."
+  type        = number
+}
+
+variable "pairing_timeout_seconds" {
+  description = "PAIRING_TIMEOUT_SECONDS for one pairing model call (docs/game-loop.md). Required; no default."
   type        = number
 }
 

@@ -2,7 +2,6 @@ import type {
   FightInput,
   LivingCard,
   NarrationModelTurn,
-  NarrationTurn,
 } from "../src/types.js";
 
 export const fighterA: LivingCard = {
@@ -81,14 +80,6 @@ export function validModelTurn(
     winner_subname: "jason",
     winner_injuries: ["cracked mask", "gouge across the shoulder"],
     rationale: "Jason's size and machete overpower Freddy in open ground.",
-    ...overrides,
-  };
-}
-
-export function validTurn(overrides: Partial<NarrationTurn> = {}): NarrationTurn {
-  return {
-    ...validModelTurn(),
-    next_opponent_subname: "leatherface",
     ...overrides,
   };
 }

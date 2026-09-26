@@ -12,17 +12,15 @@ const NumberPair = v.tuple([v.number(), v.number()]);
 
 const RoundStateSchema = v.object({
   round: v.number(),
-  phase: v.picklist(["vote", "countdown", "bet", "fight", "settle", "over"]),
+  phase: v.picklist(["waiting", "pick", "vote", "countdown", "bet", "fight", "settle", "over"]),
   endsAt: v.nullable(v.number()),
   champion: v.nullable(v.number()),
-  slots: v.picklist([1, 2]),
   voters: v.number(),
   quorum: v.number(),
-  votes: v.record(v.pipe(v.string(), v.digits()), v.number()),
-  tally: v.nullable(
-    v.array(v.object({ id: v.number(), votes: v.number(), reachedAt: v.number() })),
-  ),
+  votes: NumberPair,
+  tally: v.nullable(NumberPair),
   fighters: v.nullable(NumberPair),
+  selectable: v.array(v.number()),
   battleId: v.nullable(v.string()),
   poolId: v.nullable(v.string()),
   pool: NumberPair,
@@ -35,7 +33,7 @@ const RoundStateSchema = v.object({
   bots: v.array(
     v.object({
       address: v.string(),
-      picks: v.nullable(v.array(v.number())),
+      pick: v.nullable(v.number()),
       bet: v.nullable(
         v.object({ side: v.picklist([0, 1]), units: v.number(), digest: v.string() }),
       ),
@@ -56,8 +54,21 @@ const RoundStateSchema = v.object({
 const SessionPostResponse = v.object({
   ok: v.optional(v.boolean()),
   error: v.optional(v.string()),
+  code: v.optional(v.string()),
   state: v.optional(RoundStateSchema),
 });
+
+export class SessionPostError extends Error {
+  constructor(
+    readonly path: string,
+    readonly status: number,
+    readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SessionPostError";
+  }
+}
 
 function parseRoundState(source: string, json: string): ServerRoundState {
   const parsed = v.safeParse(RoundStateSchema, JSON.parse(json));
@@ -143,7 +154,7 @@ export function withServerIds<T extends { label: string }>(
   });
 }
 
-function storedVoteSession(store: SessionStore): string {
+function storedSession(store: SessionStore): string {
   const session = store.getItem(WALLET_SESSION_KEY);
   if (session === null || session.trim() === "") {
     throw new Error("World ID session is required. Finish the waiver scan first.");
@@ -152,11 +163,11 @@ function storedVoteSession(store: SessionStore): string {
 }
 
 async function postWithSession(
-  path: "/vote" | "/playback-start",
-  payload: { picks: number[] } | { battleId: string },
+  path: "/start" | "/next-fighter" | "/vote" | "/playback-start",
+  payload: Record<string, never> | { battleId: string } | { pick: number } | { fighter: number },
   store: SessionStore,
 ): Promise<ServerRoundState> {
-  const session = storedVoteSession(store);
+  const session = storedSession(store);
   const res = await fetch(path, {
     method: "POST",
     headers: {
@@ -173,7 +184,12 @@ async function postWithSession(
   }
   const body = parsed.output;
   if (!res.ok || body.ok === false) {
-    throw new Error(body.error ?? `POST ${path} failed: HTTP ${String(res.status)}`);
+    throw new SessionPostError(
+      path,
+      res.status,
+      body.code,
+      body.error ?? `POST ${path} failed: HTTP ${String(res.status)}`,
+    );
   }
   if (body.state === undefined) {
     throw new Error(`POST ${path} response missing state.`);
@@ -181,11 +197,22 @@ async function postWithSession(
   return body.state;
 }
 
-export function postVote(
-  picks: number[],
+export function postStart(
+  fighter: number,
   store: SessionStore = localStorage,
 ): Promise<ServerRoundState> {
-  return postWithSession("/vote", { picks }, store);
+  return postWithSession("/start", { fighter }, store);
+}
+
+export function postNextFighter(
+  fighter: number,
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
+  return postWithSession("/next-fighter", { fighter }, store);
+}
+
+export function postVote(pick: number, store: SessionStore = localStorage): Promise<ServerRoundState> {
+  return postWithSession("/vote", { pick }, store);
 }
 
 export function postPlaybackStart(

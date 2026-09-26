@@ -12,9 +12,10 @@ export type SeasonCharacter = {
 export type RoundInsert = {
   seasonId: string;
   roundNumber: number;
-  slots: 1 | 2;
   quorum: number;
   championLabel: string | null;
+  fighterALabel: string;
+  fighterBLabel: string;
 };
 
 export type Voter = { kind: "human"; nullifier: string } | { kind: "bot"; address: string };
@@ -22,7 +23,7 @@ export type Voter = { kind: "human"; nullifier: string } | { kind: "bot"; addres
 export type VoteInsert = {
   roundId: string;
   voter: Voter;
-  picks: string[];
+  pick: string;
   at: number;
 };
 
@@ -34,6 +35,8 @@ export type StoredTally = {
 
 export type RoundStore = {
   startSeason(characters: SeasonCharacter[]): Promise<string>;
+  endOpenSeasons(): Promise<string[]>;
+  endSeason(seasonId: string, championLabel: string | null): Promise<void>;
   startRound(round: RoundInsert): Promise<string>;
   insertVote(vote: VoteInsert): Promise<void>;
   storeTally(roundId: string): Promise<StoredTally[]>;
@@ -78,11 +81,40 @@ export class PostgresRoundStore implements RoundStore {
     return requireId(result.rows[0], "seasons");
   }
 
+  async endOpenSeasons(): Promise<string[]> {
+    const result = await this.db.query<IdRow>(
+      "UPDATE seasons SET ended_at = now() WHERE ended_at IS NULL RETURNING id",
+    );
+    return result.rows.map((row) => row.id);
+  }
+
+  async endSeason(seasonId: string, championLabel: string | null): Promise<void> {
+    const result = await this.db.query(
+      `UPDATE seasons
+       SET ended_at = now(), champion_ens_label = $2
+       WHERE id = $1 AND ended_at IS NULL`,
+      [seasonId, championLabel],
+    );
+    if (result.rowCount !== 1) {
+      throw new Error(
+        `endSeason: expected to end one open season ${seasonId}. Updated ${String(result.rowCount)}.`,
+      );
+    }
+  }
+
   async startRound(round: RoundInsert): Promise<string> {
     const result = await this.db.query<IdRow>(
-      `INSERT INTO rounds (season_id, round_number, phase, slots, quorum, champion_ens_label)
-       VALUES ($1, $2, 'vote', $3, $4, $5) RETURNING id`,
-      [round.seasonId, round.roundNumber, round.slots, round.quorum, round.championLabel],
+      `INSERT INTO rounds (season_id, round_number, phase, slots, quorum, champion_ens_label,
+         fighter_a_ens_label, fighter_b_ens_label)
+       VALUES ($1, $2, 'vote', 1, $3, $4, $5, $6) RETURNING id`,
+      [
+        round.seasonId,
+        round.roundNumber,
+        round.quorum,
+        round.championLabel,
+        round.fighterALabel,
+        round.fighterBLabel,
+      ],
     );
     return requireId(result.rows[0], "rounds");
   }
@@ -96,7 +128,7 @@ export class PostgresRoundStore implements RoundStore {
           vote.roundId,
           vote.voter.kind === "human" ? vote.voter.nullifier : null,
           vote.voter.kind === "bot" ? vote.voter.address : null,
-          vote.picks,
+          [vote.pick],
           new Date(vote.at),
         ],
       );
@@ -151,10 +183,30 @@ export class MemoryRoundStore implements RoundStore {
   readonly rounds = new Map<string, RoundInsert>();
   readonly votes: VoteInsert[] = [];
   readonly tallies = new Map<string, StoredTally[]>();
+  readonly ended = new Map<string, { championLabel: string | null }>();
 
   async startSeason(characters: SeasonCharacter[]): Promise<string> {
     this.seasons.push(structuredClone(characters));
     return `season-${String(this.seasons.length)}`;
+  }
+
+  openSeasonIds(): string[] {
+    return this.seasons
+      .map((_, i) => `season-${String(i + 1)}`)
+      .filter((id) => !this.ended.has(id));
+  }
+
+  async endOpenSeasons(): Promise<string[]> {
+    const open = this.openSeasonIds();
+    for (const id of open) this.ended.set(id, { championLabel: null });
+    return open;
+  }
+
+  async endSeason(seasonId: string, championLabel: string | null): Promise<void> {
+    if (!this.openSeasonIds().includes(seasonId)) {
+      throw new Error(`endSeason: expected to end one open season ${seasonId}. Updated 0.`);
+    }
+    this.ended.set(seasonId, { championLabel });
   }
 
   async startRound(round: RoundInsert): Promise<string> {
@@ -178,14 +230,12 @@ export class MemoryRoundStore implements RoundStore {
     }
     const byLabel = new Map<string, StoredTally>();
     for (const vote of this.votes.filter((v) => v.roundId === roundId)) {
-      for (const label of vote.picks) {
-        const prev = byLabel.get(label);
-        byLabel.set(label, {
-          ensLabel: label,
-          voteCount: (prev?.voteCount ?? 0) + 1,
-          reachedAt: Math.max(prev?.reachedAt ?? 0, vote.at),
-        });
-      }
+      const prev = byLabel.get(vote.pick);
+      byLabel.set(vote.pick, {
+        ensLabel: vote.pick,
+        voteCount: (prev?.voteCount ?? 0) + 1,
+        reachedAt: Math.max(prev?.reachedAt ?? 0, vote.at),
+      });
     }
     const rows = [...byLabel.values()];
     this.tallies.set(roundId, rows);

@@ -307,12 +307,7 @@ export function updateShelf(shown: Character | null): void {
     slot.mesh.visible =
       shelf.visible &&
       !!ch &&
-      shown !== ch &&
-      !(
-        (S.phase === "vote" || S.phase === "countdown") &&
-        S.champion !== null &&
-        ch.id === S.champion
-      );
+      shown !== ch;
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);

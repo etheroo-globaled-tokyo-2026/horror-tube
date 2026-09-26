@@ -46,14 +46,9 @@ export const narrationModelTurnSchema = z.object({
 
 export type NarrationModelTurn = z.infer<typeof narrationModelTurnSchema>;
 
-export type NarrationTurn = NarrationModelTurn & {
-  next_opponent_subname: string;
-};
-
 export type FightTurnResult = {
-  turn: NarrationTurn;
+  turn: NarrationModelTurn;
   ensLines: [string, string];
-  nextOpponentSubname: string;
   rationale: string;
   videoPrompt: string;
   videoUrl: string;

@@ -1,7 +1,7 @@
 # Horror Tube
 
 A battle royale of famous horror movie characters. AI makes each fight as a video.
-Verified humans vote on who fights next (free). Users bet on who wins (paid).
+Verified humans start the show; the winner stays on against a random living challenger. Users bet on who wins (paid).
 
 ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Sui** (DeFi & Payments).
 
@@ -16,7 +16,7 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                   |
 | Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                  |
 | Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet. |
-| Game server                  | Built (`apps/server`). Vote→bet→fight→settle holding loop; battle-result queue schema and settle state machine land with #60. |
+| Game server                  | Built (`apps/server`). Waiting→bet→fight→settle holding loop; a verified `POST /start` opens the first bout. |
 | Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                  |
 | ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or settle stays on the round error. `POST /retry-settle` runs the pending steps again. |
 
@@ -27,7 +27,7 @@ See `apps/web/DESIGN.md`.
 ## Components
 
 - **ENS name**: character state (subnames and text records) on Sepolia. The web game reads its characters from here.
-- **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons/rounds/votes and the battle-result queue (`battle_results`). Not Durable Objects.
+- **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons and the battle-result queue (`battle_results`). Not Durable Objects.
 - **Smart contract**: the Move package `horror_tube::betting` on Sui testnet holds one USDC pool per battle. The server's operator key opens, closes, cancels and settles it. See [sui-betting.md](sui-betting.md).
 - **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
@@ -39,18 +39,18 @@ See `apps/web/DESIGN.md`.
 2. **Wallet**: the app makes a burner wallet (Sui testnet) for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
    Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Not built yet: a faucet (the backend sends testnet SUI for gas and the first USDC, one time per World ID nullifier).
    There is no wallet screen: after World ID, the user goes straight to the TV. Money lives on the coin box in the room. A real deposit is tested; the coin return is not.
-3. **Vote (free)**: everyone votes for the next fighters. Dead characters cannot get votes. The full rules (quorum, winner stays on) are in `docs/game-loop.md`.
+3. **Start**: the server boots waiting. A verified human's room sends `POST /start`; the fresh bout is a random living pair. The full rules (winner stays on) are in `docs/game-loop.md`.
 4. **Load characters**: the web game reads every subname under `<ENS_LABEL>.eth` at page load, with `look`, `brief`, `injuries`, `status`, and `icon` (keys: `docs/character-card-fields.md`). Built.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 1. The game shows no capabilities now.)
 6. **Story**: the LLM gets the story prompt, the character state, and lore text for each character (from the database or fandom.com).
    The LLM picks the winner and the winner's damage, and writes them as the last line of the turn.
    The server stores the winner and damage in the database, **not onchain**.
-7. **Open betting**: voting closes and betting opens. The server's operator key opens the battle's Sui pool (`open_pool`).
-8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Each bet is USDC into the battle's Sui pool, sent through `POST /tx`; Shinami pays the gas.
-   The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
+7. **Open betting**: the bout pair is ready and betting opens. The server's operator key opens the battle's Sui pool (`open_pool`).
+8. **Bet**: users bet on the outcome (paid) until betting closes shortly after the video starts. Each bet is USDC into the battle's Sui pool, sent through `POST /tx`; Shinami pays the gas.
+   The video model makes the video from the LLM text while betting is open.
 9. **Show video**: the fight video plays from `RoundState.videoUrl`. There is no local demo clip.
 10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. The server then calls `settleBattle` on the Sui pool. A failed ENS write or settle stays on the round error and does not start the next bout. `POST /retry-settle` runs the pending ENS steps again. Moving the loser to a dead-pool name is still open (question 2).
-11. Go back to the vote (step 3), until one character is left.
+11. The winner stays on against a random living challenger (step 6), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
 
@@ -67,7 +67,7 @@ See `apps/web/DESIGN.md`.
 
 ## World: IDKit (prize "Best Use of IDKit", $5k, 2 × $2.5k)
 
-**Trust moment:** horror content needs 18+, and a free vote needs one vote per human.
+**Trust moment:** horror content needs 18+, and only a verified unique human can enter the room and start a bout.
 
 **Credential:** Orb Proof of Human only.
 
@@ -78,8 +78,7 @@ See `apps/web/DESIGN.md`.
 **Rules:**
 
 - Verify every proof on the **server**. Never trust the client result.
-- Use the nullifier hash with the action `vote-round-<n>` to allow one vote per human per round.
-- Fail path for the demo: a user who has no Orb, or who cancels, sees a "not eligible" screen and cannot enter or vote.
+- Fail path for the demo: a user who has no Orb, or who cancels, sees a "not eligible" screen and cannot enter.
 
 **Submission must include:**
 
@@ -128,7 +127,7 @@ Links:
 ## Betting
 
 - Bets are testnet USDC in one Sui pool per battle (`horror_tube::betting`). Real money is not necessary for the demo. Details: [sui-betting.md](sui-betting.md).
-- Betting opens when voting closes (`open_pool`). It closes `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` after the first room starts the fight video (`close_betting`), or at the pool's `closes_at_ms` at the latest (`docs/game-loop.md`).
+- Betting opens when the bout pair is ready (`open_pool`). It closes `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` after the first room starts the fight video (`close_betting`), or at the pool's `closes_at_ms` at the latest (`docs/game-loop.md`).
 - Winners share the pool in proportion to their bets, after a 2% fee taken from the losing side. If either side has no bets, all bets are refunded. The minimum bet is 0.03 USDC; the admin can change it.
 - The server settles the pool for the winner after it writes the loser's `status=dead` to ENS. A failed video cancels the pool, and every bet is refunded.
 - Players bet and claim from their Shinami wallets through `POST /tx`; Shinami pays the gas.

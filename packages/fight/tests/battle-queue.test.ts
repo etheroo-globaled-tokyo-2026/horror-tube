@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 
 import {
   createQueuedRecord,
-  fightInputFromQueuedNext,
   markBettingClosed,
   markPlaybackFinished,
   MemoryBattleQueueStore,
@@ -19,13 +18,13 @@ import {
   fighterB,
   livingOpponent,
   otherLiving,
-  validTurn,
+  validModelTurn,
 } from "./fixtures.js";
 
 function sampleInsert(
   overrides: Partial<BattleQueueInsert> = {},
 ): BattleQueueInsert {
-  const turn = validTurn();
+  const turn = validModelTurn();
   return {
     id: "queue-1",
     battleId: "42",
@@ -40,7 +39,6 @@ function sampleInsert(
     winnerSubname: turn.winner_subname,
     loserSubname: turn.loser_subname,
     winnerInjuries: turn.winner_injuries,
-    nextOpponentSubname: turn.next_opponent_subname,
     ...overrides,
   };
 }
@@ -207,32 +205,6 @@ describe("parseInjuriesTextRecord", () => {
     );
   });
 });
-
-describe("fightInputFromQueuedNext", () => {
-  it("builds the following bout from the winner and stored opponent", () => {
-    const living = [fighterA, fighterB, livingOpponent, otherLiving];
-    const input = fightInputFromQueuedNext(living, "jason", "leatherface");
-    assert.equal(input.fighterA.subname, "jason");
-    assert.equal(input.fighterB.subname, "leatherface");
-    assert.deepEqual(
-      input.eligibleOpponents.map((c) => c.subname),
-      ["freddy", "chucky"],
-    );
-  });
-
-  it("aborts when the stored opponent is missing or dead", () => {
-    const living = [fighterA, fighterB];
-    assert.throws(
-      () => fightInputFromQueuedNext(living, "jason", "missing"),
-      /next opponent.*"missing".*missing or not alive/u,
-    );
-    assert.throws(
-      () => fightInputFromQueuedNext(living, "jason", "jason"),
-      /must not be the winner/u,
-    );
-  });
-});
-
 describe("battle video URL store", () => {
   it("rejects blank and fal.media URLs; accepts a Spaces CDN URL and returns it later", async () => {
     const store = new MemoryBattleQueueStore();
