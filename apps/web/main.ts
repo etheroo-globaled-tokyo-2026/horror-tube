@@ -22,7 +22,8 @@ import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { STAKES, T, Z, W8, LOW, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { errorHint, esc } from "./hint.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -77,6 +78,11 @@ function hintText(): void {
                 : "";
   if (meter) {
     h.innerHTML = Z.at === null ? meter : `${meter} <span class="hint-key">ESC</span>`;
+    return;
+  }
+  const error = errorHint(S);
+  if (error !== null) {
+    h.innerHTML = error;
     return;
   }
   h.innerHTML = hovered
@@ -161,8 +167,6 @@ function ok(): void {
   } else if (S.claim) {
     if (!canCollect(S)) return;
     $("#h-claim").click();
-    sfx.coins(14);
-    say("Collected.");
   } else if (S.phase === "over") $("#h-reset").click();
 }
 let holdTimer = 0;
@@ -624,6 +628,11 @@ hooks.render = () => {
     PHASE_SOUND.get(S.phase)?.();
   }
   hintText();
+};
+
+hooks.collected = () => {
+  sfx.coins(14);
+  say("Collected.");
 };
 
 waiverHooks.hintText = hintText;
