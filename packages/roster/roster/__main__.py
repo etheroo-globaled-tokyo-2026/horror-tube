@@ -19,7 +19,13 @@ from roster.chain import (
     snapshot_existing,
     unregister_labels,
 )
-from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
+from roster.fandom import (
+    FandomError,
+    fetch_page_lore,
+    page_section_index,
+    require_source_count,
+    resolve_page,
+)
 from roster.icons import (
     IconGenerationError,
     generate_face_png,
@@ -34,7 +40,7 @@ from roster.plan import (
     build_register_plan,
     build_removal_plan,
 )
-from roster.propose import propose_sheets, sheets_payload
+from roster.propose import propose_sheets, sheet_from_battle_pages, sheets_payload
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -191,8 +197,60 @@ def cmd_icons_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _optional_page_flag(value: Optional[str], *, name: str) -> Optional[str]:
+    if value is None:
+        return None
+    if value.strip() == "":
+        raise FandomError(f"{name} was passed blank.")
+    return value.strip()
+
+
+def cmd_sections(args: argparse.Namespace) -> int:
+    """Print api.php section headings. Avoids ad-hoc Python against this 3.9 interpreter."""
+    source = _require_flag(args.source, name="--source")
+    if args.wiki is not None and args.wiki.strip() == "":
+        raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
+    index = page_section_index(resolve_page(source, wiki=args.wiki))
+    json.dump(index, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
 def cmd_propose(args: argparse.Namespace) -> int:
     out_path = Path(_require_flag(args.out, name="--out"))
+    look_source = _optional_page_flag(args.look_source, name="--look-source")
+    brief_source = _optional_page_flag(args.brief_source, name="--brief-source")
+    if (look_source is None) != (brief_source is None):
+        raise FandomError(
+            "Pass both --look-source and --brief-source, or neither. "
+            "A battle sheet takes the body from Appearance and the kit from Powers and abilities."
+        )
+    if look_source is not None and brief_source is not None:
+        if args.n != 1:
+            raise FandomError(
+                f"--n must be 1 when --look-source and --brief-source are set. Got: {args.n}"
+            )
+        if list(args.source or []) or args.sources_file is not None:
+            raise FandomError(
+                "Do not pass --source or --sources-file together with --look-source and --brief-source."
+            )
+        if args.wiki is not None and args.wiki.strip() == "":
+            raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
+        character = sheet_from_battle_pages(
+            resolve_page(look_source, wiki=args.wiki),
+            resolve_page(brief_source, wiki=args.wiki),
+        )
+        _write_json(out_path, sheets_payload([character]))
+        print(f"Wrote proposed roster JSON: {out_path}")
+        print("characters=1")
+        print(f"  {character['label']}")
+        print(
+            "Pass this file to `python -m roster import --input ...` for a plan, "
+            "or `python -m roster register --input ...` to send chain txs. "
+            "This command does not call ENS."
+        )
+        return 0
+
     sources: list[str] = list(args.source or [])
     if args.sources_file is not None:
         if args.sources_file.strip() == "":
@@ -200,7 +258,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
         sources.extend(_load_sources_file(Path(args.sources_file)))
     if len(sources) == 0:
         raise FandomError(
-            "Provide at least one --source URL/title, or a --sources-file list."
+            "Provide at least one --source URL/title, or a --sources-file list, "
+            "or both --look-source and --brief-source."
         )
     sources = require_source_count(sources, n=args.n)
     if args.wiki is not None and args.wiki.strip() == "":
@@ -430,6 +489,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     icons_chain_p.set_defaults(func=cmd_icons_chain)
 
+    sections_p = sub.add_parser(
+        "sections",
+        help=(
+            "Print Fandom api.php section headings as JSON. "
+            "Use this instead of an inline Python parser."
+        ),
+    )
+    sections_p.add_argument(
+        "--source",
+        required=True,
+        help="https://<wiki>.fandom.com/wiki/<Title> URL, or a page title with --wiki.",
+    )
+    sections_p.add_argument(
+        "--wiki",
+        required=False,
+        default=None,
+        help="Fandom host for a page title, e.g. villains.fandom.com.",
+    )
+    sections_p.set_defaults(func=cmd_sections)
+
     propose_p = sub.add_parser(
         "propose",
         help=(
@@ -463,6 +542,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         default=None,
         help="Fandom host for page titles, e.g. villains.fandom.com. Not used for full URLs.",
+    )
+    propose_p.add_argument(
+        "--look-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose Appearance section is the fighter's body. "
+            "Pair with --brief-source. Do not also pass --source."
+        ),
+    )
+    propose_p.add_argument(
+        "--brief-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose Powers and abilities section is the fighter's kit. "
+            "Pair with --look-source. Both pages must yield the same label."
+        ),
     )
     propose_p.add_argument(
         "--out",

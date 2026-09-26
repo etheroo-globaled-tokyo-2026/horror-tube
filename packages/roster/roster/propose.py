@@ -5,7 +5,14 @@ from __future__ import annotations
 import re
 from typing import Any, Sequence
 
-from roster.fandom import FandomError, PageLore
+from roster.fandom import (
+    APPEARANCE_RE,
+    POWERS_RE,
+    FandomError,
+    PageLore,
+    PageRef,
+    read_named_section,
+)
 from roster.validate import (
     Character,
     CharacterList,
@@ -36,6 +43,29 @@ def first_sentence(text: str) -> str:
     if sentence and sentence[-1] not in ".!?":
         sentence += "."
     return sentence
+
+
+def sheet_from_battle_pages(look_ref: PageRef, powers_ref: PageRef) -> Character:
+    """One fighter: body from an Appearance section, kit from Powers and abilities.
+
+    The two pages must produce the same ENS label. A disambiguation page fails.
+    Text is the first paragraph of each section. Nothing is invented.
+    """
+    look_title, appearance = read_named_section(look_ref, APPEARANCE_RE, name="Appearance")
+    powers_title, powers = read_named_section(
+        powers_ref, POWERS_RE, name="Powers and abilities"
+    )
+    look_label = label_from_title(look_title)
+    powers_label = label_from_title(powers_title)
+    if look_label != powers_label:
+        raise FandomError(
+            f"Battle pages must share one label. "
+            f"Appearance page {look_title!r} is {look_label!r}; "
+            f"powers page {powers_title!r} is {powers_label!r}."
+        )
+    return sheet_from_lore(
+        PageLore(ref=powers_ref, title=powers_title, appearance=appearance, powers=powers)
+    )
 
 
 def sheet_from_lore(lore: PageLore) -> Character:
