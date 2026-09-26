@@ -24,10 +24,9 @@ betting, humans and house bots vote for who they think will win. The winner stay
 
 - **Waiting:** a fresh process holds no bout. No model call, no Sui pool, and no video until a verified human asks
   (`POST /start`), so a deploy or restart spends nothing.
-- **Opening bout:** the panel lists living fighters. A verified human books one (`POST /start` `{ fighter }`). The
-  pairing model then chooses only that fighter's opponent, from an enum of the other living labels. It cannot change
-  the booked fighter. Cards from ENS, including `injuries`, go into the prompt. A rejected answer is asked again, up
-  to `PAIRING_MAX_ATTEMPTS`, each attempt under `PAIRING_TIMEOUT_SECONDS`.
+- **Opening bout:** a verified human picks one living fighter (`POST /start` `{ fighter }`). The other fighter is a
+  random living character, drawn with the injected `randomInt` (production `cryptoRandomInt`). Dead characters are
+  never drawn.
 - **Next fighter:** after a bout, while more than one fighter is alive, the phase is `pick`. The panel lists the
   living fighters except the champion. A verified human picks the next one (`POST /next-fighter` `{ fighter }`). The
   model is not called. A dead fighter, the champion, or an unknown id is refused by name.
@@ -202,7 +201,7 @@ Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by lab
 
 **Actions from the client:**
 
-- `POST /start` with `Authorization: Bearer <waiver session>` and `{ fighter }`: books that living fighter for the opening bout, the model picks the opponent, and the vote opens. From `waiting` or `over`. `400` names a refused fighter. `409` with `code: "bout_open"` means a bout is open or already opening. `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
+- `POST /start` with `Authorization: Bearer <waiver session>` and `{ fighter }`: that living fighter is booked for the opening bout, a random living opponent is drawn, and the vote opens. From `waiting` or `over`. `400` names a refused fighter. `409` with `code: "bout_open"` means a bout is open or already opening. `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
 - `POST /next-fighter` with the same session and `{ fighter }`: only in `pick`. Sets the champion against that living fighter and opens the vote. `400` names a dead fighter, the champion, or an unknown id.
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ pick }`: `pick` is the character id of one of the two fighters. `400` names a refused vote; `500` means the vote row could not be stored.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.

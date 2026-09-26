@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
 import { DuplicateVoteError, type RoundStore, type Voter } from "../db/rounds.js";
-import type { PairingResult, PairingRunner } from "../pairing-job.js";
+import type { PairingRunner } from "../pairing-job.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import { botSide, type HouseBotChain, type HouseBots } from "./house-bot.js";
@@ -677,7 +677,7 @@ export class GameLoop {
       return { id, ensLabel, alive, kills: 0, damage: 0 };
     });
     this.requireLiving(chars, bookedId);
-    const fighters = await this.pairFighters(chars, bookedId, 1);
+    const fighters = this.randomOpeningPair(chars, bookedId);
     const seasonId = await this.roundStore.startSeason(
       chars.map((c) => ({
         ensLabel: c.ensLabel,
@@ -707,40 +707,25 @@ export class GameLoop {
     }
   }
 
-  private async pairFighters(
-    chars: CharRuntime[],
-    championId: number | null,
-    round: number,
-  ): Promise<[number, number]> {
-    const living = chars.filter((c) => c.alive);
-    if (living.length < 2) {
-      const only = living[0]?.ensLabel ?? "(none)";
+  private randomOpeningPair(chars: CharRuntime[], bookedId: number): [number, number] {
+    const others = chars.filter((c) => c.alive && c.id !== bookedId);
+    if (others.length === 0) {
+      const living = chars.filter((c) => c.alive).length;
       throw new Error(
-        `Pairing for round ${String(round)}: fewer than 2 living characters remain (living=${String(living.length)}, only=${only}).`,
+        `start: fewer than 2 living characters remain (living=${String(living)}, booked=${this.labelOf(bookedId)}).`,
       );
     }
-    const candidates = living.filter((c) => c.id !== championId).map((c) => c.ensLabel);
-    const championLabel = championId === null ? null : this.labelOf(championId);
-    const result: PairingResult = await this.pairing({
-      championSubname: championLabel,
-      candidateSubnames: candidates,
-      round,
-      opening: round === 1,
-    });
-    const eligibleA = championLabel === null ? candidates : [championLabel];
-    if (
-      !eligibleA.includes(result.fighterASubname) ||
-      !candidates.includes(result.fighterBSubname) ||
-      result.fighterASubname === result.fighterBSubname
-    ) {
+    const index = this.randomInt(others.length);
+    if (!Number.isInteger(index) || index < 0 || index >= others.length) {
       throw new Error(
-        `Pairing for round ${String(round)} returned ${JSON.stringify(result)}, which is not a living eligible pair (fighter A from ${JSON.stringify(eligibleA)}, fighter B from ${JSON.stringify(candidates)}).`,
+        `start: randomInt(${String(others.length)}) must return an integer in [0, ${String(others.length)}). Got: ${JSON.stringify(index)}.`,
       );
     }
-    console.log(
-      `pairing round=${String(round)} ${result.fighterASubname} vs ${result.fighterBSubname}: ${result.rationale}`,
-    );
-    return [this.idOf(result.fighterASubname), this.idOf(result.fighterBSubname)];
+    const opponent = others[index];
+    if (opponent === undefined) {
+      throw new Error(`start: random opponent index ${String(index)} is missing.`);
+    }
+    return [bookedId, opponent.id];
   }
 
   private idOf(ensLabel: string): number {
