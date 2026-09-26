@@ -19,6 +19,7 @@ REPO_ENV_PATH = REPO_ROOT / ".env"
 
 from roster.chain import (
     apply_register_plan,
+    apply_text_reset,
     list_registered,
     list_registered_labels,
     set_icons,
@@ -55,6 +56,12 @@ from roster.propose import (
     propose_sheets,
     sheet_from_page_pair,
     sheets_payload,
+)
+from roster.text_snapshot import (
+    DEFAULT_ENS_TEXT_SNAPSHOT,
+    characters_from_registered,
+    load_text_snapshot,
+    require_labels_registered,
 )
 from roster.validate import (
     RosterValidationError,
@@ -528,6 +535,47 @@ def cmd_redeploy(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot_text(args: argparse.Namespace) -> int:
+    """Read every registered character's text records and write a local JSON copy."""
+    _require_chain_env()
+    out_raw = args.out
+    if out_raw is None or str(out_raw).strip() == "":
+        out_path = DEFAULT_ENS_TEXT_SNAPSHOT
+    else:
+        out_path = Path(_require_flag(str(out_raw), name="--out"))
+    registered = list_registered()
+    characters = characters_from_registered(registered)
+    _write_json(out_path, characters)
+    print(f"snapshot-text: wrote {len(characters)} sheet(s) to {out_path}")
+    for character in characters:
+        print(f"  {character['label']}")
+    return 0
+
+
+def cmd_reset_text(args: argparse.Namespace) -> int:
+    """setText snapshot fields onto existing subnames. Never unregisters or invents."""
+    _require_chain_env()
+    input_raw = args.input
+    if input_raw is None or str(input_raw).strip() == "":
+        input_path = DEFAULT_ENS_TEXT_SNAPSHOT
+    else:
+        input_path = Path(_require_flag(str(input_raw), name="--input"))
+    characters = load_text_snapshot(input_path)
+    registered_labels = list_registered_labels()
+    require_labels_registered(
+        characters, path=input_path, registered_labels=registered_labels
+    )
+    print(
+        f"reset-text: setText for {len(characters)} sheet(s) from {input_path} "
+        "(existing subnames only; no unregister)"
+    )
+    for character in characters:
+        print(f"  {character['label']}")
+    apply_text_reset(characters)
+    print("reset-text: chain writes complete")
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     _require_ens_label()
     input_path = Path(_require_flag(args.input, name="--input"))
@@ -862,6 +910,45 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     redeploy_p.set_defaults(func=cmd_redeploy)
+
+    snapshot_text_p = sub.add_parser(
+        "snapshot-text",
+        help=(
+            "Read every registered character subname under ENS_LABEL and write a "
+            "JSON array of text fields only (label, display_name, look, brief, "
+            "injury_places, injuries, status, icon). Does not use Fandom or "
+            "icon-prompt-cache.json."
+        ),
+    )
+    snapshot_text_p.add_argument(
+        "--out",
+        required=False,
+        default=None,
+        help=(
+            "Path to write the text snapshot JSON. Defaults to "
+            f"{DEFAULT_ENS_TEXT_SNAPSHOT} (checked-in chain backup)."
+        ),
+    )
+    snapshot_text_p.set_defaults(func=cmd_snapshot_text)
+
+    reset_text_p = sub.add_parser(
+        "reset-text",
+        help=(
+            "Read an ENS text snapshot JSON and setText those fields onto the "
+            "existing registered subnames. Does not unregister, does not touch "
+            "the parent .eth name, and does not invent missing fields."
+        ),
+    )
+    reset_text_p.add_argument(
+        "--input",
+        required=False,
+        default=None,
+        help=(
+            "Path to the text snapshot JSON. Defaults to "
+            f"{DEFAULT_ENS_TEXT_SNAPSHOT}."
+        ),
+    )
+    reset_text_p.set_defaults(func=cmd_reset_text)
 
     return parser
 
