@@ -87,11 +87,12 @@ class MlxSam31:
                 if mask.sum() < MIN_PX:
                     continue
                 box = _box(mask)
-                for p in by_text[text]:
+                for i, p in enumerate(by_text[text]):
+                    m = mask if i == 0 else mask.copy()     # prompts sharing a text don't share one mutable mask
                     if p.kind in TRACKED:
-                        finds.append(Find(p.kind, p.key, score, mask, box, track, fill))
+                        finds.append(Find(p.kind, p.key, score, m, box, track, fill))
                     elif not fill and score >= FLOOR[p.kind]:
-                        finds.append(Find(p.kind, p.key, score, mask, box))
+                        finds.append(Find(p.kind, p.key, score, m, box))
             out.append(finds)
         return out
 
