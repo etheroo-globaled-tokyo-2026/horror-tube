@@ -165,6 +165,8 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
   - Vote: a TV-guide channel. Last night's fight on top with **REC**, the residents below (number and name, 2 pages).
+    Before the first fight of a season, the top flips through the cast instead: face, `CH 05`, name, `ALIVE` or
+    `DEAD`, with a static cut between cards.
   - Typing a number: the number and the character's `brief`, never a face. The name shows after OK.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
     PROGRAM", the loser, and OK to collect.
