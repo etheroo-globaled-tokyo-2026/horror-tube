@@ -25,8 +25,8 @@ export const REGISTER_SELECTOR = "0x85f3e643" as const;
 const transferSingleEvent = parseAbiItem(
   "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
 );
-/** Inclusive block count per eth_getLogs window. Never larger than this. */
-export const MAX_LOG_CHUNK_BLOCKS = 49999n;
+/** Inclusive block count per eth_getLogs window. Never larger than this (Infura max is 10000). */
+export const MAX_LOG_CHUNK_BLOCKS = 10000n;
 /** Cap on backward windows from chain head. */
 export const MAX_RECENT_LOG_CHUNKS = 4;
 /** Lowest block number this dashboard will query. Never block 0. */
@@ -289,17 +289,17 @@ async function discoverRegisteredLabels(
     latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
-  const inputs = await Promise.all(
-    txHashes.map(async (hash) => {
-      try {
-        return (await publicClient.getTransaction({ hash })).input;
-      } catch (error) {
-        throw new Error(
-          `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }),
-  );
+  // Sequential: Infura rate-limits parallel eth_getTransactionByHash.
+  const inputs: Hex[] = [];
+  for (const hash of txHashes) {
+    try {
+      inputs.push((await publicClient.getTransaction({ hash })).input);
+    } catch (error) {
+      throw new Error(
+        `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   const candidateLabels = new Set<string>();
   for (const input of inputs) {
     const label = decodeRegisterLabel(input);
@@ -427,8 +427,8 @@ async function loadCharacterSheets(
 }
 
 /**
- * Browser-safe: no node imports. Concurrent reads go out as one Multicall3
- * call per tick and one JSON-RPC batch.
+ * Browser-safe: no node imports. Contract reads may multicall; eth_getLogs and
+ * eth_getTransaction stay unbatched so Infura does not return broken batch bodies.
  */
 export async function readRosterFromChain(
   ensLabel: string,
@@ -437,7 +437,7 @@ export async function readRosterFromChain(
 ): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
   const publicClient = createPublicClient({
     chain: sepolia,
-    transport: http(rpcUrl, { batch: true }),
+    transport: http(rpcUrl),
     batch: { multicall: true },
   });
 
@@ -491,7 +491,7 @@ export async function readRegisteredLabels(
 ): Promise<string[]> {
   const publicClient = createPublicClient({
     chain: sepolia,
-    transport: http(rpcUrl, { batch: true }),
+    transport: http(rpcUrl),
     batch: { multicall: true },
   });
   let subregistry: Address;

@@ -5,6 +5,11 @@ const devProxy = (gamePort: string) => ({
   "/tx": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
   "/wallet": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
   "/world-id": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/events": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/round": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/vote": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/bet": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/health": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
 });
 
 export default defineConfig(({ mode }) => {
