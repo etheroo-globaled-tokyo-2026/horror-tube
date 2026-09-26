@@ -3,7 +3,7 @@ import { requiredEnv } from "@horror-tube/betting";
 export type GameLoopConfig = {
   quorumVotes: number;
   voteCountdownSeconds: number;
-  betMinSeconds: number;
+  bettingCloseAfterVideoStartSeconds: number;
   videoTimeoutSeconds: number;
   settleSeconds: number;
 };
@@ -28,7 +28,10 @@ export function readGameLoopConfig(
   return {
     quorumVotes: requiredPositiveInt("QUORUM_VOTES", env),
     voteCountdownSeconds: requiredPositiveInt("VOTE_COUNTDOWN_SECONDS", env),
-    betMinSeconds: requiredPositiveInt("BET_MIN_SECONDS", env),
+    bettingCloseAfterVideoStartSeconds: requiredPositiveInt(
+      "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS",
+      env,
+    ),
     videoTimeoutSeconds: requiredPositiveInt("VIDEO_TIMEOUT_SECONDS", env),
     settleSeconds: requiredPositiveInt("SETTLE_SECONDS", env),
   };

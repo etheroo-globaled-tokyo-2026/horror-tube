@@ -14,7 +14,7 @@ import {
   shinamiPort,
   type ShinamiPort,
 } from "./shinami-port.js";
-import { assertSponsorableKind } from "./tx-policy.js";
+import { assertSponsorableKind, betPoolIds } from "./tx-policy.js";
 import { verifyEnterRoomProof } from "./world-id-handler.js";
 
 const BODY_LIMIT = 1_000_000;
@@ -31,6 +31,8 @@ export type WalletHandlerDeps = {
   bettingPackageId: string | undefined;
   verifyProof: (rawBody: string) => Promise<string>;
   shinami: ShinamiPort;
+  /** Throws when a bet on this pool must be refused (GameLoop.assertBetAllowed). */
+  assertBetAllowed: (poolId: string) => void;
 };
 
 export type WalletHandler = {
@@ -175,6 +177,15 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
           deps.usdcType,
           deps.bettingPackageId,
         );
+        if (deps.bettingPackageId !== undefined) {
+          for (const poolId of betPoolIds(parsedTx.output.txKind, deps.bettingPackageId)) {
+            try {
+              deps.assertBetAllowed(poolId);
+            } catch (err) {
+              throw new HttpError(409, err instanceof Error ? err.message : String(err));
+            }
+          }
+        }
         let digest: string;
         try {
           digest = await deps.shinami.executeGaslessTransaction(
@@ -200,6 +211,7 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
 
 export function createWalletHandlerFromEnv(
   env: NodeJS.ProcessEnv,
+  assertBetAllowed: (poolId: string) => void,
   fetchImpl: typeof fetch = fetch,
 ): WalletHandler {
   const accessKey = requiredEnv("SHINAMI_ACCESS_KEY", env);
@@ -237,5 +249,6 @@ export function createWalletHandlerFromEnv(
       }
     },
     shinami: shinamiPort(accessKey),
+    assertBetAllowed,
   });
 }

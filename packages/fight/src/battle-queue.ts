@@ -23,6 +23,10 @@ export type BattleQueueRecord = {
   nextOpponentSubname: string;
   bettingClosed: boolean;
   playbackFinished: boolean;
+  /** ms epoch when a room reported the fight video playing; null until then. */
+  videoStartedAt: number | null;
+  /** ms epoch: videoStartedAt + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS. */
+  bettingClosesAt: number | null;
   injuriesTxHash: string | null;
   statusTxHash: string | null;
   settlementTxHash: string | null;
@@ -32,6 +36,8 @@ export type BattleQueueInsert = Omit<
   BattleQueueRecord,
   | "bettingClosed"
   | "playbackFinished"
+  | "videoStartedAt"
+  | "bettingClosesAt"
   | "injuriesTxHash"
   | "statusTxHash"
   | "settlementTxHash"
@@ -85,6 +91,8 @@ export function createQueuedRecord(insert: BattleQueueInsert): BattleQueueRecord
     ...insert,
     bettingClosed: false,
     playbackFinished: false,
+    videoStartedAt: null,
+    bettingClosesAt: null,
     injuriesTxHash: null,
     statusTxHash: null,
     settlementTxHash: null,
