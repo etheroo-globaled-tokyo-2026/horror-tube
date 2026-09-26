@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
@@ -416,10 +417,13 @@ def cmd_wipe(_args: argparse.Namespace) -> int:
 
 
 def cmd_redeploy(_args: argparse.Namespace) -> int:
-    """Propose the 12 from Fandom, upload icons, and register them."""
+    """Propose the 10 cast fighters from Fandom, upload icons, and register them."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     _require_chain_env()
     cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    together_key = required_env("TOGETHER_API_KEY", os.environ)
+    together_model = required_env("TOGETHER_IMAGE_MODEL", os.environ)
+    together_url = required_env("TOGETHER_API_URL", os.environ)
     spaces = spaces_store_from_env(os.environ)
     characters = propose_cast()
     require_no_duplicate_labels(characters, source="cast.json")
@@ -427,29 +431,28 @@ def cmd_redeploy(_args: argparse.Namespace) -> int:
     for character in characters:
         print(f"  {character['label']} {character['display_name']}")
 
-    import tempfile
+    ens_label = _require_ens_label()
+    labels = [character["label"] for character in characters]
+    existing_on_chain = snapshot_existing(labels)
+    if len(existing_on_chain) != 0:
+        still = ", ".join(sorted(existing_on_chain))
+        raise RosterValidationError(
+            f"Refusing to register over existing subnames: {still}. "
+            "Run `python -m roster wipe` first."
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         icon_dir = Path(tmp) / "icons"
         _written, updated = write_face_icons(
             characters,
             icon_dir,
-            api_key=required_env("TOGETHER_API_KEY", os.environ),
-            model=required_env("TOGETHER_IMAGE_MODEL", os.environ),
-            api_url=required_env("TOGETHER_API_URL", os.environ),
+            api_key=together_key,
+            model=together_model,
+            api_url=together_url,
             spaces=spaces,
             cdn_host=cdn_host,
             override=False,
         )
-        ens_label = _require_ens_label()
-        labels = [character["label"] for character in updated]
-        existing_on_chain = snapshot_existing(labels)
-        if len(existing_on_chain) != 0:
-            still = ", ".join(sorted(existing_on_chain))
-            raise RosterValidationError(
-                f"Refusing to register over existing subnames: {still}. "
-                "Run `python -m roster wipe` first."
-            )
         plan = build_register_plan(
             updated,
             ens_label=ens_label,

@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from roster import __main__ as cli
+from roster.chain import _chain_character, list_registered_labels
 from roster.fandom import FandomError, fetch_page_lore, resolve_page
 from roster.plan import build_import_plan, build_register_plan, build_removal_plan, subname
 
@@ -794,6 +795,65 @@ class PagePairCliTests(unittest.TestCase):
         self.assertEqual(payload["title"], "Frankenstein")
         self.assertTrue(payload["disambiguation"])
         self.assertEqual(payload["sections"], [{"index": "1", "line": "Similar characters"}])
+
+
+class WipeAndRedeployTests(unittest.TestCase):
+    def test_wipe_with_no_labels_does_not_unregister(self):
+        unregister = mock.Mock()
+        stdout = StringIO()
+        with mock.patch.object(cli, "_require_chain_env"), mock.patch.object(
+            cli, "list_registered_labels", return_value=[]
+        ), mock.patch.object(cli, "unregister_labels", unregister):
+            with redirect_stdout(stdout):
+                code = cli.cmd_wipe(None)
+        self.assertEqual(code, 0)
+        self.assertIn("no registered character subnames", stdout.getvalue())
+        unregister.assert_not_called()
+
+    def test_redeploy_refuses_existing_names_before_icons(self):
+        sheet = _char(label="jason", display_name="Jason Voorhees")
+        icons = mock.Mock()
+        with mock.patch.dict(os.environ, {"ENS_LABEL": "horrortube"}), mock.patch.object(
+            cli, "_require_chain_env"
+        ), mock.patch.object(
+            cli, "required_env", return_value="set"
+        ), mock.patch.object(
+            cli, "spaces_store_from_env", return_value=object()
+        ), mock.patch.object(
+            cli, "propose_cast", return_value=[sheet]
+        ), mock.patch.object(
+            cli, "snapshot_existing", return_value={"jason": sheet}
+        ), mock.patch.object(cli, "write_face_icons", icons):
+            with self.assertRaises(RosterValidationError) as ctx:
+                cli.cmd_redeploy(None)
+        message = str(ctx.exception)
+        self.assertIn("jason", message)
+        self.assertIn("wipe", message)
+        icons.assert_not_called()
+
+    def test_chain_character_rejects_blank_and_empty_lists(self):
+        base = _char(label="jason")
+        with self.assertRaises(RosterValidationError) as blank_name:
+            _chain_character("jason", {**base, "display_name": " "}, source="Chain snapshot")
+        self.assertIn("display_name", str(blank_name.exception))
+        with self.assertRaises(RosterValidationError) as empty_injuries:
+            _chain_character("jason", {**base, "injuries": ""}, source="Chain snapshot")
+        self.assertIn("injuries", str(empty_injuries.exception))
+        with self.assertRaises(RosterValidationError) as empty_places:
+            _chain_character(
+                "jason", {**base, "injury_places": "[]"}, source="Chain snapshot"
+            )
+        self.assertIn("injury_places", str(empty_places.exception))
+
+    def test_list_registered_labels_rejects_non_list(self):
+        def write_object(args):
+            out = args[args.index("--out") + 1]
+            Path(out).write_text('{"jason": true}\n', encoding="utf-8")
+
+        with mock.patch("roster.chain.run_chain", side_effect=write_object):
+            with self.assertRaises(RosterValidationError) as ctx:
+                list_registered_labels()
+        self.assertIn("array of strings", str(ctx.exception))
 
 
 if __name__ == "__main__":
