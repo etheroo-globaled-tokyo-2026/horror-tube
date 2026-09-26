@@ -154,15 +154,15 @@ export function usdcDeposit(to: string, units: bigint): Transaction {
   return tx;
 }
 
-export async function sendUsdc(
+/** Build a gasless kind, POST /tx, wait for the digest. Returns the digest. */
+export async function runKind(
   wallet: GameWallet,
-  to: string,
-  units: bigint,
+  tx: Transaction,
   fetchImpl: typeof fetch = fetch,
-): Promise<void> {
-  const tx = usdcTransfer(to, units);
+): Promise<string> {
   tx.setSender(wallet.address);
   const bytes = await tx.build({
+    client: wallet.client,
     onlyTransactionKind: true,
     assumeSufficientAddressBalances: true,
   });
@@ -174,4 +174,14 @@ export async function sendUsdc(
     DigestResponse,
   );
   await wallet.client.waitForTransaction({ digest: paid.digest });
+  return paid.digest;
+}
+
+export async function sendUsdc(
+  wallet: GameWallet,
+  to: string,
+  units: bigint,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await runKind(wallet, usdcTransfer(to, units), fetchImpl);
 }

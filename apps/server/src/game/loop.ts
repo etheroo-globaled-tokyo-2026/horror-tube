@@ -141,6 +141,9 @@ export class GameLoop {
   /** Set when the fight's video duration has elapsed. */
   private playbackFinishedGate = false;
   private holdingCopyApplied = false;
+  private lastPoolReadAt = 0;
+  private poolReadInFlight = false;
+  private static readonly POOL_READ_INTERVAL_MS = 2000;
 
   constructor(options: GameLoopOptions) {
     if (options.ensLabels.length < 2) {
@@ -220,6 +223,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "bet") {
+      await this.maybeRefreshPool(now);
       await this.maybeLeaveBet(now);
       return;
     }
@@ -315,6 +319,47 @@ export class GameLoop {
     this.poolObjectId = poolId;
     this.pool = [totals[0], totals[1]];
     this.emit();
+  }
+
+  /**
+   * During bet, read on-chain pool totals every 2s into RoundState.pool.
+   * Tabs never poll Sui; the server is the only reader.
+   */
+  private async maybeRefreshPool(now: number): Promise<void> {
+    if (this.onChainBattleId === null || this.poolObjectId === null) {
+      return;
+    }
+    if (this.poolReadInFlight) {
+      return;
+    }
+    if (
+      this.lastPoolReadAt !== 0 &&
+      now - this.lastPoolReadAt < GameLoop.POOL_READ_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.poolReadInFlight = true;
+    this.lastPoolReadAt = now;
+    const battleId = this.onChainBattleId;
+    const poolId = this.poolObjectId;
+    try {
+      const totals = await this.battleBetting.readPoolTotals(battleId);
+      if (this.onChainBattleId !== battleId || this.poolObjectId !== poolId) {
+        return;
+      }
+      const next: [number, number] = [Number(totals[0]), Number(totals[1])];
+      if (this.pool[0] === next[0] && this.pool[1] === next[1]) {
+        return;
+      }
+      this.setPool(battleId, poolId, next);
+    } catch (cause: unknown) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(
+        `Sui pool totals read failed (battleId=${battleId}): ${detail}`,
+      );
+    } finally {
+      this.poolReadInFlight = false;
+    }
   }
 
   async attachAgentResult(insert: BattleQueueInsert): Promise<void> {
@@ -791,6 +836,7 @@ export class GameLoop {
       closesAtUnix,
     );
     this.poolObjectId = this.battleBetting.poolIdFor(this.onChainBattleId);
+    this.lastPoolReadAt = 0;
     console.log(
       `Sui betting openPool battleId=${this.onChainBattleId} poolId=${this.poolObjectId} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
     );

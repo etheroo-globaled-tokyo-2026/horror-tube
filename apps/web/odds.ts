@@ -1,5 +1,9 @@
-/** Odds label for the bet TV. Both sides need stake before division is meaningful. */
-export function formatPoolOdds(pool: [number, number], side: number): string {
+/** Odds label for the bet TV. Net of fee on the losing side (matches Move / TS payout). */
+export function formatPoolOdds(
+  pool: [number, number],
+  side: number,
+  feeBps = 0,
+): string {
   const a = pool[0];
   const b = pool[1];
   if (
@@ -12,5 +16,12 @@ export function formatPoolOdds(pool: [number, number], side: number): string {
   if (!(Number.isFinite(sideStake) && sideStake > 0)) {
     return "no stake";
   }
-  return ((a + b) / sideStake).toFixed(2);
+  if (!(Number.isFinite(feeBps) && feeBps >= 0)) {
+    throw new Error(
+      `formatPoolOdds feeBps must be a non-negative number. Got ${String(feeBps)}.`,
+    );
+  }
+  const loser = pool[side === 0 ? 1 : 0];
+  const fee = (loser * feeBps) / 10_000;
+  return ((a + b - fee) / sideStake).toFixed(2);
 }
