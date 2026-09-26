@@ -15,7 +15,8 @@ the local validation of write permission. Parent-name registration is
 
 | ENSv2 call | File | Lines |
 | --- | --- | --- |
-| ABI: `initialize`, `setText`, `resolve`, `grantSetterRoles` | `packages/ens/scripts/abis.ts` | 52–57 |
+| ABI: `initialize`, `setText`, `resolve`, `grantSetterRoles`, `roles`, `hasRoles`, `hasRootRoles` | `packages/ens/scripts/abis.ts` | 52–60 |
+| Live read of `hasRootRoles`, `hasRoles`, `roles` on the Sepolia resolver | `packages/ens/scripts/read-setter-roles.ts` | whole file |
 | `grantSetterRoles` simulate, require `true`, then send | `packages/ens/scripts/grant-text-roles.ts` | 37–77 |
 | Roster keys `look`, `brief`, `icon`; agent keys `status`, `injuries` | `packages/ens/scripts/grant-text-roles.ts` | 13–16 |
 | Grant those keys on the parent resolver | `packages/ens/scripts/character-subnames.ts` | 657–689 |
@@ -133,3 +134,113 @@ The four addresses are anvil's first four default dev accounts. Two runs of
 the proxy address included. A fresh anvil with the same deploy order puts the
 proxy at the same address on every run. The test reads the deploy block from
 the `deployProxy` receipt.
+
+## Live Sepolia setter roles
+
+The anvil permission suite above is what CI runs. `pnpm ens:roles` is the
+live read: it reads `getResolver(ENS_LABEL)` from the pinned `ETHRegistry` on
+Sepolia (chain id `11155111`), then calls `hasRootRoles`, `hasRoles`, and
+`roles` on that resolver for the bootstrap, roster, and agent wallets derived
+from `PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, and `AGENT_PRIVATE_KEY`. It sends no
+transaction.
+
+`ROLE_SET_TEXT` is `1 << 4`. The resource for a text key is
+`uint256(keccak256(bytes(key)))`. `can` is `hasRoles(resource, ROLE_SET_TEXT,
+account)`, which also counts a root grant. `directRole` is whether
+`roles(resource, account)` includes `ROLE_SET_TEXT`.
+
+The command exits 1 and names the account and key unless bootstrap holds the
+root text role, roster and agent do not, roster can set only `look`, `brief`,
+`icon`, and agent can set only `status`, `injuries`.
+
+Output of `pnpm ens:roles`, exit 0:
+
+```json
+{
+  "chainId": 11155111,
+  "name": "horrortube.eth",
+  "resolver": "0x416bb1828CbE08584f7BE4acB6B75124Dd5793EF",
+  "accounts": {
+    "bootstrap": "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02",
+    "roster": "0x49ba06870058d109c50806f6466D68B2d6B8e733",
+    "agent": "0x7C55864A54f67A34BD3a479d8883B20402Ef2D83"
+  },
+  "rootSetText": {
+    "bootstrap": true,
+    "roster": false,
+    "agent": false
+  },
+  "keys": {
+    "look": {
+      "bootstrap": {
+        "can": true,
+        "directRole": false
+      },
+      "roster": {
+        "can": true,
+        "directRole": true
+      },
+      "agent": {
+        "can": false,
+        "directRole": false
+      }
+    },
+    "brief": {
+      "bootstrap": {
+        "can": true,
+        "directRole": false
+      },
+      "roster": {
+        "can": true,
+        "directRole": true
+      },
+      "agent": {
+        "can": false,
+        "directRole": false
+      }
+    },
+    "icon": {
+      "bootstrap": {
+        "can": true,
+        "directRole": false
+      },
+      "roster": {
+        "can": true,
+        "directRole": true
+      },
+      "agent": {
+        "can": false,
+        "directRole": false
+      }
+    },
+    "status": {
+      "bootstrap": {
+        "can": true,
+        "directRole": false
+      },
+      "roster": {
+        "can": false,
+        "directRole": false
+      },
+      "agent": {
+        "can": true,
+        "directRole": true
+      }
+    },
+    "injuries": {
+      "bootstrap": {
+        "can": true,
+        "directRole": false
+      },
+      "roster": {
+        "can": false,
+        "directRole": false
+      },
+      "agent": {
+        "can": true,
+        "directRole": true
+      }
+    }
+  }
+}
+```
