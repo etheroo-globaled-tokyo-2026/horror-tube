@@ -4,6 +4,7 @@ export const API_PATHS = [
   "/events",
   "/playback-start",
   "/start",
+  "/vote",
   "/betting",
   "/retry-settle",
   "/auth/world-id",

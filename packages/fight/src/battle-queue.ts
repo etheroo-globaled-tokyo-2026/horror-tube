@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { FightInput, LivingCard, Shot } from "./types.js";
+import type { Shot } from "./types.js";
 
 export type { Shot };
 
@@ -15,7 +15,6 @@ export type BattleQueueRecord = {
   winnerSubname: string;
   loserSubname: string;
   winnerInjuries: string[];
-  nextOpponentSubname: string;
   bettingClosed: boolean;
   playbackFinished: boolean;
   videoStartedAt: number | null;
@@ -205,61 +204,6 @@ export async function settleQueuedBattle(
   return current;
 }
 
-export function fightInputFromQueuedNext(
-  livingCards: readonly LivingCard[],
-  winnerSubname: string,
-  nextOpponentSubname: string,
-): FightInput {
-  if (winnerSubname.trim() === "") {
-    throw new BattleQueueError(
-      "fightInputFromQueuedNext: winnerSubname is required.",
-    );
-  }
-  if (nextOpponentSubname.trim() === "") {
-    throw new BattleQueueError(
-      "fightInputFromQueuedNext: nextOpponentSubname is required.",
-    );
-  }
-  if (winnerSubname === nextOpponentSubname) {
-    throw new BattleQueueError(
-      `fightInputFromQueuedNext: next opponent must not be the winner (${JSON.stringify(winnerSubname)}).`,
-    );
-  }
-  const champion = livingCards.find((c) => c.subname === winnerSubname);
-  const challenger = livingCards.find(
-    (c) => c.subname === nextOpponentSubname,
-  );
-  if (champion === undefined) {
-    throw new BattleQueueError(
-      `fightInputFromQueuedNext: winner ${JSON.stringify(winnerSubname)} is missing or not alive on the roster.`,
-    );
-  }
-  if (challenger === undefined) {
-    throw new BattleQueueError(
-      `fightInputFromQueuedNext: next opponent ${JSON.stringify(nextOpponentSubname)} is missing or not alive on the roster.`,
-    );
-  }
-  if (champion.status !== "alive") {
-    throw new BattleQueueError(
-      `fightInputFromQueuedNext: winner ${JSON.stringify(winnerSubname)} must be alive.`,
-    );
-  }
-  if (challenger.status !== "alive") {
-    throw new BattleQueueError(
-      `fightInputFromQueuedNext: next opponent ${JSON.stringify(nextOpponentSubname)} must be alive.`,
-    );
-  }
-  const eligibleOpponents = livingCards.filter(
-    (c) =>
-      c.subname !== champion.subname && c.subname !== challenger.subname,
-  );
-  return {
-    fighterA: champion,
-    fighterB: challenger,
-    eligibleOpponents,
-  };
-}
-
 function assertInsert(insert: BattleQueueInsert): void {
   if (insert.id.trim() === "") {
     throw new BattleQueueError("battle queue id is required.");
@@ -284,9 +228,6 @@ function assertInsert(insert: BattleQueueInsert): void {
   }
   if (!Array.isArray(insert.winnerInjuries)) {
     throw new BattleQueueError("winnerInjuries must be an array.");
-  }
-  if (insert.nextOpponentSubname.trim() === "") {
-    throw new BattleQueueError("nextOpponentSubname is required.");
   }
 }
 

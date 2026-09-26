@@ -7,7 +7,7 @@ import {
   type FalVideoConfig,
 } from "./env.js";
 import { videoPromptFromTurn } from "./render.js";
-import type { NarrationTurn } from "./types.js";
+import type { NarrationModelTurn } from "./types.js";
 
 const falVideoOutputSchema = z.object({
   video: z
@@ -51,7 +51,7 @@ export type FalImageToVideoInput = FalVideoInputBase & {
 export type FalVideoInput = FalTextToVideoInput | FalImageToVideoInput;
 
 export function buildFalInput(
-  turn: NarrationTurn,
+  turn: NarrationModelTurn,
   config: FalVideoConfig,
   options: { priorFrameUrl?: string } = {},
 ): FalVideoInput {
@@ -89,7 +89,7 @@ export type FightVideoResult = {
 };
 
 export async function generateFightVideo(
-  turn: NarrationTurn,
+  turn: NarrationModelTurn,
   config: FalVideoConfig,
   client: FalClient = defaultFalClient(config.apiKey),
   options: { priorFrameUrl?: string } = {},

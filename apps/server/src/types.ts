@@ -1,10 +1,14 @@
-export type Phase = "waiting" | "bet" | "fight" | "settle" | "over";
+export type Phase = "waiting" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 
 export type RoundState = {
   round: number;
   phase: Phase;
   endsAt: number | null;
   champion: number | null;
+  voters: number;
+  quorum: number;
+  votes: [number, number];
+  tally: [number, number] | null;
   fighters: [number, number] | null;
   battleId: string | null;
   poolId: string | null;
@@ -17,6 +21,7 @@ export type RoundState = {
   error: string | null;
   bots: {
     address: string;
+    pick: number | null;
     bet: { side: 0 | 1; units: number; digest: string } | null;
     error: string | null;
   }[];

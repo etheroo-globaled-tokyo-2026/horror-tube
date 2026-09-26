@@ -1,5 +1,5 @@
 import { FightError } from "./env.js";
-import type { NarrationTurn, Shot } from "./types.js";
+import type { NarrationModelTurn, Shot } from "./types.js";
 
 export function formatShotList(shots: Shot[]): string {
   return shots
@@ -16,7 +16,7 @@ export function formatShotList(shots: Shot[]): string {
     .join("\n\n");
 }
 
-export function renderEnsLines(turn: NarrationTurn): [string, string] {
+export function renderEnsLines(turn: NarrationModelTurn): [string, string] {
   const injuriesJson = JSON.stringify(turn.winner_injuries);
   const loser = `${turn.loser_subname}|status=dead`;
   const winner = `${turn.winner_subname}|injuries=${injuriesJson}`;
@@ -27,7 +27,7 @@ export const ARENA_VIDEO_PROMPT_PREFIX =
   "Use a terrifying battle royale arena for the battle, each fighter starting on opposite sides.";
 
 export function videoPromptFromTurn(
-  turn: NarrationTurn,
+  turn: NarrationModelTurn,
   options: { continueFromFrame?: boolean } = {},
 ): string {
   const body = `${ARENA_VIDEO_PROMPT_PREFIX}\n\n${formatShotList(turn.shots)}`;

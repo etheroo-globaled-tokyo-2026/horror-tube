@@ -1,6 +1,9 @@
 import { requiredEnv } from "@horror-tube/betting";
 
 export type GameLoopConfig = {
+  quorumVotes: number;
+  voteCountdownSeconds: number;
+  voteTimeoutSeconds: number;
   bettingCloseAfterVideoStartSeconds: number;
   videoTimeoutSeconds: number;
   settleSeconds: number;
@@ -24,6 +27,9 @@ export function readGameLoopConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): GameLoopConfig {
   return {
+    quorumVotes: requiredPositiveInt("QUORUM_VOTES", env),
+    voteCountdownSeconds: requiredPositiveInt("VOTE_COUNTDOWN_SECONDS", env),
+    voteTimeoutSeconds: requiredPositiveInt("VOTE_TIMEOUT_SECONDS", env),
     bettingCloseAfterVideoStartSeconds: requiredPositiveInt(
       "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS",
       env,

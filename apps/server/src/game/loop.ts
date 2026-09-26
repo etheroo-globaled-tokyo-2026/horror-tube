@@ -8,14 +8,15 @@ import {
   type BattleQueueStore,
   type ChainWritePorts,
 } from "@horror-tube/fight/battle-queue";
-import { nextRotationPair, type RandomInt, type RosterEntry } from "@horror-tube/fight/rotation";
+import type { RandomInt } from "@horror-tube/fight/rotation";
 
 import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { randomUUID } from "node:crypto";
 
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
-import type { RoundStore } from "../db/rounds.js";
+import { DuplicateVoteError, type RoundStore, type Voter } from "../db/rounds.js";
+import type { PairingResult, PairingRunner } from "../pairing-job.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import { botSide, type HouseBotChain, type HouseBots } from "./house-bot.js";
@@ -39,6 +40,7 @@ export type GameLoopOptions = {
   chainWritePorts: ChainWritePorts;
   battleBetting: BattleBettingPorts;
   fightJob: FightJobRunner;
+  pairing: PairingRunner;
   houseBots: HouseBots;
 };
 
@@ -46,6 +48,8 @@ type Listener = (state: RoundState) => void;
 type ChainRetry = { retryAt: number; delayMs: number };
 type BotRuntime = {
   chain: HouseBotChain;
+  pick: number | null;
+  voteRetry: ChainRetry | null;
   betTriedFor: string | null;
   bet: { battleId: string; side: 0 | 1; units: bigint; digest: string } | null;
   claimedFor: string | null;
@@ -124,6 +128,7 @@ export class GameLoop {
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
+  private readonly pairing: PairingRunner;
   private readonly bots: BotRuntime[];
   private readonly botStakeUnits: bigint;
   private botAction: Promise<void> | null = null;
@@ -138,6 +143,13 @@ export class GameLoop {
   private champion: number | null = null;
   private seasonId: string | null = null;
   private startInFlight = false;
+  private voters = 0;
+  private votes: [number, number] = [0, 0];
+  private tally: [number, number] | null = null;
+  private roundId: string | null = null;
+  private voteClosesAt: number | null = null;
+  private votingClosed = false;
+  private readonly pendingVotes = new Set<Promise<void>>();
   private fighters: [number, number] | null = null;
   private pool: [number, number] = [0, 0];
   private onChainBattleId: string | null = null;
@@ -179,7 +191,7 @@ export class GameLoop {
       options.randomInt ??
       ((maxExclusive: number) => {
         throw new Error(
-          `GameLoop randomInt was not provided. Pass cryptoRandomInt (or a test double) for winner-stays pairing. maxExclusive=${String(maxExclusive)}.`,
+          `GameLoop randomInt was not provided. Pass cryptoRandomInt (or a test double) for house bot choices. maxExclusive=${String(maxExclusive)}.`,
         );
       });
     this.battleQueueStore = options.battleQueueStore;
@@ -187,8 +199,11 @@ export class GameLoop {
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
     this.fightJob = options.fightJob;
+    this.pairing = options.pairing;
     this.bots = options.houseBots.chains.map((chain) => ({
       chain,
+      pick: null,
+      voteRetry: null,
       betTriedFor: null,
       bet: null,
       claimedFor: null,
@@ -214,6 +229,10 @@ export class GameLoop {
       phase: this.phase,
       endsAt: this.endsAt,
       champion: this.champion,
+      voters: this.voters,
+      quorum: this.config.quorumVotes,
+      votes: [this.votes[0], this.votes[1]],
+      tally: this.tally === null ? null : [this.tally[0], this.tally[1]],
       fighters: this.fighters,
       battleId: this.onChainBattleId,
       poolId: this.poolObjectId,
@@ -226,6 +245,7 @@ export class GameLoop {
       error: this.error,
       bots: this.bots.map((bot) => ({
         address: bot.chain.address,
+        pick: bot.pick,
         bet:
           bot.bet === null || bot.bet.battleId !== this.onChainBattleId
             ? null
@@ -247,6 +267,14 @@ export class GameLoop {
       return;
     }
     this.kickHouseBot(now);
+    if (
+      (this.phase === "vote" || this.phase === "countdown") &&
+      this.endsAt !== null &&
+      now >= this.endsAt
+    ) {
+      await this.closeVoting();
+      return;
+    }
     if (this.phase === "bet") {
       await this.maybeOpenPool(now);
       await this.maybeRefreshPool(now);
@@ -259,6 +287,66 @@ export class GameLoop {
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
       await this.afterSettle();
+    }
+  }
+
+  async voteWithNullifier(nullifier: string, pick: number): Promise<void> {
+    if (nullifier.trim() === "") {
+      throw new Error("World ID nullifier is empty.");
+    }
+    await this.castVote({ kind: "human", nullifier }, pick);
+    this.emit();
+  }
+
+  private async castVote(voter: Voter, pick: number): Promise<void> {
+    if (this.phase !== "vote" && this.phase !== "countdown") {
+      throw new Error(
+        `vote is only allowed in vote or countdown phases. Current phase: ${this.phase}.`,
+      );
+    }
+    if (this.votingClosed) {
+      throw new Error(`vote rejected: voting for round ${String(this.round)} is closed.`);
+    }
+    const fighters = this.fighters;
+    if (fighters === null) {
+      throw new Error(`vote rejected: round ${String(this.round)} has no fighters.`);
+    }
+    const side = fighters.indexOf(pick);
+    if (side !== 0 && side !== 1) {
+      throw new Error(
+        `vote rejected: pick ${String(pick)} is not one of this bout's fighters ${JSON.stringify(fighters)}.`,
+      );
+    }
+    const stored = this.storeVote(voter, this.labelOf(pick));
+    this.pendingVotes.add(stored);
+    try {
+      await stored;
+    } finally {
+      this.pendingVotes.delete(stored);
+    }
+    this.voters += 1;
+    this.votes[side] += 1;
+    const now = this.now();
+    if (this.phase === "vote" && this.voters >= this.config.quorumVotes) {
+      this.phase = "countdown";
+      const countdownEnds = now + this.config.voteCountdownSeconds * 1000;
+      this.endsAt =
+        this.voteClosesAt === null ? countdownEnds : Math.min(countdownEnds, this.voteClosesAt);
+    }
+  }
+
+  private async storeVote(voter: Voter, pick: string): Promise<void> {
+    const round = this.round;
+    const roundId = this.roundId;
+    try {
+      if (roundId === null) throw new Error("no rounds row is stored for this round");
+      await this.roundStore.insertVote({ roundId, voter, pick, at: this.now() });
+    } catch (cause) {
+      if (cause instanceof DuplicateVoteError) throw cause;
+      throw new StoreWriteError(
+        `Vote insert failed for round ${String(round)} (rounds.id=${String(roundId)}): ${errorText(cause)}. The vote was not counted.`,
+        { cause },
+      );
     }
   }
 
@@ -540,19 +628,7 @@ export class GameLoop {
       }
       return { id, ensLabel, alive, kills: 0, damage: 0 };
     });
-    const living = chars.filter((c) => c.alive);
-    if (living.length === 0) {
-      throw new Error(
-        `start: no living character in ROSTER_ENS_LABELS (${this.ensLabels.join(",")}).`,
-      );
-    }
-    const first = living[this.randomInt(living.length)];
-    if (first === undefined) {
-      throw new Error(
-        `start: randomInt(${String(living.length)}) returned an index outside the living roster.`,
-      );
-    }
-    const fighters = this.rotationPair(chars, first.id);
+    const fighters = await this.pairFighters(chars, null, 1);
     const seasonId = await this.roundStore.startSeason(
       chars.map((c) => ({
         ensLabel: c.ensLabel,
@@ -574,7 +650,136 @@ export class GameLoop {
     console.log(
       `start: season ${seasonId} fresh bout ${this.labelOf(fighters[0])} vs ${this.labelOf(fighters[1])}`,
     );
-    await this.enterBet(fighters, this.now());
+    try {
+      await this.enterVote(fighters, this.now());
+    } catch (cause) {
+      await this.markSeasonEnded();
+      throw cause;
+    }
+  }
+
+  private async pairFighters(
+    chars: CharRuntime[],
+    championId: number | null,
+    round: number,
+  ): Promise<[number, number]> {
+    const living = chars.filter((c) => c.alive);
+    if (living.length < 2) {
+      const only = living[0]?.ensLabel ?? "(none)";
+      throw new Error(
+        `Pairing for round ${String(round)}: fewer than 2 living characters remain (living=${String(living.length)}, only=${only}).`,
+      );
+    }
+    const candidates = living.filter((c) => c.id !== championId).map((c) => c.ensLabel);
+    const championLabel = championId === null ? null : this.labelOf(championId);
+    const result: PairingResult = await this.pairing({
+      championSubname: championLabel,
+      candidateSubnames: candidates,
+      round,
+    });
+    const eligibleA = championLabel === null ? candidates : [championLabel];
+    if (
+      !eligibleA.includes(result.fighterASubname) ||
+      !candidates.includes(result.fighterBSubname) ||
+      result.fighterASubname === result.fighterBSubname
+    ) {
+      throw new Error(
+        `Pairing for round ${String(round)} returned ${JSON.stringify(result)}, which is not a living eligible pair (fighter A from ${JSON.stringify(eligibleA)}, fighter B from ${JSON.stringify(candidates)}).`,
+      );
+    }
+    console.log(
+      `pairing round=${String(round)} ${result.fighterASubname} vs ${result.fighterBSubname}: ${result.rationale}`,
+    );
+    return [this.idOf(result.fighterASubname), this.idOf(result.fighterBSubname)];
+  }
+
+  private idOf(ensLabel: string): number {
+    const id = this.ensLabels.indexOf(ensLabel);
+    if (id < 0) {
+      throw new Error(`${JSON.stringify(ensLabel)} is not in ROSTER_ENS_LABELS.`);
+    }
+    return id;
+  }
+
+  private async enterVote(fighters: [number, number], now: number): Promise<void> {
+    const seasonId = this.seasonId;
+    if (seasonId === null) {
+      throw new Error(`enterVote: round ${String(this.round)} has no open season.`);
+    }
+    let roundId: string;
+    try {
+      roundId = await this.roundStore.startRound({
+        seasonId,
+        roundNumber: this.round,
+        quorum: this.config.quorumVotes,
+        championLabel: this.champion === null ? null : this.labelOf(this.champion),
+        fighterALabel: this.labelOf(fighters[0]),
+        fighterBLabel: this.labelOf(fighters[1]),
+      });
+    } catch (cause) {
+      throw new StoreWriteError(
+        `Round insert failed for round ${String(this.round)} (season ${seasonId}): ${errorText(cause)}.`,
+        { cause },
+      );
+    }
+    this.roundId = roundId;
+    this.fighters = fighters;
+    this.phase = "vote";
+    this.error = null;
+    this.videoUrl = null;
+    this.onChainBattleId = null;
+    this.poolObjectId = null;
+    this.betOpenedAt = null;
+    this.clearPlaybackCutoff();
+    this.voters = 0;
+    this.votes = [0, 0];
+    this.tally = null;
+    this.votingClosed = false;
+    for (const bot of this.bots) {
+      bot.pick = null;
+      bot.voteRetry = null;
+    }
+    this.voteClosesAt = now + this.config.voteTimeoutSeconds * 1000;
+    this.endsAt = this.voteClosesAt;
+    this.emit();
+  }
+
+  private async closeVoting(): Promise<void> {
+    this.votingClosed = true;
+    this.endsAt = null;
+    this.voteClosesAt = null;
+    await Promise.allSettled(this.pendingVotes);
+    const roundId = this.roundId;
+    const fighters = this.fighters;
+    try {
+      if (roundId === null || fighters === null) {
+        throw new Error("no rounds row or fighters are set for this round");
+      }
+      const rows = await this.roundStore.storeTally(roundId);
+      const count = (id: number): number =>
+        rows.find((row) => row.ensLabel === this.labelOf(id))?.voteCount ?? 0;
+      this.tally = [count(fighters[0]), count(fighters[1])];
+    } catch (cause) {
+      await this.failRound(
+        `Tally insert failed for round ${String(this.round)} (rounds.id=${String(roundId)}): ${errorText(cause)}. Betting stays closed.`,
+      );
+      return;
+    }
+    console.log(
+      `tally stored round=${String(this.round)} rounds.id=${roundId} ${this.labelOf(fighters[0])}=${String(this.tally[0])} ${this.labelOf(fighters[1])}=${String(this.tally[1])} voters=${String(this.voters)}`,
+    );
+    this.emit();
+    await this.enterBet(this.now());
+  }
+
+  private async failRound(message: string): Promise<void> {
+    console.error(message);
+    this.error = message;
+    this.phase = "over";
+    this.endsAt = null;
+    this.votingClosed = true;
+    await this.markSeasonEnded();
+    this.emit();
   }
 
   private async markSeasonEnded(): Promise<void> {
@@ -755,6 +960,7 @@ export class GameLoop {
     if (this.error !== null) {
       return;
     }
+    this.endsAt = null;
     const alive = this.chars.filter((c) => c.alive);
     if (alive.length <= 1) {
       this.phase = "over";
@@ -774,26 +980,15 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.queuedAgentResultId = null;
-    await this.enterBet(this.rotationPair(this.chars, this.champion), this.now());
-  }
-
-  private rotationPair(chars: CharRuntime[], stayingId: number): [number, number] {
-    const roster = chars.map((c): RosterEntry => ({
-      subname: this.labelOf(c.id),
-      status: c.alive ? "alive" : "dead",
-    }));
-    const pair = nextRotationPair(roster, this.labelOf(stayingId), this.randomInt);
-    const challengerId = this.ensLabels.indexOf(pair.challengerSubname);
-    if (challengerId < 0) {
-      throw new Error(
-        `rotationPair: challenger ${JSON.stringify(pair.challengerSubname)} missing from ensLabels.`,
-      );
+    try {
+      const fighters = await this.pairFighters(this.chars, this.champion, this.round);
+      await this.enterVote(fighters, this.now());
+    } catch (cause) {
+      await this.failRound(`Round ${String(this.round)} could not open: ${errorText(cause)}`);
     }
-    return [stayingId, challengerId];
   }
 
-  private async enterBet(fighters: [number, number], now: number): Promise<void> {
-    this.fighters = fighters;
+  private async enterBet(now: number): Promise<void> {
     this.videoUrl = null;
     this.error = null;
     this.onChainBattleId = randomUUID();
@@ -855,7 +1050,8 @@ export class GameLoop {
     if (this.botAction !== null) return;
     let action: (() => Promise<void>) | null = null;
     for (const bot of this.bots) {
-      if (this.wantsBotBet(bot, now)) action = () => this.botBet(bot);
+      if (this.wantsBotVote(bot, now)) action = () => this.botVote(bot, now);
+      else if (this.wantsBotBet(bot, now)) action = () => this.botBet(bot);
       else if (this.wantsBotClaim(bot, now)) action = () => this.botClaim(bot, now);
       if (action !== null) break;
     }
@@ -867,6 +1063,37 @@ export class GameLoop {
       .finally(() => {
         this.botAction = null;
       });
+  }
+
+  private wantsBotVote(bot: BotRuntime, now: number): boolean {
+    const botVoters = this.bots.filter((b) => b.pick !== null).length;
+    return (
+      (this.phase === "vote" || this.phase === "countdown") &&
+      !this.votingClosed &&
+      bot.pick === null &&
+      this.voters - botVoters > 0 &&
+      due(bot.voteRetry, now)
+    );
+  }
+
+  private async botVote(bot: BotRuntime, now: number): Promise<void> {
+    const round = this.round;
+    const address = bot.chain.address;
+    try {
+      const fighters = this.fighters;
+      if (fighters === null) throw new Error("the round has no fighters");
+      const pick = fighters[this.randomInt(2) === 0 ? 0 : 1];
+      await this.castVote({ kind: "bot", address }, pick);
+      bot.pick = pick;
+      bot.voteRetry = null;
+      bot.error = null;
+      console.log(`house bot ${address} voted round=${String(round)} pick=${this.labelOf(pick)}`);
+    } catch (cause) {
+      bot.voteRetry = nextChainRetry(now, bot.voteRetry);
+      bot.error = `House bot ${address} vote failed (round ${String(round)}): ${errorText(cause)}. Retrying in ${String(bot.voteRetry.delayMs)} ms.`;
+      console.error(bot.error);
+    }
+    this.emit();
   }
 
   private humanStake(battleId: string): [number, number] {
