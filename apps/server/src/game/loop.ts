@@ -274,8 +274,6 @@ export class GameLoop {
     if (this.settleInFlight) {
       return;
     }
-    // Entering over mid-tick (failVideo / afterSettle) returns without resetting so
-    // the room can show the result once; the next tick starts the new season.
     if (this.phase === "over") {
       try {
         this.resetFromOver();

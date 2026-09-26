@@ -32,7 +32,8 @@ import {
   store,
   waiverHooks,
 } from "./room-waiver.ts";
-import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, vidMode } from "./room-tv.ts";
+import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, video, vidMode } from "./room-tv.ts";
+import { powerOff, powerStage, tickPower } from "./room-power.ts";
 import { renderPlaceholders } from "./placeholders.ts";
 import { keyById, led, remote } from "./room-remote.ts";
 import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
@@ -43,8 +44,13 @@ const COIN_KEYS = new Map<string, CoinBoxPart>([
   ["w", "lock"],
 ]);
 
+const busy = (): boolean => powerStage(performance.now()) !== "";
 function hintText(): void {
   const h = $("#hint");
+  if (busy()) {
+    h.innerHTML = "";
+    return;
+  }
   const b = (s: string): string => `<b>${s}</b>`;
   const step = WALK[walkRef.n];
   if (step) {
@@ -127,6 +133,7 @@ function press(id: string): void {
   }
   led.material.color.set(COL.blood);
   setTimeout(() => led.material.color.set(COL.bloodDeep), 120);
+  if (id === "power") return turnOff();
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
     if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
@@ -142,6 +149,21 @@ function press(id: string): void {
     if (S.phase === "bet" && !S.bet)
       T.stake = Math.max(0, Math.min(2, T.stake + (id === "+" ? 1 : -1)));
   }
+  hintText();
+}
+function turnOff(): void {
+  if (S.phase === "gate" && W8.step !== "done") return;
+  Z.at = null;
+  Z.pick = false;
+  holdEnd();
+  T.buf = "";
+  T.held = -1;
+  powerOff(() => {
+    video.muted = vidMode !== "live";
+    sfx.tvOn();
+    say("Thank you. We've had trouble with unattended sets.", 6000);
+    hintText();
+  });
   hintText();
 }
 function ok(): void {
@@ -419,10 +441,11 @@ function cursorFor(pick: Pick | null): string {
   return pick.at === "shelf" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || busy()) return;
   if (S.phase === "gate" && W8.fail !== "") return;
   if (S.phase === "gate" && W8.step === "signed") return nextGateStep();
   const pick = pickAt(e);
+  if (pick?.at === "key" && pick.id === "power") return press("power");
   if (walkRef.n >= 0) {
     if (pick?.at === "coin") return openCoinKey(pick.part);
     return walkTo(walkRef.n + 1);
@@ -460,6 +483,17 @@ addEventListener(
     if (waiverUp || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
     if (k === "m") return muteKey();
+    if (busy()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (k === "o") {
+      e.preventDefault();
+      e.stopPropagation();
+      press("power");
+      return;
+    }
     const coinKey = COIN_KEYS.get(k);
     if (coinKey !== undefined) {
       e.preventDefault();
@@ -551,6 +585,7 @@ renderer.setAnimationLoop(() => {
     camera.position.copy(eye);
     camera.lookAt(aim);
   }
+  const pw = tickPower(performance.now());
   const raise = WALK[walkRef.n]?.remote ? 1 : 0;
   remoteUp = LOW ? raise : remoteUp + (raise - remoteUp) * 0.12;
   remote.position.set(0.31 - 0.2 * remoteUp, -0.17 + 0.09 * remoteUp, -0.62 + 0.14 * remoteUp);
@@ -571,22 +606,26 @@ renderer.setAnimationLoop(() => {
     drawPaper(performance.now());
     paperFlag.drawn = true;
   }
-  const lightsOut = waiver && (W8.step === "off" || W8.step === "burn" || dark);
+  const lightsOut = (waiver && (W8.step === "off" || W8.step === "burn" || dark)) || pw !== "";
+  const tvLit = pw !== "" && pw !== "off" && pw !== "black";
   const flick = lightsOut ? 0 : Math.sin(t * 13) > 0.97 || Math.sin(t * 2.3 + 1) > 0.995 ? 0.3 : 1;
-  ambient.intensity = dark ? 0 : lightsOut ? 0.1 : 0.35;
+  ambient.intensity = dark || pw !== "" ? 0 : lightsOut ? 0.1 : 0.35;
   bulbLight.intensity = 7 * flick;
   bulb.material.color.set(flick < 1 ? COL.grime : COL.bone);
   halo.material.opacity = 0.7 * flick;
   motes.material.opacity = 0.5 * flick * (lightsOut ? 0 : 1);
   if (!LOW) drift(t);
-  tvGlow.intensity = lightsOut
-    ? 0
-    : S.phase === "fight"
-      ? 1 + Math.random() * 0.5
-      : S.phase === "bet"
-        ? 1.4
-        : 0.8;
+  tvGlow.intensity = tvLit
+    ? 1.6 + Math.random() * 0.6
+    : lightsOut
+      ? 0
+      : S.phase === "fight"
+        ? 1 + Math.random() * 0.5
+        : S.phase === "bet"
+          ? 1.4
+          : 0.8;
   syncVideo();
+  if (pw !== "") video.muted = true;
   ambience(tvNoise, flick, lightsOut);
   const ms = performance.now();
   if (S.phase === "bet" && ms >= nextBeat) {

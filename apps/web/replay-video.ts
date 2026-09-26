@@ -16,9 +16,6 @@ export async function playReplayVideo(
       sink.setSrc(url);
     }
   } catch (cause) {
-    sink.note(
-      `REPLAY FAILED. ${cause instanceof Error ? cause.message : String(cause)}`,
-      "bad",
-    );
+    sink.note(`REPLAY FAILED. ${cause instanceof Error ? cause.message : String(cause)}`, "bad");
   }
 }
