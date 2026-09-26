@@ -151,7 +151,6 @@ export function usdcDeposit(coinType: string, to: string, units: bigint): Transa
   return tx;
 }
 
-/** Build a gasless kind, POST /tx, wait for the digest. Returns the digest. */
 export async function runKind(
   wallet: GameWallet,
   tx: Transaction,

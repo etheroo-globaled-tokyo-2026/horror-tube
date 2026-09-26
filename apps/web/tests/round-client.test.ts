@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 
 import { formatPoolOdds } from "../odds.ts";
-import { postVote, type ServerRoundState } from "../round-client.ts";
+import { fetchRoundState, postVote, type ServerRoundState } from "../round-client.ts";
 import { WALLET_SESSION_KEY, type SessionStore } from "../wallet.ts";
 
 function memoryStore(session: string | null = null): SessionStore {
@@ -34,6 +34,41 @@ describe("formatPoolOdds", () => {
   });
 });
 
+const baseState: ServerRoundState = {
+  round: 1,
+  phase: "vote",
+  endsAt: null,
+  champion: null,
+  slots: 2,
+  voters: 1,
+  quorum: 2,
+  votes: { 0: 1, 1: 1 },
+  tally: null,
+  fighters: null,
+  battleId: null,
+  poolId: null,
+  pool: [0, 0],
+  winner: null,
+  videoUrl: null,
+  videoStartedAt: null,
+  bettingClosesAt: null,
+  frameUrl: null,
+  error: null,
+  chars: [],
+};
+
+function serveJson(t: TestContext, body: Partial<ServerRoundState>): void {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+  );
+}
+
 describe("postVote", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
     await assert.rejects(
@@ -42,80 +77,50 @@ describe("postVote", () => {
     );
   });
 
-  it("sends the stored session as Authorization Bearer", async () => {
+  it("sends the stored session as Authorization Bearer", async (t) => {
     const store = memoryStore("signed-session");
-    const state: ServerRoundState = {
-      round: 1,
-      phase: "vote",
-      endsAt: null,
-      champion: null,
-      slots: 2,
-      voters: 1,
-      quorum: 2,
-      votes: { 0: 1, 1: 1 },
-      tally: null,
-      fighters: null,
-      battleId: null,
-      poolId: null,
-      pool: [0, 0],
-      winner: null,
-      videoUrl: null,
-      videoStartedAt: null,
-      bettingClosesAt: null,
-      frameUrl: null,
-      error: null,
-      chars: [],
-    };
-    const prev = globalThis.fetch;
-    globalThis.fetch = (async (_input, init) => {
+    const fakeFetch: typeof fetch = async (_input, init) => {
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("authorization"), "Bearer signed-session");
       assert.equal(init?.body, JSON.stringify({ picks: [0, 1] }));
-      return new Response(JSON.stringify({ ok: true, state }), {
+      return new Response(JSON.stringify({ ok: true, state: baseState }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
-    }) as typeof fetch;
-    try {
-      const got = await postVote([0, 1], store);
-      assert.equal(got.voters, 1);
-    } finally {
-      globalThis.fetch = prev;
-    }
+    };
+    t.mock.method(globalThis, "fetch", fakeFetch);
+    const got = await postVote([0, 1], store);
+    assert.equal(got.voters, 1);
   });
 });
 
 describe("RoundState client contract", () => {
-  it("accepts countdown phase and slots 1|2 from the server", () => {
-    const state: ServerRoundState = {
+  it("accepts countdown phase and slots 1|2 from the server", async (t) => {
+    serveJson(t, {
+      ...baseState,
       round: 2,
       phase: "countdown",
       endsAt: Date.now() + 15_000,
       champion: 0,
       slots: 1,
       voters: 2,
-      quorum: 2,
       votes: { 1: 2, 2: 1 },
-      tally: null,
-      fighters: null,
-      battleId: null,
-      poolId: null,
-      pool: [0, 0],
-      winner: null,
-      videoUrl: null,
-      videoStartedAt: null,
-      bettingClosesAt: null,
-      frameUrl: null,
-      error: null,
       chars: [
         { id: 0, alive: true, kills: 1, damage: 10 },
         { id: 1, alive: true, kills: 0, damage: 0 },
       ],
-    };
+    });
+    const state = await fetchRoundState();
     assert.equal(state.phase, "countdown");
     assert.equal(state.slots, 1);
     assert.equal(state.champion, 0);
-    assert.equal(state.videoUrl, null);
-    assert.equal(state.frameUrl, null);
+    assert.equal(state.votes[1], 2);
+    assert.equal(state.chars[0]?.damage, 10);
+  });
+
+  it("rejects a RoundState that is missing a field", async (t) => {
+    const { pool: _pool, ...withoutPool } = baseState;
+    serveJson(t, withoutPool);
+    await assert.rejects(fetchRoundState(), /GET \/round sent an invalid RoundState:.*pool/su);
   });
 });
