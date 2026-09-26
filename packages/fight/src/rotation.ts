@@ -1,4 +1,4 @@
-/** Minimal roster row for winner-stays rotation. Order is roster order. */
+/** Minimal roster row for winner-stays pairing. */
 export type RosterEntry = {
   subname: string;
   status: "alive" | "dead";
@@ -7,18 +7,25 @@ export type RosterEntry = {
 export type RotationPair = {
   /** Previous fight winner; stays on. */
   championSubname: string;
-  /** Next living roster character after the champion, wrapping. */
+  /** Random living roster character who is not the champion. */
   challengerSubname: string;
 };
 
 /**
- * Next video-continuity pair: previous winner plus the next living roster
- * character after that winner (wrap; skip dead; never the champion).
- * Not the voter challenger ballot.
+ * Returns an integer in `[0, maxExclusive)`.
+ * Callers inject this so tests can pin the challenger without `Math.random()`.
+ */
+export type RandomInt = (maxExclusive: number) => number;
+
+/**
+ * Next video-continuity pair: previous winner plus a random living character
+ * who is not the winner. Dead characters are never chosen. Not the voter
+ * challenger ballot. Does not fall back to sequential roster order.
  */
 export function nextRotationPair(
   roster: readonly RosterEntry[],
   winnerSubname: string,
+  randomInt: RandomInt,
 ): RotationPair {
   if (roster.length === 0) {
     throw new Error(
@@ -49,17 +56,71 @@ export function nextRotationPair(
     );
   }
 
-  for (let offset = 1; offset <= roster.length; offset++) {
-    const entry = roster[(winnerIndex + offset) % roster.length]!;
-    if (entry.status === "alive" && entry.subname !== winnerSubname) {
-      return {
-        championSubname: winnerSubname,
-        challengerSubname: entry.subname,
-      };
-    }
+  const challengers = living.filter(
+    (entry) => entry.subname !== winnerSubname,
+  );
+  if (challengers.length === 0) {
+    throw new Error(
+      `nextRotationPair: no living challenger remains for winner ${JSON.stringify(winnerSubname)}.`,
+    );
   }
 
-  throw new Error(
-    `nextRotationPair: no living challenger found for winner ${JSON.stringify(winnerSubname)} after scanning the roster.`,
-  );
+  const index = randomInt(challengers.length);
+  if (
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= challengers.length
+  ) {
+    throw new Error(
+      `nextRotationPair: randomInt(${challengers.length}) must return an integer in [0, ${challengers.length}). Got: ${JSON.stringify(index)}`,
+    );
+  }
+
+  return {
+    championSubname: winnerSubname,
+    challengerSubname: challengers[index]!.subname,
+  };
+}
+
+/**
+ * Roster after this bout's loser is dead and the winner stays alive.
+ * Used to pick the following bout's random challenger.
+ */
+export function rosterAfterFight(
+  fighters: readonly { subname: string }[],
+  otherLiving: readonly { subname: string }[],
+  loserSubname: string,
+  winnerSubname: string,
+): RosterEntry[] {
+  const seen = new Set<string>();
+  const entries: RosterEntry[] = [];
+  for (const fighter of fighters) {
+    if (seen.has(fighter.subname)) {
+      throw new Error(
+        `rosterAfterFight: duplicate subname ${JSON.stringify(fighter.subname)}.`,
+      );
+    }
+    seen.add(fighter.subname);
+    let status: "alive" | "dead";
+    if (fighter.subname === loserSubname) {
+      status = "dead";
+    } else if (fighter.subname === winnerSubname) {
+      status = "alive";
+    } else {
+      throw new Error(
+        `rosterAfterFight: fighter ${JSON.stringify(fighter.subname)} is neither loser ${JSON.stringify(loserSubname)} nor winner ${JSON.stringify(winnerSubname)}.`,
+      );
+    }
+    entries.push({ subname: fighter.subname, status });
+  }
+  for (const other of otherLiving) {
+    if (seen.has(other.subname)) {
+      throw new Error(
+        `rosterAfterFight: other living ${JSON.stringify(other.subname)} duplicates a fighter.`,
+      );
+    }
+    seen.add(other.subname);
+    entries.push({ subname: other.subname, status: "alive" });
+  }
+  return entries;
 }

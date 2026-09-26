@@ -1,4 +1,4 @@
-import type { FightInput, NarrationTurn } from "../src/types.js";
+import type { FightInput, NarrationModelTurn, NarrationTurn } from "../src/types.js";
 
 export const fighterA = {
   subname: "freddy",
@@ -47,7 +47,9 @@ export function sampleFightInput(): FightInput {
   };
 }
 
-export function validTurn(overrides: Partial<NarrationTurn> = {}): NarrationTurn {
+export function validModelTurn(
+  overrides: Partial<NarrationModelTurn> = {},
+): NarrationModelTurn {
   const shotList = [
     {
       time_range: "0-4s",
@@ -74,6 +76,13 @@ export function validTurn(overrides: Partial<NarrationTurn> = {}): NarrationTurn
     winner_subname: "jason",
     winner_injuries: ["cracked mask", "gouge across the shoulder"],
     rationale: "Jason's size and machete overpower Freddy in open ground.",
+    ...overrides,
+  };
+}
+
+export function validTurn(overrides: Partial<NarrationTurn> = {}): NarrationTurn {
+  return {
+    ...validModelTurn(),
     next_opponent_subname: "leatherface",
     ...overrides,
   };

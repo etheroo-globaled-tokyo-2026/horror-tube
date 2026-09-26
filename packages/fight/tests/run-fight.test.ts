@@ -4,8 +4,15 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { runFightTurn } from "../src/index.js";
-import { sampleFightInput, validTurn } from "./fixtures.js";
+import { fightInputFromRotation, runFightTurn } from "../src/index.js";
+import {
+  fighterA,
+  fighterB,
+  livingOpponent,
+  otherLiving,
+  sampleFightInput,
+  validModelTurn,
+} from "./fixtures.js";
 
 const fixturePath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -16,7 +23,7 @@ const fixturePath = join(
 
 describe("runFightTurn", () => {
   it("narrates then builds a fal payload from a saved response shape", async () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
       video: { url: string };
       expanded_prompt: string;
@@ -43,12 +50,28 @@ describe("runFightTurn", () => {
           requestId: "fixture-req",
         }),
       },
+      randomInt: () => 0,
     });
     assert.equal(result.videoUrl, saved.video.url);
     assert.equal(result.expandedPrompt, saved.expanded_prompt);
     assert.equal(result.ensLines[0], "freddy|status=dead");
+    assert.equal(result.nextOpponentSubname, "leatherface");
     assert.equal(result.rationale, turn.rationale);
     assert.equal(result.videoPrompt.includes(turn.rationale), false);
     assert.equal(result.videoPrompt.includes("status=dead"), false);
+  });
+});
+
+describe("fightInputFromRotation", () => {
+  it("builds a bout pair from the winner and an injected random living challenger", () => {
+    const living = [fighterA, fighterB, livingOpponent, otherLiving];
+    const input = fightInputFromRotation(living, "jason", () => 0);
+    assert.equal(input.fighterA.subname, "jason");
+    // Living non-winners in order: freddy, leatherface, chucky
+    assert.equal(input.fighterB.subname, "freddy");
+    assert.deepEqual(
+      input.eligibleOpponents.map((c) => c.subname),
+      ["leatherface", "chucky"],
+    );
   });
 });
