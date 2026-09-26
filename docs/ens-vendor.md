@@ -20,7 +20,7 @@ how write permission is validated locally. Parent-name registration is
 | `setText` from the wallet that holds the key | `packages/ens/scripts/character-subnames.ts` |
 | `resolve` of `text(key)` when registering or updating | `packages/ens/scripts/character-subnames.ts` |
 | `resolve` of `text(key)` for the roster reader | `packages/ens/scripts/roster.ts` (`readRosterFromChain`) |
-| Web game loads the roster through that reader | `apps/web/game.ts` (connect/load path calls `readRosterFromChain`) |
+| Web game loads the roster from the game server | `apps/web/game.ts` (`GET /roster`; the server calls `readRosterFromChain`) |
 | Local anvil deploys the pinned resolver bytecode | `packages/ens/scripts/local-permissioned-resolver.ts` |
 | Permission suite: assert chain id 31337, `setText` then `resolve` | `packages/ens/tests/permissions.test.ts` |
 
@@ -55,8 +55,9 @@ flowchart TD
   other --> revert
 ```
 
-The web game does not grant or write. It calls `readRosterFromChain`, which
-uses `resolve`.
+The web game does not grant or write. It loads the cast from `GET /roster`.
+The game server fills that response with `readRosterFromChain`, which uses
+`resolve`.
 
 ## Validation
 

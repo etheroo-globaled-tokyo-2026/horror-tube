@@ -4,6 +4,7 @@ import { extname, resolve, sep } from "node:path";
 
 import * as v from "valibot";
 
+import type { RosterSnapshot } from "./ens-roster-cache.js";
 import { StoreWriteError, type GameLoop } from "./game/loop.js";
 import { HttpError } from "./http-error.js";
 import { readSession } from "./human-session.js";
@@ -24,6 +25,7 @@ export type GameServerOptions = {
   game?: GameLoop;
   /** HMAC pepper for the waiver session. Required for POST /vote. */
   sessionPepper?: string;
+  roster?: { snapshot(): RosterSnapshot };
   /** Public Sui betting IDs for GET /betting. */
   betting?: {
     packageId: string;
@@ -221,7 +223,7 @@ function sendState(res: ServerResponse, state: RoundState): void {
 }
 
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir, wallet, worldId, game, sessionPepper, betting } = options;
+  const { staticDir, wallet, worldId, game, sessionPepper, betting, roster } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void handleRequest(req, res, {
@@ -231,6 +233,7 @@ export function createGameServer(options: GameServerOptions): Server {
       game,
       sessionPepper,
       betting,
+      roster,
     });
   });
 
@@ -247,6 +250,7 @@ async function handleRequest(
     game?: GameLoop;
     sessionPepper?: string;
     betting?: GameServerOptions["betting"];
+    roster?: GameServerOptions["roster"];
   },
 ): Promise<void> {
   const method = req.method ?? "GET";
@@ -256,6 +260,23 @@ async function handleRequest(
   try {
     if (method === "GET" && (path === "/health" || url.startsWith("/health?"))) {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "GET" && path === "/roster") {
+      if (opts.roster === undefined) {
+        sendJson(res, 500, {
+          ok: false,
+          error: "ENS roster cache is not configured.",
+        });
+        return;
+      }
+      const payload = JSON.stringify(opts.roster.snapshot());
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": Buffer.byteLength(payload),
+      });
+      res.end(payload);
       return;
     }
 

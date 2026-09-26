@@ -106,6 +106,49 @@ describe("HTTP server", () => {
     assert.deepEqual(await res.json(), { ok: true });
   });
 
+  it("GET /roster returns the cached snapshot and does not invent one", async () => {
+    const missing = createGameServer({ port: 0, host: "127.0.0.1" });
+    servers.push(missing);
+    await listenGameServer(missing, { port: 0, host: "127.0.0.1" });
+    const missingAddr = missing.address() as AddressInfo;
+    const missingRes = await fetch(`http://127.0.0.1:${String(missingAddr.port)}/roster`);
+    assert.equal(missingRes.status, 500);
+    const missingBody = (await missingRes.json()) as { error?: string };
+    assert.match(missingBody.error ?? "", /roster cache/u);
+
+    const server = createGameServer({
+      port: 0,
+      host: "127.0.0.1",
+      roster: {
+        snapshot: () => ({
+          parentName: "horrortube.eth",
+          sheets: [
+            {
+              label: "jason",
+              display_name: "Jason",
+              name: "jason.horrortube.eth",
+              owner: "0x1111111111111111111111111111111111111111",
+              look: "masked",
+              brief: "walks",
+              injury_places: ["arm"],
+              injuries: [],
+              status: "alive",
+              icon: "https://cdn.example/jason.png",
+            },
+          ],
+        }),
+      },
+    });
+    servers.push(server);
+    await listenGameServer(server, { port: 0, host: "127.0.0.1" });
+    const addr = server.address() as AddressInfo;
+    const res = await fetch(`http://127.0.0.1:${String(addr.port)}/roster`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { parentName: string; sheets: { label: string }[] };
+    assert.equal(body.parentName, "horrortube.eth");
+    assert.equal(body.sheets[0]?.label, "jason");
+  });
+
   it("serves a file from STATIC_DIR when the directory exists", async () => {
     const dir = await mkdtemp(join(tmpdir(), "horror-tube-static-"));
     try {

@@ -26,6 +26,9 @@ importers:
       '@horror-tube/betting':
         specifier: workspace:*
         version: link:../../packages/betting
+      '@horror-tube/ens':
+        specifier: workspace:*
+        version: link:../../packages/ens
       '@horror-tube/fight':
         specifier: workspace:*
         version: link:../../packages/fight
@@ -69,9 +72,6 @@ importers:
       '@horror-tube/betting':
         specifier: workspace:*
         version: link:../../packages/betting
-      '@horror-tube/ens':
-        specifier: workspace:*
-        version: link:../../packages/ens
       '@mysten/dapp-kit-core':
         specifier: ^1.6.32
         version: 1.6.32(@mysten/sui@2.33.0(typescript@7.0.2))(typescript@7.0.2)

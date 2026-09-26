@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@horror-tube/betting": "workspace:*",
+    "@horror-tube/ens": "workspace:*",
     "@horror-tube/fight": "workspace:*",
     "@horror-tube/world-id": "workspace:*",
     "@mysten/sui": "^2.33.0",

@@ -2,39 +2,30 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  parseInjuriesTextRecord,
-  type ChainWritePorts,
-} from "@horror-tube/fight/battle-queue";
+import { type ChainWritePorts } from "@horror-tube/fight/battle-queue";
 import {
   type Address,
   type Hex,
   createPublicClient,
   createWalletClient,
-  decodeAbiParameters,
-  encodeFunctionData,
   getAddress,
   http,
   isHex,
   parseAbi,
   toHex,
 } from "viem";
+
+import type { RosterTextTarget } from "./ens-roster-cache.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
 const ethRegistryAbi = parseAbi([
   "function getResolver(string label) view returns (address)",
 ]);
 const permissionedResolverAbi = parseAbi([
   "function setText(bytes name, string key, string value)",
-  "function resolve(bytes name, bytes data) view returns (bytes)",
-]);
-const textResolverAbi = parseAbi([
-  "function text(bytes32 node, string key) view returns (string)",
 ]);
 
 const PIN_MARKDOWN_PATH = join(
@@ -75,7 +66,7 @@ function loadAgentKey(env: NodeJS.ProcessEnv) {
   return { privateKey, address: privateKeyToAccount(privateKey).address };
 }
 
-function parseEnsLabel(value: string): string {
+export function parseEnsLabel(value: string): string {
   if (value.includes(".")) {
     throw new Error(
       `ENS_LABEL must be one label, not a full name. Got: ${value}`,
@@ -89,7 +80,7 @@ function parseEnsLabel(value: string): string {
   return value;
 }
 
-function loadEthRegistryAddress(): Address {
+export function loadEthRegistryAddress(): Address {
   let markdown: string;
   try {
     markdown = readFileSync(PIN_MARKDOWN_PATH, "utf8");
@@ -192,74 +183,6 @@ async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
   return { ...reader, account, walletClient };
 }
 
-async function readTextRecord(
-  clients: EnsReader,
-  dnsName: Hex,
-  key: string,
-  labelForError: string,
-): Promise<string> {
-  const data = encodeFunctionData({
-    abi: textResolverAbi,
-    functionName: "text",
-    args: [ZERO_BYTES32, key],
-  });
-  let encoded: Hex;
-  try {
-    const resolved = await clients.publicClient.readContract({
-      address: clients.resolver,
-      abi: permissionedResolverAbi,
-      functionName: "resolve",
-      args: [dnsName, data],
-    });
-    // SAFETY: PermissionedResolver.resolve returns ABI-encoded bytes (Hex).
-    encoded = resolved;
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `PermissionedResolver.resolve(text ${key}) failed for ${labelForError}: ${detail}`,
-      { cause },
-    );
-  }
-  try {
-    const [value] = decodeAbiParameters([{ type: "string" }], encoded);
-    return value;
-  } catch (cause) {
-    throw new Error(
-      `Failed to decode text(${key}) resolve result for ${labelForError}: ${cause instanceof Error ? cause.message : String(cause)}`,
-      { cause },
-    );
-  }
-}
-
-async function readInjuriesText(
-  clients: EnsClients,
-  dnsName: Hex,
-): Promise<string> {
-  return readTextRecord(clients, dnsName, "injuries", "injuries");
-}
-
-export async function readRosterEnsStatuses(
-  ensLabels: string[],
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<string[]> {
-  const clients = await openEnsReader(env);
-  const statuses: string[] = [];
-  for (const subname of ensLabels) {
-    const name = characterName(subname, clients.ensLabel);
-    const dnsName = dnsEncodeName(name);
-    try {
-      statuses.push(await readTextRecord(clients, dnsName, "status", name));
-    } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(
-        `Failed to read ENS status for ${name}: ${detail}`,
-        { cause },
-      );
-    }
-  }
-  return statuses;
-}
-
 async function setText(
   clients: EnsClients,
   dnsName: Hex,
@@ -302,29 +225,35 @@ export type EnsSettlePort = {
 };
 
 export function createEnsChainWritePorts(
-  env: NodeJS.ProcessEnv = process.env,
-  sui?: EnsSettlePort,
+  env: NodeJS.ProcessEnv,
+  sui: EnsSettlePort | undefined,
+  roster: RosterTextTarget,
 ): ChainWritePorts {
   return {
     async writeWinnerInjuries(args) {
+      roster.sheet(args.subname);
       const clients = await openEnsClients(env);
       const name = characterName(args.subname, clients.ensLabel);
       const dnsName = dnsEncodeName(name);
-      const current = await readInjuriesText(clients, dnsName);
-      parseInjuriesTextRecord(current);
-      return setText(
+      const injuriesJson = JSON.stringify(args.injuries);
+      const hash = await setText(
         clients,
         dnsName,
         args.subname,
         "injuries",
-        JSON.stringify(args.injuries),
+        injuriesJson,
       );
+      roster.applyTextWrite(args.subname, "injuries", injuriesJson);
+      return hash;
     },
     async writeLoserStatusDead(args) {
+      roster.sheet(args.subname);
       const clients = await openEnsClients(env);
       const name = characterName(args.subname, clients.ensLabel);
       const dnsName = dnsEncodeName(name);
-      return setText(clients, dnsName, args.subname, "status", "dead");
+      const hash = await setText(clients, dnsName, args.subname, "status", "dead");
+      roster.applyTextWrite(args.subname, "status", "dead");
+      return hash;
     },
     async settleBattle(battleId, winningSide) {
       if (sui === undefined) {

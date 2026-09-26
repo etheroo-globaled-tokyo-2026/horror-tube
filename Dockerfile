@@ -29,6 +29,7 @@ RUN pnpm --filter @horror-tube/world-id build
 RUN pnpm --filter @horror-tube/fight-media build
 RUN pnpm --filter @horror-tube/fight build
 RUN pnpm --filter @horror-tube/betting build
+RUN pnpm --filter @horror-tube/ens build
 RUN pnpm --filter @horror-tube/web build
 RUN pnpm --filter @horror-tube/server build
 
@@ -57,7 +58,12 @@ COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/migrations ./apps/server/migrations
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
 # ens-chain-write.ts reads this table at settle time (path is relative to dist/).
+# The roster cache imports @horror-tube/ens/roster from the compiled server.
+COPY --from=build /app/packages/ens/package.json ./packages/ens/
+COPY --from=build /app/packages/ens/dist ./packages/ens/dist
+COPY --from=build /app/packages/ens/node_modules ./packages/ens/node_modules
 COPY --from=build /app/packages/ens/scripts/pin/sepolia-addresses.md ./packages/ens/scripts/pin/sepolia-addresses.md
+COPY --from=build /app/packages/roster/roster/cast.json ./packages/roster/roster/cast.json
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 WORKDIR /app/apps/server
 CMD ["node", "dist/index.js"]

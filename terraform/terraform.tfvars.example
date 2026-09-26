@@ -41,6 +41,8 @@ settle_seconds         = 8
 skip_battle_settlement = "1"
 # Comma-separated ENS labels (at least two). Same order does not matter; the server sorts them.
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
+# Milliseconds between game-server ENS roster refreshes.
+ens_roster_refresh_ms  = 60000
 
 # WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: staging).
 # WORLD_ID_STAGING_TOKEN is passed as TF_VAR_world_id_staging_token from .env when the environment is staging.

@@ -49,6 +49,22 @@ export function readStaticDir(
   return dir;
 }
 
+export function readRosterRefreshMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = requiredEnv("ENS_ROSTER_REFRESH_MS", env).trim();
+  if (!/^[0-9]+$/u.test(raw)) {
+    throw new Error(
+      `ENS_ROSTER_REFRESH_MS must be a positive integer (milliseconds). Got ${JSON.stringify(raw)}. See .env.example.`,
+    );
+  }
+  const ms = Number(raw);
+  if (!Number.isSafeInteger(ms) || ms < 1) {
+    throw new Error(
+      `ENS_ROSTER_REFRESH_MS must be a positive integer (milliseconds). Got ${JSON.stringify(raw)}. See .env.example.`,
+    );
+  }
+  return ms;
+}
+
 export function readSkipBattleSettlement(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
