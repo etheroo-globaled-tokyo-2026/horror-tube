@@ -298,9 +298,9 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
     const chainId = await publicClient.getChainId();
     assert.equal(chainId, 31337);
-    // Block layout differs between anvil versions, so collect every transaction
-    // on the fresh chain; the deploy is exactly factory, implementation, deployProxy.
-    const head = await publicClient.getBlockNumber();
+    // The fresh chain holds only the deploy: factory, implementation, deployProxy.
+    // viem caches the block number for its polling interval, which can be stale here.
+    const head = await publicClient.getBlockNumber({ cacheTime: 0 });
     const txHashes: Hex[] = [];
     for (let n = 0n; n <= head; n += 1n) {
       txHashes.push(...(await publicClient.getBlock({ blockNumber: n })).transactions);
