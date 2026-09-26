@@ -1,0 +1,18 @@
+---
+description: Fix PR review findings and do not return while CI is red
+alwaysApply: true
+---
+
+# Fix the PR before you return
+
+When a review, check, or your own read of a pull request finds a change that should be made, make it on that branch. Do not stop at a list of proposed fixes.
+
+- Push the fixes to the open pull request. Do not open a second pull request for the same fix.
+- Do not force-push. Do not commit secrets, `.env`, or Terraform state.
+
+If the change has tests, or the pull request runs CI, stay until CI is green.
+
+- Run the tests that cover the change.
+- Watch the pull request checks. If one fails, read the log, fix the cause, and push again.
+- Do not return while a required check is failing, pending, or not yet reported after a push you just made. Wait for the run to finish.
+- A skipped test is not a pass. If a test was skipped because env was missing, say so only after the tests that can run are green. Do not hide a failure behind a skip.
