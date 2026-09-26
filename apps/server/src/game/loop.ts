@@ -45,6 +45,16 @@ export type GameLoopOptions = {
 
 type Listener = (state: RoundState) => void;
 type Tally = NonNullable<RoundState["tally"]>;
+type ChainRetry = { retryAt: number; delayMs: number };
+
+const CHAIN_RETRY_FIRST_MS = 5_000;
+const CHAIN_RETRY_MAX_MS = 60_000;
+
+function nextChainRetry(now: number, previous: ChainRetry | null): ChainRetry {
+  const delayMs =
+    previous === null ? CHAIN_RETRY_FIRST_MS : Math.min(previous.delayMs * 2, CHAIN_RETRY_MAX_MS);
+  return { retryAt: now + delayMs, delayMs };
+}
 
 export class StoreWriteError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -104,6 +114,8 @@ export class GameLoop {
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
   private readonly listeners = new Set<Listener>();
+  private readonly pendingCancels = new Map<string, ChainRetry>();
+  private cancelRetryInFlight = false;
 
   private chars: CharRuntime[];
   private round = 1;
@@ -213,6 +225,7 @@ export class GameLoop {
   }
 
   async tick(now: number = this.now()): Promise<void> {
+    await this.retryPendingCancels(now);
     if (this.settleInFlight) {
       return;
     }
@@ -553,17 +566,39 @@ export class GameLoop {
     this.phase = "over";
     this.emit();
     if (battleId !== null) {
-      try {
-        await this.battleBetting.cancelBattle(battleId);
-        console.log(
-          `Sui betting cancelBattle battleId=${battleId} (video failed)`,
-        );
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        console.error(
-          `Sui betting cancelBattle failed after video error (battleId=${battleId}): ${detail}`,
-        );
+      await this.cancelPool(battleId, this.now());
+    }
+  }
+
+  private async cancelPool(battleId: string, now: number): Promise<void> {
+    try {
+      await this.battleBetting.cancelBattle(battleId);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      const retry = nextChainRetry(now, this.pendingCancels.get(battleId) ?? null);
+      this.pendingCancels.set(battleId, retry);
+      console.error(
+        `Sui betting cancelBattle failed (battleId=${battleId}): ${detail}. Stakes stay locked until it lands; retrying in ${String(retry.delayMs)} ms.`,
+      );
+      return;
+    }
+    this.pendingCancels.delete(battleId);
+    console.log(`Sui betting cancelBattle battleId=${battleId}`);
+  }
+
+  private async retryPendingCancels(now: number): Promise<void> {
+    if (this.cancelRetryInFlight) return;
+    const due = [...this.pendingCancels]
+      .filter(([, retry]) => now >= retry.retryAt)
+      .map(([battleId]) => battleId);
+    if (due.length === 0) return;
+    this.cancelRetryInFlight = true;
+    try {
+      for (const battleId of due) {
+        await this.cancelPool(battleId, now);
       }
+    } finally {
+      this.cancelRetryInFlight = false;
     }
   }
 
