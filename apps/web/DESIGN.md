@@ -189,10 +189,10 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
-  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
-    record update, the deceased resident, and OK to collect.
-- **The remote:** the only thing you use for the game. Digits for a case file, VOL ± for the stake, hold A or B to
-  bet, OK to collect or to start again.
+  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the deceased
+    resident, the winner, and OK to collect.
+- **The remote:** the only thing you use for the game. Digits for a case file, or for the stake during a bet.
+  Press A or B to choose a side, type the amount, then OK. OK also collects or starts again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
 
@@ -200,7 +200,7 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
-  controls state the action (`STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
+  controls state the action (`A OR B · TYPE THE AMOUNT · OK`, `COLLECT OK`).
   Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.

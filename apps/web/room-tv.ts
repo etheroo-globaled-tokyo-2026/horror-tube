@@ -34,7 +34,7 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
-import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
+import { LOW, T, W8, wrap, num } from "./room-state.ts";
 import { collapse, drawPower, powerStage } from "./room-power.ts";
 
 export const TW = 640,
@@ -534,7 +534,10 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
   const w = 160,
     h = Math.round((160 * dh) / dw);
   if (small.height !== h) small.height = h;
-  sg.drawImage(video, ...crop(832, 480, dw, dh), 0, 0, w, h);
+  const sw0 = video.videoWidth;
+  const sh0 = video.videoHeight;
+  if (sw0 === 0 || sh0 === 0) return;
+  sg.drawImage(video, ...crop(sw0, sh0, dw, dh), 0, 0, w, h);
   const img = sg.getImageData(0, 0, w, h),
     d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -578,7 +581,9 @@ function drawCaseFile(ch: Character): void {
   g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
   g.imageSmoothingEnabled = false;
   g.drawImage(tinted(ch), 32, 64, 176, 176);
-  if (!ch.alive) {
+  const onProgramme = S.selectable.includes(ch.id);
+  const dead = !ch.alive && !onProgramme;
+  if (dead) {
     g.save();
     g.translate(120, 152);
     g.rotate(-0.2);
@@ -610,9 +615,8 @@ function drawCaseFile(ch: Character): void {
   g.font = "20px DotGothic16";
   wrap(g, ch.injuries || "None recorded.", 32, y + 26, W - 64, 26);
   const booking =
-    (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") &&
-    S.selectable.includes(ch.id);
-  const [footer, color] = !ch.alive
+    (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") && onProgramme;
+  const [footer, color] = dead
     ? ["THIS ROOM IS EMPTY", COL.rust]
     : booking
       ? ["OK", COL.sulfur]
@@ -749,7 +753,11 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (T.buf) {
+  } else if (
+    T.buf &&
+    S.phase !== "bet" &&
+    (T.buf.length === 2 || (S.phase !== "waiting" && S.phase !== "pick"))
+  ) {
     fill(COL.soot);
     noise = 0.14;
     const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
@@ -788,7 +796,14 @@ export function drawTV(): void {
           400,
         );
       } else {
-        text("TYPE THE NUMBER  ·  OK", S.phase === "waiting" ? 128 : 100, 18, COL.rust, "DotGothic16", 400);
+        text(
+          T.buf ? `${T.buf.padEnd(2, "_")}  ·  TYPE THE NUMBER  ·  OK` : "TYPE THE NUMBER  ·  OK",
+          S.phase === "waiting" ? 128 : 100,
+          18,
+          COL.rust,
+          "DotGothic16",
+          400,
+        );
         g.textAlign = "left";
         g.font = "22px DotGothic16";
         ids.forEach((id, i) => {
@@ -854,7 +869,7 @@ export function drawTV(): void {
           ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`
           : S.pending === "bet"
             ? "RECORDING YOUR BET…"
-            : "HOLD A OR B TO BET",
+            : "A OR B · TYPE THE AMOUNT · OK",
         H - 70,
         24,
         COL.bone,
@@ -867,9 +882,9 @@ export function drawTV(): void {
       [a, b].forEach((ch, i) => {
         if (!ch) return;
         const x = i ? W * 0.74 : W * 0.26;
-        g.fillStyle = i ? COL.sulfur : COL.char;
+        g.fillStyle = T.betSide === i ? COL.sulfur : COL.char;
         g.fillRect(x - 130, 130, 260, 150);
-        g.fillStyle = i ? COL.soot : COL.bone;
+        g.fillStyle = T.betSide === i ? COL.soot : COL.bone;
         g.font = "700 40px Silkscreen";
         g.fillText(i ? "B" : "A", x, 180);
         g.font = "700 26px Silkscreen";
@@ -899,12 +914,11 @@ export function drawTV(): void {
       else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
       else if (S.credit <= 0) text("ADD USDC AT THE COIN BOX TO BET.", 360, 24, COL.soot);
       else {
-        text(`STAKE ${STAKES[T.stake]} USDC  ·  VOL ± TO CHANGE`, 340, 24, COL.soot);
         text(
-          T.hold >= 0 ? `${"▮".repeat(T.holdN)}${"▯".repeat(8 - T.holdN)}` : "HOLD A OR B TO BET",
-          390,
-          26,
-          COL.bloodDeep,
+          `AMOUNT ${T.buf === "" ? "—" : T.buf} USDC · A OR B · OK`,
+          360,
+          22,
+          COL.soot,
         );
       }
     } else if (S.phase === "fight") {
@@ -916,11 +930,9 @@ export function drawTV(): void {
       const w = char(S.fighters?.[S.winner] ?? -1),
         l = char(S.fighters?.[1 - S.winner] ?? -1);
       fill(COL.soot);
-      band(60, 50, COL.blood);
-      text("RESIDENT RECORD UPDATED", 96, 24, COL.soot);
-      text(l.name.toUpperCase(), 200, 40, COL.blood);
-      text("is deceased.", 248, 28, COL.bone, "DotGothic16", 400);
-      text(`${w.name} returns to their room.`, 290, 28, COL.bone, "DotGothic16", 400);
+      text(l.name.toUpperCase(), 160, 40, COL.blood);
+      text("is deceased.", 210, 28, COL.bone, "DotGothic16", 400);
+      text(`${w.name.toUpperCase()} WINS!`, 270, 32, COL.sulfur);
       if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
       else if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
       else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
