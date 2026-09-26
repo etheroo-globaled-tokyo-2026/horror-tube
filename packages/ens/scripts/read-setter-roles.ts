@@ -23,7 +23,6 @@ import { parseLabel } from "./register-eth-label.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
-export { ROLE_SET_TEXT, textKeyResource };
 export const SETTER_ROLE_KEYS = [...ROSTER_TEXT_KEYS, ...AGENT_TEXT_KEYS] as const;
 export const SETTER_ROLE_ACCOUNTS = ["bootstrap", "roster", "agent"] as const;
 const REQUIRED_ENV = [

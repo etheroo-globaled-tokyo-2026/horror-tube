@@ -1,7 +1,8 @@
 # Horror Tube design system
 
-A horror battle royale that people watch and bet on. The goal is **dread**: the viewer is complicit, the tone is calm
-about death, and the house already knows the winner. The flow is `docs/PLAN.md`.
+A horror broadcast that people watch, shape through requests, and bet on. A television service preserves fictional
+residents through living human attention. Death is routine work to its announcer. The viewer is complicit.
+The story and writing rules are in [the broadcast](../../docs/broadcast-story.md).
 
 You sit alone in a rusty room in front of an old TV, with a TV remote in your hand.
 
@@ -130,28 +131,27 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV asks for proof of life with a World ID QR code. The hint names World App and offers COPY LINK.
-- **Opening the wallet:** once the proof verifies, the QR goes away and the TV says VERIFIED · OPENING YOUR WALLET
+- **Opening the wallet:** once the proof verifies, the QR goes away and the TV says VIEWER REGISTERED · OPENING YOUR WALLET
   while the game wallet session and the coin box open. If that fails, the TV and hint say which step failed and the
   server's reason; the player stays out.
-- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the room.
+- **Verified:** the TV says VIEWER REGISTERED, the paper gets a red REGISTERED stamp. Hard cut to the room.
 - **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
   says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.
-  1. The TV: `THE TV. EVERYTHING AIRS HERE.`
-  2. The shelf: `THE RESIDENTS. PULL A TAPE.`
-  3. The remote rises, LED blinking: `THE REMOTE. VOTE FOR TWO. THEY FIGHT.`
-  4. The meter: `THE METER. FEED IT TO BET.`
-  5. The remote again: `HOLD A OR B. BET ON WHO WALKS OUT.`
-- **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
-  NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
+  1. The TV receives one channel.
+  2. The shelf holds the residents' records, kept up to date.
+  3. The remote requests who fights next.
+  4. Watching is free; the meter funds optional bets.
+  5. Hold A or B to bet on the survivor.
+- **Demo refusal:** the TV switches off, the lights go out, the waiver burns from the bottom up. Then
+  NO VIEWER REGISTERED stays in the dark. ENTER cuts back to a new waiver.
 - **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (3 to 4 s on
   the public RPC, which also rate-limits: scan log chunks one at a time and stop early; new users never see it, it loads while they read the waiver). Until it lands, the TV shows a warm
   test card with the logo, PLEASE STAND BY, and the hint says the TV is warming up. If the read fails, the TV says NO SIGNAL,
   the hint shows the first lines of the real error, and the full error is in the console. No cache, no fallback cast.
-- **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
+- **Demo:** `X` or DEMO · REFUSE ENTRY runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
-There is no wallet step: the burner wallet is made in the background.
-Money lives on the coin box (below). Vote and bet stay on the remote.
+The wallet opens after verification. Money lives on the coin box (below). Requests and bets stay on the remote.
 
 ## The room
 
@@ -190,8 +190,8 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     `DEAD`, with a static cut between cards.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. The name shows again after OK.
-  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
-    PROGRAM", the loser, and OK to collect.
+  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
+    record update, the deceased resident, and OK to collect.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
@@ -201,8 +201,9 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Picking must not feel like a treat.** No glamour, no vote races, no faces before you choose.
-- **Copy is short and human**, not technical, like CloverPit: a few words, then the key. Hover hints name things;
-  they do not explain how to click (`PICK TWO · NUMBER OK`, `STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
+- **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
+  controls state the action (`REQUEST TWO RESIDENTS · NUMBER OK`, `STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
+  Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.
 
@@ -242,7 +243,7 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   While zoomed, the remote and the held tape are out of view and the remote keys are off. Stakes are 1, 3 and 5 USDC.
 - **Gas today:** the paying wallet needs testnet SUI for a deposit. The coin return goes through `POST /tx`, which
   Shinami sponsors, so the in-game wallet holds no SUI.
-  Errors zoom onto the meter and stay in the hint bar (`THE BOX SPAT IT OUT …`) until you step back.
+  Errors zoom onto the meter and stay in the hint bar (`COIN BOX NOTICE …`) until you step back.
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).

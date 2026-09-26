@@ -14,10 +14,7 @@ import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
 import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
 import { createFightJobRunner } from "./fight-job.js";
-import {
-  readGameLoopConfig,
-  readRosterEnsLabels,
-} from "./game/config.js";
+import { readGameLoopConfig, readRosterEnsLabels } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
 import { createHouseBotChains, readHouseBotStakeUnits } from "./house-bot-chain.js";
 import { loadLivingCardsFromEns } from "./load-living-cards.js";
@@ -31,7 +28,9 @@ import {
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-loadRepoDotenv(join(repoRoot, ".env"));
+console.log(
+  `env: loaded [${loadRepoDotenv(repoRoot).join(", ")}]; shell values win, then the first file`,
+);
 
 loadWorldIdEnv();
 

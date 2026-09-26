@@ -58,6 +58,37 @@ def _lore(title):
         return fetch_page_lore(resolve_page(title, wiki=WIKI))
 
 
+DRACULA_ANCHOR_SECTIONS = [
+    {"line": "Appearance", "index": "", "anchor": "Appearance"},
+    {"line": "Powers and Abilities", "index": "", "anchor": "Powers_and_Abilities"},
+]
+
+
+def _lore_from_html(sections, text, *, title="Count Dracula"):
+    """fetch_page_lore on a fake page: these headings, `text` for every body fetch.
+
+    Returns the lore and the api.php params of each body fetch.
+    """
+    body_fetches = []
+
+    def fake(_host, params):
+        if str(params.get("prop", "")).startswith("sections"):
+            return {
+                "parse": {
+                    "title": title,
+                    "pageid": 1,
+                    "properties": {},
+                    "categories": [],
+                    "sections": sections,
+                }
+            }
+        body_fetches.append(params)
+        return {"parse": {"text": text}}
+
+    with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+        return fetch_page_lore(resolve_page(title, wiki=WIKI)), body_fetches
+
+
 def _char(**overrides):
     base = {
         "label": "alpha",
@@ -351,162 +382,70 @@ class ProposeTests(unittest.TestCase):
         self.assertIn("Inhuman Strength", sheet["brief"])
 
     def test_character_description_counts_as_look(self):
-        sections = {
-            "parse": {
-                "title": "Jason Voorhees (Friday the 13th)",
-                "pageid": 9,
-                "properties": {},
-                "categories": [],
-                "sections": [
-                    {"line": "Character Description", "index": "1"},
-                    {"line": "Powers and Abilities", "index": "2"},
-                ],
-            }
-        }
-        body = {"parse": {"text": "<p>A large man in a hockey mask.</p>"}}
-
-        def fake(_host, params):
-            if str(params.get("prop", "")).startswith("sections"):
-                return sections
-            return body
-
-        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
-            lore = fetch_page_lore(
-                resolve_page("Jason Voorhees (Friday the 13th)", wiki=WIKI)
-            )
+        lore, _ = _lore_from_html(
+            [
+                {"line": "Character Description", "index": "1"},
+                {"line": "Powers and Abilities", "index": "2"},
+            ],
+            "<p>A large man in a hockey mask.</p>",
+        )
         self.assertEqual(lore.appearance, "A large man in a hockey mask.")
         self.assertEqual(lore.powers, "A large man in a hockey mask.")
 
+    def test_table_of_contents_is_not_the_brief(self):
+        lore, _ = _lore_from_html(
+            [
+                {"line": "Appearance", "index": "1"},
+                {"line": "Abilities", "index": "2"},
+            ],
+            '<div id="toc" class="toc" role="navigation">'
+            '<div class="toctitle"><h2 id="mw-toc-heading">Contents</h2></div>'
+            '<ul><li class="toclevel-1"><a href="#Abilities">'
+            '<span class="tocnumber">1</span> <span class="toctext">Abilities</span></a>'
+            '<ul><li class="toclevel-2"><a href="#Atomic_breath">'
+            '<span class="tocnumber">1.1</span> <span class="toctext">Atomic breath</span>'
+            "</a></li></ul></li></ul></div>"
+            '<h2><span class="mw-headline" id="Abilities">Abilities</span></h2>'
+            '<h3><span class="mw-headline" id="Atomic_breath">Atomic breath</span></h3>'
+            "<p>His atomic breath sets city blocks ablaze.</p>",
+        )
+        self.assertEqual(lore.powers, "His atomic breath sets city blocks ablaze.")
+
     def test_section_anchor_is_used_when_fandom_returns_blank_index(self):
-        sections = {
-            "parse": {
-                "title": "Count Dracula",
-                "pageid": 917,
-                "properties": {},
-                "categories": [],
-                "sections": [
-                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
-                    {
-                        "line": "Powers and Abilities",
-                        "index": "",
-                        "anchor": "Powers_and_Abilities",
-                    },
-                ],
-            }
-        }
-        body = {
-            "parse": {
-                "text": (
-                    '<h2><span id="Appearance">Appearance</span></h2>'
-                    "<p>A pale count in formal black clothes.</p>"
-                    '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
-                    "<p>He transforms and controls minds.</p>"
-                )
-            }
-        }
-
-        def fake(_host, params):
-            if str(params.get("prop", "")).startswith("sections"):
-                return sections
+        lore, body_fetches = _lore_from_html(
+            DRACULA_ANCHOR_SECTIONS,
+            '<h2><span id="Appearance">Appearance</span></h2>'
+            "<p>A pale count in formal black clothes.</p>"
+            '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
+            "<p>He transforms and controls minds.</p>",
+        )
+        for params in body_fetches:
             self.assertNotIn("section", params)
-            return body
-
-        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
-            lore = fetch_page_lore(
-                resolve_page(
-                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
-                    wiki=None,
-                )
-            )
         self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
         self.assertEqual(lore.powers, "He transforms and controls minds.")
 
     def test_anchor_section_keeps_text_under_a_subheading(self):
-        sections = {
-            "parse": {
-                "title": "Count Dracula",
-                "pageid": 917,
-                "properties": {},
-                "categories": [],
-                "sections": [
-                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
-                    {
-                        "line": "Powers and Abilities",
-                        "index": "",
-                        "anchor": "Powers_and_Abilities",
-                    },
-                ],
-            }
-        }
-        body = {
-            "parse": {
-                "text": (
-                    '<h2><span id="Appearance">Appearance</span></h2>'
-                    "<h3>Costume</h3>"
-                    "<p>A pale count in formal black clothes.</p>"
-                    '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
-                    "<p>He transforms and controls minds.</p>"
-                )
-            }
-        }
-
-        def fake(_host, params):
-            if str(params.get("prop", "")).startswith("sections"):
-                return sections
-            return body
-
-        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
-            lore = fetch_page_lore(
-                resolve_page(
-                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
-                    wiki=None,
-                )
-            )
+        lore, _ = _lore_from_html(
+            DRACULA_ANCHOR_SECTIONS,
+            '<h2><span id="Appearance">Appearance</span></h2>'
+            "<h3>Costume</h3>"
+            "<p>A pale count in formal black clothes.</p>"
+            '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
+            "<p>He transforms and controls minds.</p>",
+        )
         self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
         self.assertEqual(lore.powers, "He transforms and controls minds.")
 
     def test_anchor_on_subheading_after_a_higher_heading(self):
-        sections = {
-            "parse": {
-                "title": "Count Dracula",
-                "pageid": 917,
-                "properties": {},
-                "categories": [],
-                "sections": [
-                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
-                    {
-                        "line": "Powers and Abilities",
-                        "index": "",
-                        "anchor": "Powers_and_Abilities",
-                    },
-                ],
-            }
-        }
-        body = {
-            "parse": {
-                "text": (
-                    '<h2><span id="Appearance">Appearance</span></h2>'
-                    "<p>A pale count in formal black clothes.</p>"
-                    '<h3><span id="Powers_and_Abilities">Powers and Abilities</span></h3>'
-                    "<p>He transforms and controls minds.</p>"
-                    '<h2><span id="Trivia">Trivia</span></h2>'
-                    "<p>Played by many actors.</p>"
-                )
-            }
-        }
-
-        def fake(_host, params):
-            if str(params.get("prop", "")).startswith("sections"):
-                return sections
-            return body
-
-        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
-            lore = fetch_page_lore(
-                resolve_page(
-                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
-                    wiki=None,
-                )
-            )
+        lore, _ = _lore_from_html(
+            DRACULA_ANCHOR_SECTIONS,
+            '<h2><span id="Appearance">Appearance</span></h2>'
+            "<p>A pale count in formal black clothes.</p>"
+            '<h3><span id="Powers_and_Abilities">Powers and Abilities</span></h3>'
+            "<p>He transforms and controls minds.</p>"
+            '<h2><span id="Trivia">Trivia</span></h2>'
+            "<p>Played by many actors.</p>",
+        )
         self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
         self.assertEqual(lore.powers, "He transforms and controls minds.")
 

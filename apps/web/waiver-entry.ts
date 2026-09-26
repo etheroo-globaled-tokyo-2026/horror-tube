@@ -97,8 +97,9 @@ export function entryFailLine(error: Error): string {
   if (error instanceof EntryError && error.stage !== "verify") return error.message;
   const message = error.message;
   if (/nullifier_replayed|max_verifications_reached|already used/iu.test(message))
-    return "This World ID already used its one entry.";
+    return "An entry is already registered to this World ID.";
   if (/user_rejected|cancelled/iu.test(message)) return "The scan was cancelled.";
-  if (/credential_unavailable/iu.test(message)) return "World App has no Orb credential.";
+  if (/credential_unavailable/iu.test(message))
+    return "World App could not provide the required proof of a human viewer aged 18 or older.";
   return error instanceof EntryError ? message : `The World ID scan failed. ${message}`;
 }

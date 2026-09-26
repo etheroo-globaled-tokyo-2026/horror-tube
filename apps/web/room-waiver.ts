@@ -57,11 +57,11 @@ export function drawPaper(now: number): void {
   g.lineWidth = 1.5;
   [
     "I am 18 or older.",
-    "I am one person,",
-    "with one vote.",
-    "I will watch people die,",
-    "and I will bet on it.",
-    "I watch at my own risk.",
+    "I am here to watch.",
+    "My requests decide",
+    "who enters the room.",
+    "Events may continue",
+    "in my absence.",
   ].forEach((l, i) => {
     g.fillText(l, 28, 138 + i * 38);
     g.strokeText(l, 28, 138 + i * 38);
@@ -72,7 +72,7 @@ export function drawPaper(now: number): void {
   g.fillText("X", 30, 394);
   g.fillStyle = COL.rustDeep;
   g.font = "700 15px Silkscreen";
-  g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 430);
+  g.fillText("SIGN TO RECEIVE", 28, 430);
   if (W8.ink > 0) {
     g.strokeStyle = COL.soot;
     g.lineWidth = 3;
@@ -91,7 +91,7 @@ export function drawPaper(now: number): void {
     g.strokeRect(-92, -28, 184, 48);
     g.font = "700 26px Silkscreen";
     g.textAlign = "center";
-    g.fillText("VERIFIED", 0, 6);
+    g.fillText("REGISTERED", 0, 6);
     g.restore();
   }
   if (W8.step === "burn") {

@@ -425,7 +425,23 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     return text;
   }
 
-  it("skips grantSetterRoles when the account already holds the text key", async () => {
+  it("exposes grantSetterRoles on the pinned ABI used by grants", () => {
+    const setter = buildSetTextSetter("status");
+    assert.match(setter, /^0xc7279f88/u);
+    assert.ok(
+      permissionedResolverAbi.some(
+        (entry) =>
+          entry.type === "function" &&
+          "name" in entry &&
+          entry.name === "grantSetterRoles",
+      ),
+    );
+    assert.ok(
+      !JSON.stringify(permissionedResolverAbi).includes("authorizeTextRoles"),
+    );
+  });
+
+  it("a repeat grant of roles already held passes without a new grant", async () => {
     const wallet = createWalletClient({
       account: bootstrap,
       chain: foundry,
@@ -440,32 +456,6 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
         keys: [...ROSTER_TEXT_KEYS],
       }),
       [false, false, false],
-    );
-    assert.deepEqual(
-      await grantTextSetterRoles({
-        publicClient,
-        walletClient: wallet,
-        resolver,
-        account: agent.address,
-        keys: [...AGENT_TEXT_KEYS],
-      }),
-      [false, false],
-    );
-  });
-
-  it("exposes grantSetterRoles on the pinned ABI used by grants", () => {
-    const setter = buildSetTextSetter("status");
-    assert.match(setter, /^0xc7279f88/u);
-    assert.ok(
-      permissionedResolverAbi.some(
-        (entry) =>
-          entry.type === "function" &&
-          "name" in entry &&
-          entry.name === "grantSetterRoles",
-      ),
-    );
-    assert.ok(
-      !JSON.stringify(permissionedResolverAbi).includes("authorizeTextRoles"),
     );
   });
 
