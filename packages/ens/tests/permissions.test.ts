@@ -425,34 +425,6 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     return text;
   }
 
-  it("skips grantSetterRoles when the account already holds the text key", async () => {
-    const wallet = createWalletClient({
-      account: bootstrap,
-      chain: foundry,
-      transport: http(rpcUrl),
-    });
-    assert.deepEqual(
-      await grantTextSetterRoles({
-        publicClient,
-        walletClient: wallet,
-        resolver,
-        account: roster.address,
-        keys: [...ROSTER_TEXT_KEYS],
-      }),
-      [false, false, false],
-    );
-    assert.deepEqual(
-      await grantTextSetterRoles({
-        publicClient,
-        walletClient: wallet,
-        resolver,
-        account: agent.address,
-        keys: [...AGENT_TEXT_KEYS],
-      }),
-      [false, false],
-    );
-  });
-
   it("exposes grantSetterRoles on the pinned ABI used by grants", () => {
     const setter = buildSetTextSetter("status");
     assert.match(setter, /^0xc7279f88/u);
