@@ -43,7 +43,7 @@ const PIN_MARKDOWN_PATH = join(
 );
 
 function requiredSettleEnv(
-  name: "AGENT_PRIVATE_KEY" | "SEPOLIA_RPC_URL" | "ENS_LABEL" | "PRIVATE_KEY",
+  name: "AGENT_PRIVATE_KEY" | "SEPOLIA_RPC_URL" | "ENS_LABEL",
   env: NodeJS.ProcessEnv,
 ): string {
   const value = env[name];
@@ -66,24 +66,13 @@ function parsePrivateKey(value: string, envName: string): Hex {
 }
 
 function loadAgentKey(env: NodeJS.ProcessEnv) {
+  // The resolver rejects a key that lacks the status/injuries role.
+  // PRIVATE_KEY stays off this process so the admin key is not deployed with the game.
   const privateKey = parsePrivateKey(
     requiredSettleEnv("AGENT_PRIVATE_KEY", env),
     "AGENT_PRIVATE_KEY",
   );
-  const address = privateKeyToAccount(privateKey).address;
-  const bootstrapKey = parsePrivateKey(
-    requiredSettleEnv("PRIVATE_KEY", env),
-    "PRIVATE_KEY",
-  );
-  const bootstrapAddress = privateKeyToAccount(bootstrapKey).address;
-  if (getAddress(address) === getAddress(bootstrapAddress)) {
-    throw new Error(
-      `AGENT_PRIVATE_KEY resolves to the bootstrap/admin address ${bootstrapAddress}. ` +
-        `The agent process must use a restricted key, not PRIVATE_KEY. ` +
-        `Set a distinct key in .env. See .env.example.`,
-    );
-  }
-  return { privateKey, address };
+  return { privateKey, address: privateKeyToAccount(privateKey).address };
 }
 
 function parseEnsLabel(value: string): string {
@@ -157,7 +146,6 @@ type EnsClients = {
 async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
   const ensLabel = parseEnsLabel(requiredSettleEnv("ENS_LABEL", env));
   const rpcUrl = requiredSettleEnv("SEPOLIA_RPC_URL", env);
-  requiredSettleEnv("AGENT_PRIVATE_KEY", env);
   const agentKey = loadAgentKey(env);
   const ethRegistry = loadEthRegistryAddress();
   const account = privateKeyToAccount(agentKey.privateKey);
@@ -239,9 +227,6 @@ async function setText(
   key: string,
   value: string,
 ): Promise<string> {
-  console.log(
-    `ENS setText start label=${subname} key=${key} resolver=${clients.resolver}`,
-  );
   let hash: Hex;
   try {
     hash = await clients.walletClient.writeContract({
@@ -259,6 +244,9 @@ async function setText(
       { cause },
     );
   }
+  console.log(
+    `ENS setText sent label=${subname} key=${key} resolver=${clients.resolver} tx=${hash}`,
+  );
   const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") {
     throw new Error(
@@ -295,7 +283,7 @@ export function createEnsChainWritePorts(
     },
     async settleBattle(battleId) {
       throw new Error(
-        `BattleBetting settlement is not wired (battleId=${battleId}). Set SKIP_BATTLE_SETTLEMENT=1 until a settlement client exists. See .env.example.`,
+        `BattleBetting settlement is not implemented (battleId=${battleId}). Set SKIP_BATTLE_SETTLEMENT=1 until a settlement client exists. See .env.example.`,
       );
     },
   };

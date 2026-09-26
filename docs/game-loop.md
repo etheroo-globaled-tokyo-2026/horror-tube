@@ -64,13 +64,17 @@ fills the challenger slot from rotation after settle.
 
 ### Settle
 
-- After betting is closed **and** the fight video has finished playing, apply the
-  queued ENS writes (winner `injuries` first, then loser `status=dead`). With
-  `SKIP_BATTLE_SETTLEMENT=1`, skip the BattleBetting `settleBattle` call and leave
-  that step pending; with `0`, call `settleBattle` after the ENS writes. Then start
-  the next bout from the stored rotation opponent (or `fightInputFromRotation`).
-  If either the betting-closed or playback-finished signal is missing, stop and
-  name it. Do not use a timer fallback for those gates.
+- After betting is closed **and** the fight video duration has elapsed, apply the
+  queued ENS writes (winner `injuries` first, then loser `status=dead`). Betting
+  closes when the bet phase ends (video ready and `BET_MIN_SECONDS` passed).
+  Playback finished means that fight duration elapsed; the server has no separate
+  playback callback. With `SKIP_BATTLE_SETTLEMENT=1`, skip the BattleBetting
+  `settleBattle` call and leave that step pending; with `0`, call `settleBattle`
+  after the ENS writes. Then start the next bout from the stored rotation opponent
+  (or `fightInputFromRotation`). If either signal is missing, stop and name it.
+  Do not invent those signals from the settle countdown. A failed ENS write stays
+  on the round error and does not start the next bout. `POST /retry-settle`
+  runs the pending ENS steps again.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
