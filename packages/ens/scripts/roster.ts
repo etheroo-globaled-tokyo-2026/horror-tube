@@ -289,17 +289,17 @@ async function discoverRegisteredLabels(
     latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
-  const inputs = await Promise.all(
-    txHashes.map(async (hash) => {
-      try {
-        return (await publicClient.getTransaction({ hash })).input;
-      } catch (error) {
-        throw new Error(
-          `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }),
-  );
+  // Sequential: Infura rate-limits parallel eth_getTransactionByHash.
+  const inputs: Hex[] = [];
+  for (const hash of txHashes) {
+    try {
+      inputs.push((await publicClient.getTransaction({ hash })).input);
+    } catch (error) {
+      throw new Error(
+        `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   const candidateLabels = new Set<string>();
   for (const input of inputs) {
     const label = decodeRegisterLabel(input);
