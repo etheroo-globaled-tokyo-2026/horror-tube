@@ -54,7 +54,7 @@ function hintText(): void {
   const hovered = S.chars[T.hover];
   const credit = `${usd(coinBox.credit())} USDC`;
   const meter = Z.error
-    ? `${b("THE BOX SPAT IT OUT")} ${esc(Z.error)}`
+    ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.pick
       ? COINS.map((c, i) => `<button data-coin="${c}">${b(String(i + 1))} ${c} USDC</button>`).join(
           " ",
@@ -87,24 +87,24 @@ function hintText(): void {
         : W8.step === "scan"
           ? `SCAN WITH ${b("WORLD APP")}${W8.qrUri === "" ? "" : ` <button data-copy-link>COPY LINK</button>`}`
           : W8.step === "wallet"
-            ? `${b("VERIFIED")} · OPENING YOUR WALLET`
+            ? `${b("VIEWER REGISTERED")} · OPENING YOUR WALLET`
             : W8.down !== ""
               ? `${b("ENTRY IS DOWN")} ${esc(W8.down)}`
               : W8.fail !== ""
-                ? `${b("NOT IN")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
+                ? `${b("ENTRY INCOMPLETE")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
                 : W8.step === "done" && S.noteKind === "bad"
                   ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
                   : W8.step === "done"
-                    ? "WARMING UP"
+                    ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
-        ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
+        ? `REQUEST ${S.slots === 1 ? "ONE RESIDENT" : "TWO RESIDENTS"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast
-          ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
+          ? `LAST REQUESTS · CHOOSE ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
           : S.phase === "bet" && !S.bet && S.poolId === null
             ? "OPENING THE BOOK"
             : S.pending === "bet"
-              ? "PLACING YOUR BET…"
+              ? "RECORDING YOUR BET…"
               : S.pending === "claim"
                 ? "COLLECTING…"
                 : S.phase === "bet" && !S.bet && S.credit > 0
@@ -112,7 +112,7 @@ function hintText(): void {
                   : S.claim
                     ? `COLLECT ${b("OK")}`
                     : S.phase === "over"
-                      ? `AGAIN ${b("OK")}`
+                      ? `NEXT PROGRAMME ${b("OK")}`
                       : S.credit <= 0
                         ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
                         : `NEXT ${b("N")}`;
@@ -179,7 +179,11 @@ function holdStart(side: number): void {
   }
   if (stake() > S.credit) {
     sfx.deny();
-    return say(S.credit <= 0 ? "No stake. Feed the coin box." : "Not enough for that stake.");
+    return say(
+      S.credit <= 0
+        ? "Add funds to the coin box to bet. Watching is free."
+        : "Your balance is below that stake.",
+    );
   }
   T.hold = side;
   T.holdN = 0;
@@ -295,7 +299,7 @@ const pickAt = (e: MouseEvent): Pick | null => {
 };
 const WALK: WalkStep[] = [
   {
-    say: "THE TV. EVERYTHING AIRS HERE.",
+    say: "YOUR SET RECEIVES ONE CHANNEL. RECEPTION IS GOOD HERE.",
     view: () => [
       tv.localToWorld(new THREE.Vector3(-0.06, 0.02, 1.35)),
       tv.localToWorld(new THREE.Vector3(-0.06, 0, 0.38)),
@@ -303,16 +307,20 @@ const WALK: WalkStep[] = [
     remote: false,
   },
   {
-    say: "THE RESIDENTS. PULL A TAPE.",
+    say: "THE RESIDENTS. PULL A TAPE. WE KEEP THEIR RECORDS UP TO DATE.",
     view: () => [
       shelf.localToWorld(new THREE.Vector3(0, 1.28, 1.05)),
       shelf.localToWorld(new THREE.Vector3(0, 1.22, 0.1)),
     ],
     remote: false,
   },
-  { say: "THE REMOTE. VOTE FOR TWO. THEY FIGHT.", view: () => null, remote: true },
-  { say: "THE METER. FEED IT TO BET.", view: () => coinBox.view("meter"), remote: false },
-  { say: "HOLD A OR B. BET ON WHO WALKS OUT.", view: () => null, remote: true },
+  { say: "USE THE REMOTE TO REQUEST WHO FIGHTS NEXT.", view: () => null, remote: true },
+  {
+    say: "WATCHING IS FREE. THE METER IS FOR BETS.",
+    view: () => coinBox.view("meter"),
+    remote: false,
+  },
+  { say: "EXPECTING A SURVIVOR? HOLD A OR B TO BET.", view: () => null, remote: true },
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;

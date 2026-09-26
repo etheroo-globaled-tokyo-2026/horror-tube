@@ -24,7 +24,7 @@ export type BetView = {
   tally: TallyLine[] | null;
 };
 
-export const CLOSES_AT_UNSET = "not set: waiting for a room to report playback start";
+export const CLOSES_AT_UNSET = "awaiting the broadcast start";
 
 export function placeholderView(s: PlaceholderInput): VoteView | BetView | null {
   const name = (id: number): string => s.chars[id]?.name ?? `#${String(id)}`;

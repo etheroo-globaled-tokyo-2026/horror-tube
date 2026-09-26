@@ -32,7 +32,7 @@ function part(root: HTMLElement, name: string): HTMLElement {
 }
 
 function frame(root: HTMLElement, title: string, parts: string[]): void {
-  root.replaceChildren(el("h2", `PLACEHOLDER · ${title}`));
+  root.replaceChildren(el("h2", title));
   for (const name of parts) {
     const node = el("div");
     node.dataset.part = name;
@@ -48,12 +48,12 @@ function frame(root: HTMLElement, title: string, parts: string[]): void {
 function showTally(root: HTMLElement, tally: TallyLine[] | null): void {
   const box = part(root, "tally");
   if (tally === null) {
-    box.replaceChildren(el("p", "Stored tally: not written yet."));
+    box.replaceChildren(el("p", "The final tally is not available yet."));
     return;
   }
   const list = el("ol");
   for (const line of tally) list.append(el("li", `${line.name}: ${String(line.votes)}`));
-  box.replaceChildren(el("p", "Stored tally (Postgres):"), list);
+  box.replaceChildren(el("p", "Final audience tally:"), list);
 }
 
 function showFailure(root: HTMLElement, screen: "vote" | "bet"): void {
@@ -62,7 +62,7 @@ function showFailure(root: HTMLElement, screen: "vote" | "bet"): void {
 }
 
 function buildVote(view: VoteView): void {
-  frame(voteRoot, "VOTING PERIOD", ["picks", "tally", "submit"]);
+  frame(voteRoot, "AUDIENCE REQUESTS", ["picks", "tally", "submit"]);
   const picks = part(voteRoot, "picks");
   for (const c of view.candidates) {
     const label = el("label");
@@ -74,7 +74,7 @@ function buildVote(view: VoteView): void {
     label.append(box, ` ${c.name} `, count);
     picks.append(label, el("br"));
   }
-  const send = el("button", "Submit vote");
+  const send = el("button", "Send request");
   send.addEventListener("click", () => {
     const chosen = [...picks.querySelectorAll<HTMLInputElement>("input:checked")].map((b) =>
       Number(b.value),
@@ -87,7 +87,7 @@ function buildVote(view: VoteView): void {
         applyRoundState(state);
       })
       .catch((cause: unknown) => {
-        failure.vote = `VOTE REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`;
+        failure.vote = `REQUEST NOT ACCEPTED. ${cause instanceof Error ? cause.message : String(cause)}`;
         renderPlaceholders();
       });
   });
@@ -99,7 +99,7 @@ function buildVote(view: VoteView): void {
 }
 
 function buildBet(view: BetView): void {
-  frame(betRoot, "BETTING PERIOD", ["closes", "sides", "stake", "tally", "submit"]);
+  frame(betRoot, "PLACE YOUR BET", ["closes", "sides", "stake", "tally", "submit"]);
   const sides = part(betRoot, "sides");
   view.sides.forEach((side, i) => {
     const label = el("label");
@@ -120,7 +120,7 @@ function buildBet(view: BetView): void {
     stake.append(option);
   }
   part(betRoot, "stake").replaceChildren(el("span", "Stake "), stake);
-  const send = el("button", "Submit bet");
+  const send = el("button", "Place bet");
   send.addEventListener("click", () => {
     const side = sides.querySelector<HTMLInputElement>("input:checked")?.value === "1" ? 1 : 0;
     failure.bet = "";
@@ -150,7 +150,7 @@ export function renderPlaceholders(): void {
     }
     for (const c of vote.candidates) {
       const count = voteRoot.querySelector<HTMLElement>(`[data-count="${String(c.id)}"]`);
-      if (count !== null) count.textContent = `(${String(c.votes)} stored)`;
+      if (count !== null) count.textContent = `(${String(c.votes)} requests)`;
     }
     showTally(voteRoot, vote.tally);
   }
@@ -163,8 +163,7 @@ export function renderPlaceholders(): void {
       buildBet(bet);
       betKey = key;
     }
-    part(betRoot, "closes").textContent =
-      `Betting closes at (stored betting_closes_at): ${bet.closesAt}`;
+    part(betRoot, "closes").textContent = `Betting closes: ${bet.closesAt}`;
     bet.sides.forEach((side, i) => {
       const pool = betRoot.querySelector<HTMLElement>(`[data-pool="${String(i)}"]`);
       if (pool !== null) pool.textContent = `(pool ${side.usdc} USDC)`;

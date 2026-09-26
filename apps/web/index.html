@@ -140,7 +140,8 @@
       <button data-act="view">RECORDS · V</button><button data-act="skip">DEMO · SKIP ▸ N</button>
     </p>
     <p id="demo-gate" class="demo">
-      <button id="no-orb">DEMO · NO ORB ▸ X</button><button id="forget">DEMO · FORGET ME</button>
+      <button id="no-orb">DEMO · REFUSE ENTRY ▸ X</button
+      ><button id="forget">DEMO · FORGET ME</button>
     </p>
     <p class="demo sound"><button id="mute">SOUND ON · M</button></p>
     <p class="demo ps1">
@@ -150,16 +151,15 @@
     <div id="waiver-text" class="sr-only">
       <h2>Horror Tube waiver</h2>
       <p>
-        I am 18 or older. I am one person, with one vote. I will watch people die, and I will bet on
-        it. I watch at my own risk.
+        I am 18 or older. I am here to watch. My requests decide who enters the room. Events may
+        continue in my absence.
       </p>
-      <p>Press Enter to sign with World ID. Only Orb-verified humans can enter.</p>
+      <p>Press Enter to sign with World ID.</p>
     </div>
     <div id="dark" class="dark" hidden role="alert">
-      <h1>NOT ELIGIBLE</h1>
+      <h1>NO VIEWER REGISTERED</h1>
       <p>
-        Only Orb-verified humans can enter or vote.<br />Device and Selfie Check do not prove that
-        you are 18+.
+        This service requires a human viewer aged 18 or older.<br />Your entry was not confirmed.
       </p>
       <p>Press <b>ENTER</b> to try again.</p>
     </div>
@@ -173,13 +173,13 @@
     <section
       class="placeholder"
       data-placeholder="vote"
-      aria-label="Voting period placeholder"
+      aria-label="Audience requests"
       hidden
     ></section>
     <section
       class="placeholder"
       data-placeholder="bet"
-      aria-label="Betting period placeholder"
+      aria-label="Place your bet"
       hidden
     ></section>
 

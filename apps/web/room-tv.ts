@@ -530,7 +530,7 @@ export function drawGuide(now: number): void {
     g.textAlign = "center";
     g.font = "700 26px Silkscreen";
     g.fillStyle = COL.sulfur;
-    g.fillText(S.cast ? "VOTING CLOSES IN" : "LAST CALL TO VOTE", W / 2, 76);
+    g.fillText(S.cast ? "REQUESTS CLOSE IN" : "LAST CALL FOR REQUESTS", W / 2, 76);
     g.font = "700 84px Silkscreen";
     g.fillStyle = COL.blood;
     g.fillText(mmss(S.t), W / 2, 164);
@@ -539,7 +539,7 @@ export function drawGuide(now: number): void {
     const bots = S.bots.filter((b) => b.picks !== null).length,
       humans = S.voters - bots;
     g.fillText(
-      `${humans} ${humans === 1 ? "human" : "humans"}${bots === 0 ? "" : ` + ${bots === 1 ? "house bot" : `${bots} house bots`}`} voted`,
+      `${humans} ${humans === 1 ? "human" : "humans"}${bots === 0 ? "" : ` + ${bots === 1 ? "house bot" : `${bots} house bots`}`} sent requests`,
       W / 2,
       206,
     );
@@ -586,7 +586,7 @@ export function drawGuide(now: number): void {
     }
     g.font = "700 24px Silkscreen";
     g.fillStyle = COL.bone;
-    g.fillText("REC · LAST NIGHT", 52, 47);
+    g.fillText("REC · PREVIOUS FIGHT", 52, 47);
   }
   g.fillStyle = COL.char;
   g.fillRect(0, top, W, H - top);
@@ -595,9 +595,9 @@ export function drawGuide(now: number): void {
   g.fillStyle = COL.soot;
   g.textAlign = "left";
   g.font = "700 18px Silkscreen";
-  g.fillText(S.cast ? "GOOD NIGHT." : "TONIGHT'S RESIDENTS", 16, top + 23);
+  g.fillText(S.cast ? "THANK YOU." : "RESIDENT DIRECTORY", 16, top + 23);
   g.textAlign = "right";
-  g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
+  g.fillText(S.cast ? "REQUEST RECORDED" : "TYPE A NUMBER", W - 16, top + 23);
   S.chars.forEach((ch) => {
     if (
       (S.phase === "vote" || S.phase === "countdown") &&
@@ -677,7 +677,7 @@ function drawCaseFile(ch: Character): void {
   g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
-  g.fillText("CASE FILE", x, y + 34);
+  g.fillText("RESIDENT FILE", x, y + 34);
   g.fillStyle = COL.bone;
   g.font = "20px DotGothic16";
   y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
@@ -686,11 +686,11 @@ function drawCaseFile(ch: Character): void {
   g.fillText("INJURIES", 32, y);
   g.fillStyle = COL.bone;
   g.font = "20px DotGothic16";
-  wrap(g, ch.injuries || "None.", 32, y + 26, W - 64, 26);
+  wrap(g, ch.injuries || "None recorded.", 32, y + 26, W - 64, 26);
   const [footer, color] = !ch.alive
     ? ["THIS ROOM IS EMPTY", COL.rust]
     : S.champion !== null && ch.id === S.champion
-      ? ["THE CHAMPION STAYS ON", COL.rust]
+      ? ["THE SURVIVOR STAYS ON", COL.rust]
       : S.picks.includes(ch.id)
         ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
         : ["PRESS OK TO REQUEST", COL.sulfur];
@@ -752,27 +752,34 @@ export function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("PROVE YOU'RE STILL HUMAN", oy + side + 36, 28, COL.sulfur);
-        text("The dead have enough channels.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+        text("CONFIRM SOMEONE IS WATCHING", oy + side + 36, 28, COL.sulfur);
+        text(
+          "We've had trouble with unattended sets.",
+          oy + side + 68,
+          22,
+          COL.bone,
+          "DotGothic16",
+          400,
+        );
       } else {
-        text("IS ANYBODY ALIVE?", 210, 36, COL.sulfur);
-        text("Hold still. Finding your signal.", 270, 24, COL.bone, "DotGothic16", 400);
+        text("PLEASE STAND BY", 210, 36, COL.sulfur);
+        text("Preparing your viewer check.", 270, 24, COL.bone, "DotGothic16", 400);
       }
     } else if (W8.step === "wallet") {
       noise = 0.1;
       fill(COL.soot);
-      text("VERIFIED", 210, 48, COL.blood);
+      text("VIEWER REGISTERED", 210, 48, COL.blood);
       text(`OPENING YOUR WALLET${".".repeat(1 + (((now / 400) | 0) % 3))}`, 270, 26, COL.bone);
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
-      text("VERIFIED", 210, 48, COL.blood);
-      text("ONE HUMAN · 18+", 270, 26, COL.bone);
+      text("VIEWER REGISTERED", 210, 48, COL.blood);
+      text("Thank you for being here.", 270, 26, COL.bone, "DotGothic16", 400);
     } else if (W8.step === "done" && S.noteKind === "bad") {
       noise = 0.35;
       fill(COL.soot);
       text("NO SIGNAL", 210, 56, COL.blood);
-      text("The residents did not answer.", 270, 26, COL.bone, "DotGothic16", 400);
+      text("The programme could not be received.", 270, 26, COL.bone, "DotGothic16", 400);
     } else if (W8.step === "done") {
       noise = 0.12;
       BARS.forEach((c, i) => {
@@ -792,7 +799,7 @@ export function drawTV(): void {
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
-      text(W8.down === "" ? "YOU ARE NOT IN" : "ENTRY IS DOWN", 110, 48, COL.blood);
+      text(W8.down === "" ? "ENTRY INCOMPLETE" : "ENTRY IS DOWN", 110, 48, COL.blood);
       g.font = "400 22px DotGothic16";
       g.fillStyle = COL.bone;
       const end = wrap(g, W8.fail, W / 2, 170, W - 64, 28);
@@ -832,7 +839,11 @@ export function drawTV(): void {
       const ch = char(T.reveal);
       text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
-      text(S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
+      text(
+        S.picks.length >= S.slots ? "REQUEST RECORDED. THANK YOU." : "CHOOSE ANOTHER RESIDENT.",
+        330,
+        26,
+      );
     } else {
       const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
       if (ch) drawCaseFile(ch);
@@ -860,9 +871,9 @@ export function drawTV(): void {
       );
       text(
         S.bet
-          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`
+          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`
           : S.pending === "bet"
-            ? "PLACING YOUR BET…"
+            ? "RECORDING YOUR BET…"
             : "HOLD A OR B TO BET",
         H - 70,
         24,
@@ -899,14 +910,14 @@ export function drawTV(): void {
       });
       if (S.bet)
         text(
-          `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`,
+          `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`,
           360,
           26,
           COL.soot,
         );
-      else if (S.pending === "bet") text("PLACING YOUR BET…", 360, 26, COL.soot);
+      else if (S.pending === "bet") text("RECORDING YOUR BET…", 360, 26, COL.soot);
       else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
-      else if (S.credit <= 0) text("NO STAKE. FEED THE COIN BOX.", 360, 24, COL.soot);
+      else if (S.credit <= 0) text("ADD USDC AT THE COIN BOX TO BET.", 360, 24, COL.soot);
       else {
         text(`STAKE ${STAKES[T.stake]} USDC  ·  VOL ± TO CHANGE`, 340, 24, COL.soot);
         text(
@@ -926,10 +937,10 @@ export function drawTV(): void {
         l = char(S.fighters?.[1 - S.winner] ?? -1);
       fill(COL.soot);
       band(60, 50, COL.blood);
-      text("WE INTERRUPT THIS PROGRAM", 96, 24, COL.soot);
+      text("RESIDENT RECORD UPDATED", 96, 24, COL.soot);
       text(l.name.toUpperCase(), 200, 40, COL.blood);
-      text("has left the program.", 248, 28, COL.bone, "DotGothic16", 400);
-      text(`${w.name} walks on, bleeding.`, 290, 28, COL.bone, "DotGothic16", 400);
+      text("is deceased.", 248, 28, COL.bone, "DotGothic16", 400);
+      text(`${w.name} returns to their room.`, 290, 28, COL.bone, "DotGothic16", 400);
       if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
       else if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
       else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
@@ -937,10 +948,10 @@ export function drawTV(): void {
       fill(COL.soot);
       const l = living(),
         endedByFailure = !!S.error;
-      text(endedByFailure ? "SIGNAL LOST" : "END OF PROGRAMMING", 200, 34);
+      text(endedByFailure ? "SIGNAL LOST" : "THANK YOU FOR WATCHING", 200, 34);
       text(
         endedByFailure
-          ? "The tape jammed before anyone bled."
+          ? "The programme could not continue."
           : l[0]
             ? `${l[0].name} is the last one left.`
             : "Nobody is left.",
@@ -950,6 +961,8 @@ export function drawTV(): void {
         "DotGothic16",
         400,
       );
+      if (!endedByFailure)
+        text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
       text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
     }
   }
