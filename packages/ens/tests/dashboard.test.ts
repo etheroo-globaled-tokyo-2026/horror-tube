@@ -70,7 +70,12 @@ describe("dashboard env (unit, no network)", () => {
     }>((resolvePromise, rejectPromise) => {
       const child = spawn(tsxBin, [join(repoRoot, "scripts", "dashboard.ts")], {
         cwd: repoRoot,
-        env: { ...process.env, DASHBOARD_PORT: "" },
+        env: {
+          ...process.env,
+          ENS_LABEL: "horrortube",
+          SEPOLIA_RPC_URL: "http://127.0.0.1:1",
+          DASHBOARD_PORT: "",
+        },
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stdout = "";
