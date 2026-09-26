@@ -139,7 +139,7 @@ class ImportPlanTests(unittest.TestCase):
         self.assertEqual(labels, ["mike"])
         self.assertEqual(plan["skipped"][0]["label"], "jason")
 
-    def test_restore_clears_status_keeps_file_injuries(self):
+    def test_restore_sets_status_alive_keeps_file_injuries(self):
         incoming = [_char(label="jason", injuries="scar on cheek", status="dead")]
         existing = {"jason": _char(label="jason", status="dead", injuries="old wound")}
         plan = build_import_plan(
@@ -150,7 +150,7 @@ class ImportPlanTests(unittest.TestCase):
         )
         self.assertEqual(len(plan["characters"]), 1)
         entry = plan["characters"][0]
-        self.assertEqual(entry["status"], "")
+        self.assertEqual(entry["status"], "alive")
         self.assertEqual(entry["injuries"], "scar on cheek")
         self.assertEqual(entry["action"], "restore_and_update")
         self.assertIn("jason.horrortube.eth", entry["name"])
@@ -243,7 +243,7 @@ class ProposeTests(unittest.TestCase):
         self.assertTrue(sheet["look"].startswith("Pinhead's unique physical description"))
         self.assertTrue(sheet["brief"].startswith("Immortality: Pinhead is shown"))
         self.assertEqual(sheet["injuries"], "")
-        self.assertEqual(sheet["status"], "")
+        self.assertEqual(sheet["status"], "alive")
         self.assertEqual(sheet["icon"], "")
         self.assertNotIn("strength", sheet)
         self.assertNotIn("role", sheet)

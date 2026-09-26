@@ -2,5 +2,5 @@
 
 __all__ = ["STATUS_ALLOWED", "FORBIDDEN_KEYS"]
 
-STATUS_ALLOWED = frozenset({"", "dead"})
+STATUS_ALLOWED = frozenset({"", "alive", "dead"})
 FORBIDDEN_KEYS = frozenset({"strength", "intelligence", "luck", "role"})
