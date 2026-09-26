@@ -12,6 +12,10 @@ from typing import Mapping, Optional, Sequence
 
 from dotenv import load_dotenv
 
+# packages/roster/roster/__main__.py -> repo root (not cwd).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ENV_PATH = REPO_ROOT / ".env"
+
 from roster.chain import (
     apply_register_plan,
     list_registered,
@@ -20,7 +24,13 @@ from roster.chain import (
     snapshot_existing,
     unregister_labels,
 )
-from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
+from roster.fandom import (
+    FandomError,
+    fetch_page_lore,
+    page_section_index,
+    require_source_count,
+    resolve_page,
+)
 from roster.icons import (
     IconGenerationError,
     generate_face_png,
@@ -35,7 +45,12 @@ from roster.plan import (
     build_register_plan,
     build_removal_plan,
 )
-from roster.propose import propose_cast, propose_sheets, sheets_payload
+from roster.propose import (
+    propose_cast,
+    propose_sheets,
+    sheet_from_page_pair,
+    sheets_payload,
+)
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -198,23 +213,65 @@ def cmd_icons_chain(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_propose(args: argparse.Namespace) -> int:
-    out_path = Path(_require_flag(args.out, name="--out"))
-    sources: list[str] = list(args.source or [])
-    if args.sources_file is not None:
-        if args.sources_file.strip() == "":
-            raise FandomError("--sources-file was passed blank.")
-        sources.extend(_load_sources_file(Path(args.sources_file)))
-    if len(sources) == 0:
-        raise FandomError(
-            "Provide at least one --source URL/title, or a --sources-file list."
-        )
-    sources = require_source_count(sources, n=args.n)
-    if args.wiki is not None and args.wiki.strip() == "":
+def _optional_page_flag(value: Optional[str], *, name: str) -> Optional[str]:
+    if value is None:
+        return None
+    if value.strip() == "":
+        raise FandomError(f"{name} was passed blank.")
+    return value.strip()
+
+
+def _require_wiki_not_blank(wiki: Optional[str]) -> None:
+    if wiki is not None and wiki.strip() == "":
         raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
 
-    refs = [resolve_page(source, wiki=args.wiki) for source in sources]
-    characters = propose_sheets([fetch_page_lore(ref) for ref in refs])
+
+def cmd_sections(args: argparse.Namespace) -> int:
+    source = _require_flag(args.source, name="--source")
+    _require_wiki_not_blank(args.wiki)
+    index = page_section_index(resolve_page(source, wiki=args.wiki))
+    json.dump(index, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    out_path = Path(_require_flag(args.out, name="--out"))
+    _require_wiki_not_blank(args.wiki)
+    look_source = _optional_page_flag(args.look_source, name="--look-source")
+    brief_source = _optional_page_flag(args.brief_source, name="--brief-source")
+    if (look_source is None) != (brief_source is None):
+        raise FandomError("Pass both --look-source and --brief-source, or neither.")
+    if look_source is not None and brief_source is not None:
+        if list(args.source or []) or args.sources_file is not None:
+            raise FandomError(
+                "Do not pass --source or --sources-file together with "
+                "--look-source and --brief-source."
+            )
+        if args.n != 1:
+            raise FandomError(
+                f"--n must be 1 when --look-source and --brief-source are set. Got: {args.n}"
+            )
+        characters = [
+            sheet_from_page_pair(
+                resolve_page(look_source, wiki=args.wiki),
+                resolve_page(brief_source, wiki=args.wiki),
+            )
+        ]
+    else:
+        sources: list[str] = list(args.source or [])
+        if args.sources_file is not None:
+            if args.sources_file.strip() == "":
+                raise FandomError("--sources-file was passed blank.")
+            sources.extend(_load_sources_file(Path(args.sources_file)))
+        if len(sources) == 0:
+            raise FandomError(
+                "Provide at least one --source URL/title, a --sources-file list, "
+                "or both --look-source and --brief-source."
+            )
+        sources = require_source_count(sources, n=args.n)
+        refs = [resolve_page(source, wiki=args.wiki) for source in sources]
+        characters = propose_sheets([fetch_page_lore(ref) for ref in refs])
     payload = sheets_payload(characters)
     _write_json(out_path, payload)
     print(f"Wrote proposed roster JSON: {out_path}")
@@ -497,6 +554,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     icons_chain_p.set_defaults(func=cmd_icons_chain)
 
+    sections_p = sub.add_parser(
+        "sections",
+        help=(
+            "Print Fandom api.php section headings as JSON. "
+            "Use this instead of an inline Python parser."
+        ),
+    )
+    sections_p.add_argument(
+        "--source",
+        required=True,
+        help="https://<wiki>.fandom.com/wiki/<Title> URL, or a page title with --wiki.",
+    )
+    sections_p.add_argument(
+        "--wiki",
+        required=False,
+        default=None,
+        help="Fandom host for a page title, e.g. villains.fandom.com.",
+    )
+    sections_p.set_defaults(func=cmd_sections)
+
     propose_p = sub.add_parser(
         "propose",
         help=(
@@ -530,6 +607,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         default=None,
         help="Fandom host for page titles, e.g. villains.fandom.com. Not used for full URLs.",
+    )
+    propose_p.add_argument(
+        "--look-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose look section (Appearance, Physical Appearance, ...) is the "
+            "fighter's body. Pair with --brief-source and --n 1. Do not also pass --source."
+        ),
+    )
+    propose_p.add_argument(
+        "--brief-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose brief section (Powers and abilities, Abilities, ...) is the "
+            "fighter's kit. Pair with --look-source. Both pages must yield the same label."
+        ),
     )
     propose_p.add_argument(
         "--out",
@@ -658,8 +753,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def load_repo_dotenv() -> None:
+    """Load the checkout root .env when it exists.
+
+    load_dotenv() with no path follows cwd, so an empty packages/roster/.env
+    can hide the real file. A missing file is fine. Commands that need a
+    variable still fail when that variable is blank.
+    """
+    if REPO_ENV_PATH.is_file():
+        load_dotenv(dotenv_path=REPO_ENV_PATH)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    load_dotenv()
+    load_repo_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

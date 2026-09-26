@@ -23,6 +23,7 @@ from roster.icons import (
     GENERATE_PX,
     ICON_PX,
     IconGenerationError,
+    SpacesIconStore,
     _post_json,
     canonical_icon_key,
     decode_image,
@@ -37,6 +38,7 @@ from roster.icons import (
     should_skip_chain_icon,
     should_skip_generation,
     spaces_region_from_endpoint,
+    spaces_store_from_env,
     sync_chain_icons,
     write_face_icons,
 )
@@ -118,6 +120,30 @@ class IconEnvTests(unittest.TestCase):
         with self.assertRaises(IconGenerationError) as ctx:
             required_env("TOGETHER_IMAGE_MODEL", {"TOGETHER_IMAGE_MODEL": "  "})
         self.assertIn("TOGETHER_IMAGE_MODEL", str(ctx.exception))
+
+    def test_spaces_store_ignores_aws_profile(self):
+        """Ambient AWS_PROFILE must not change Spaces client credentials."""
+        spaces_key = "spaces-access-key-id-for-test"
+        spaces_secret = "spaces-secret-for-test"
+        env = {
+            "SPACES_ACCESS_KEY_ID": spaces_key,
+            "SPACES_SECRET": spaces_secret,
+            "SPACES_BUCKET": "horror-tube-icons-test",
+            "SPACES_ENDPOINT": "https://sgp1.digitaloceanspaces.com",
+            "AWS_PROFILE": "PowerUserAccess-598726163780",
+            "AWS_DEFAULT_PROFILE": "PowerUserAccess-598726163780",
+            "AWS_SESSION_TOKEN": "ambient-session-token-must-not-apply",
+            "AWS_ACCESS_KEY_ID": "AMBIENTAKIA",
+            "AWS_SECRET_ACCESS_KEY": "ambient-secret",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            store = spaces_store_from_env(env)
+        self.assertIsInstance(store, SpacesIconStore)
+        self.assertEqual(store.bucket, "horror-tube-icons-test")
+        creds = store._client._request_signer._credentials
+        self.assertEqual(creds.access_key, spaces_key)
+        self.assertEqual(creds.secret_key, spaces_secret)
+        self.assertIsNone(creds.token)
 
 
 class IconPromptTests(unittest.TestCase):
