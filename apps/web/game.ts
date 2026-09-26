@@ -8,6 +8,7 @@ import {
   postVote,
   type ServerRoundState,
 } from "./round-client.ts";
+import { formatPoolOdds } from "./odds.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
 
 export const $ = (s: string): HTMLElement => {
@@ -486,7 +487,9 @@ function paintFilm(): void {
   });
 }
 
-export const odds = (i: number): string => ((S.pool[0] + S.pool[1]) / (S.pool[i] ?? 0)).toFixed(2);
+export { formatPoolOdds } from "./odds.ts";
+
+export const odds = (i: number): string => formatPoolOdds(S.pool, i);
 export const film = (): HTMLCanvasElement => {
   const el = $("#film");
   if (!(el instanceof HTMLCanvasElement)) throw new Error("#film is not a canvas");
@@ -512,8 +515,7 @@ document.addEventListener("click", (e) => {
         return;
       }
       try {
-        // Proof must be verified on the server. Until IDKit is wired, the server refuses.
-        const state = await postVote({ client: "web", pending: true }, S.picks);
+        const state = await postVote(S.picks);
         S.cast = "submitted";
         applyRoundState(state);
         log("VOTE SUBMITTED · waiting on server RoundState", "t-alive");
