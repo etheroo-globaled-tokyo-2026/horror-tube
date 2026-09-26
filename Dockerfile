@@ -8,7 +8,6 @@ COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY packages/ens/package.json packages/ens/
 COPY packages/roster/package.json packages/roster/
-COPY packages/contracts/package.json packages/contracts/
 COPY packages/world-id/package.json packages/world-id/
 COPY packages/fight-media/package.json packages/fight-media/
 COPY packages/fight/package.json packages/fight/
