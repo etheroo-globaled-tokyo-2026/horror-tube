@@ -23,6 +23,7 @@ function testLoop(): GameLoop {
   return new GameLoop({
     config,
     ensLabels: ["jason", "freddy", "chucky"],
+    ensStatuses: ["alive", "alive", "alive"],
     randomInt: (max) => {
       throw new Error(`randomInt unused in vote tests. max=${String(max)}`);
     },
