@@ -176,7 +176,7 @@ The app runtime `DATABASE_URL` is set in Terraform from `digitalocean_database_c
 
 **Path:** 1Password is the human source of truth. The operator machine copies values into App Platform env at `terraform apply` via `TF_VAR_*` (sourced from the local `.env` for that one command). The App Platform instance does **not** read a `.env` (or any other secret file); DigitalOcean decrypts `type = "SECRET"` (and injects `GENERAL`) into `process.env` at runtime. DigitalOcean Secrets Manager (`doctl secrets`) is **not** the runtime path — there is no App Platform bind and no Terraform mount for those values.
 
-Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed), plus BUILD_TIME Vite env. Source them from the repo `.env` for that one command:
+Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed), plus BUILD_TIME Vite env and fight narration/fal config. Source them from the repo `.env` for that one command:
 
 | App env | Terraform variable | Notes |
 | --- | --- | --- |
@@ -208,10 +208,21 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `FIGHT_MEDIA_SPACES_BUCKET` | *(none)* | from `digitalocean_spaces_bucket.fight_media.name` |
 | `FIGHT_MEDIA_SPACES_CDN_HOST` | *(none)* | from `digitalocean_cdn.fight_media.endpoint` |
 | `FIGHT_MEDIA_SPACES_ENDPOINT` | *(none)* | `https://${var.region}.digitaloceanspaces.com` |
+| `FAL_KEY` | `TF_VAR_fal_key` | from `.env` (SECRET) |
+| `FAL_MODEL` | `TF_VAR_fal_model` | from `.env` |
+| `FAL_IMAGE_TO_VIDEO_MODEL` | `TF_VAR_fal_image_to_video_model` | from `.env`; blank allowed until a prior frame exists |
+| `FIGHT_VIDEO_SECONDS` | `TF_VAR_fight_video_seconds` | from `.env` |
+| `FAL_VIDEO_RESOLUTION` | `TF_VAR_fal_video_resolution` | from `.env` |
+| `FAL_PROMPT_EXPANSION_MODE` | `TF_VAR_fal_prompt_expansion_mode` | from `.env` |
+| `FAL_ASPECT_RATIO` | `TF_VAR_fal_aspect_ratio` | from `.env` |
+| `NARRATION_PROVIDER` | `TF_VAR_narration_provider` | from `.env` (`anthropic` or `gemini`) |
+| `NARRATION_MODEL` | `TF_VAR_narration_model` | from `.env` |
+| `ANTHROPIC_API_KEY` | `TF_VAR_anthropic_api_key` | from `.env` (SECRET); required when provider is `anthropic` |
+| `GEMINI_API_KEY` | `TF_VAR_gemini_api_key` | from `.env` (SECRET); required when provider is `gemini` |
 
 The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
-`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; this service does not read them. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
+`@horror-tube/fight` (narration + fal video) is in the App Platform image. Those fight env vars are injected into `process.env` the same way as other App runtime secrets — not from a `.env` on the instance. Missing required values fail closed naming the variable. Both narration API key vars are present on the app; apply requires the key that matches `NARRATION_PROVIDER` and may pass an empty string for the unused one. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
 
 Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for the backend and the provider Spaces env, and keeps icons `SPACES_*` on `TF_VAR_spaces_*`:
 
@@ -247,6 +258,26 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
   : "${SUI_USDC_TYPE:?SUI_USDC_TYPE is required. See .env.example.}"
+  : "${FAL_KEY:?FAL_KEY is required. See .env.example.}"
+  : "${FAL_MODEL:?FAL_MODEL is required. See .env.example.}"
+  : "${FIGHT_VIDEO_SECONDS:?FIGHT_VIDEO_SECONDS is required. See .env.example.}"
+  : "${FAL_VIDEO_RESOLUTION:?FAL_VIDEO_RESOLUTION is required. See .env.example.}"
+  : "${FAL_PROMPT_EXPANSION_MODE:?FAL_PROMPT_EXPANSION_MODE is required. See .env.example.}"
+  : "${FAL_ASPECT_RATIO:?FAL_ASPECT_RATIO is required. See .env.example.}"
+  : "${NARRATION_PROVIDER:?NARRATION_PROVIDER is required. See .env.example.}"
+  : "${NARRATION_MODEL:?NARRATION_MODEL is required. See .env.example.}"
+  case "$NARRATION_PROVIDER" in
+    anthropic)
+      : "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required when NARRATION_PROVIDER=anthropic. See .env.example.}"
+      ;;
+    gemini)
+      : "${GEMINI_API_KEY:?GEMINI_API_KEY is required when NARRATION_PROVIDER=gemini. See .env.example.}"
+      ;;
+    *)
+      echo "NARRATION_PROVIDER must be anthropic or gemini. Got: ${NARRATION_PROVIDER}. See .env.example." >&2
+      exit 1
+      ;;
+  esac
   unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
@@ -272,6 +303,17 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
+  export TF_VAR_fal_key="$FAL_KEY"
+  export TF_VAR_fal_model="$FAL_MODEL"
+  export TF_VAR_fal_image_to_video_model="${FAL_IMAGE_TO_VIDEO_MODEL-}"
+  export TF_VAR_fight_video_seconds="$FIGHT_VIDEO_SECONDS"
+  export TF_VAR_fal_video_resolution="$FAL_VIDEO_RESOLUTION"
+  export TF_VAR_fal_prompt_expansion_mode="$FAL_PROMPT_EXPANSION_MODE"
+  export TF_VAR_fal_aspect_ratio="$FAL_ASPECT_RATIO"
+  export TF_VAR_narration_provider="$NARRATION_PROVIDER"
+  export TF_VAR_narration_model="$NARRATION_MODEL"
+  export TF_VAR_anthropic_api_key="${ANTHROPIC_API_KEY-}"
+  export TF_VAR_gemini_api_key="${GEMINI_API_KEY-}"
   export AWS_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
   export AWS_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
   export SPACES_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
