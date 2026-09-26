@@ -13,7 +13,7 @@ the gas. Replaces the Sepolia `BattleBetting` contract.
 | Off Sui | Fighters, votes, winner and damage: ENS and Postgres (`rounds`, `battle_results`) |
 | Pool key | The battle's database ID as text (`battle_results.battle_id`). A pool's object ID derives from house + battle ID (`sui::derived_object`), so the app finds a pool with no indexer and a battle can't get two pools. A Move test and a TS test pin both sides to one vector |
 | Sides | Side 0 = `fighters[0]` (`fighter_a`), side 1 = `fighters[1]` (`fighter_b`) |
-| Coin | `SUI_USDC_TYPE` (Circle testnet USDC or our test USDC, 6 decimals) |
+| Coin | `SUI_USDC_TYPE`: the live game bets in our test USDC (6 decimals). The web reads it from `GET /betting` `coinType` |
 | Economics | 2% of the losing side, locked per pool, max 10%. Refunds when cancelled or one-sided. Min bet 0.03 USDC. The admin changes fee and min |
 | Winner | The server's operator settles with the winning side from the battle queue's settle step (`ChainWritePorts.settleBattle`) |
 | Wallet and gas | Main's existing path: the web builds a tx kind, `POST /tx` checks it with `tx-policy.ts` (betting-package calls are already allowed) and runs Shinami `executeGaslessTransaction`. No burner, no sponsor of our own |
@@ -119,26 +119,32 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
    Services and Node Service.
 2. Run `sui keytool generate ed25519` twice (admin, operator). Save each in 1Password
    (`Horror Tube Sui admin`, `Horror Tube Sui operator`) and put them in `.env`.
-3. faucet.sui.io: testnet SUI to both addresses. faucet.circle.com (Sui testnet): 20 USDC to the admin
-   address.
+3. faucet.sui.io: testnet SUI to both addresses. Test USDC comes from `pnpm test-usdc:mint` or
+   `pnpm test-usdc:send` (below).
 
 ## Test USDC (testnet only)
 
-Circle's faucet gives 20 USDC per address every 2 hours behind a captcha, so testing can use our own
-coin instead: `packages/test-usdc`, module `test_usdc::usdc`. It has no value.
+The live game bets in our own coin, not Circle's testnet USDC (its faucet gives 20 USDC per address
+every 2 hours behind a captcha): `packages/test-usdc`, module `test_usdc::usdc`. It has no value. The
+20 funded wallets in `accounts.json` are the testing and demo funds.
 
 - Coin `USDC`, 6 decimals, registered in Sui's coin registry. A shared `Faucet` owns the
   `TreasuryCap`, so anyone can mint: `mint` returns a coin, and `mint_to` sends to an address balance
   with `coin::send_funds` (where `/tx` spends from). Max 1,000 USDC per call.
 - `pnpm test-usdc:deploy` publishes it and prints `TEST_USDC_TYPE` and `TEST_USDC_FAUCET_ID`.
   `pnpm test-usdc:mint <address> <units>` mints base units to that address balance and prints its
-  new balance. `pnpm test-usdc:accounts <count> <usdc-min> <usdc-max> <sui-each>` (e.g. `20 500 2000 0.03`, a random whole amount each) creates
+  new balance. `pnpm test-usdc:send <account-index> <to-address> <units>` moves base units from
+  funded account N (1-based, from `accounts.json`) into that address balance with `coin::send_funds`
+  and prints the digest and both new balances; the sender pays gas, so pick one with SUI. This is how
+  to fund a demo player: scan the PAY BY PHONE QR on their coin box (it encodes the in-game wallet
+  address) and send to that address.
+  `pnpm test-usdc:accounts <count> <usdc-min> <usdc-max> <sui-each>` (e.g. `20 500 2000 0.03`, a random whole amount each) creates
   keypairs, saves them to the gitignored `packages/test-usdc/accounts.json`, and in one transaction
   gives each the admin's SUI and freshly minted test USDC. The CLIs load `@horror-tube/betting` from
   `dist`, so run `pnpm --filter @horror-tube/betting build` first.
-- Switch the game to it: set `SUI_USDC_TYPE` to the `TEST_USDC_TYPE` value and run
-  `pnpm betting:deploy`, which creates its house for `SUI_USDC_TYPE` (it also publishes a new betting
-  package, so replace every ID it prints). `apps/web/wallet.ts` hard-codes `USDC_TYPE`, which must match.
+- The game uses it because `SUI_USDC_TYPE` equals `TEST_USDC_TYPE`. A house takes one coin type, so
+  changing `SUI_USDC_TYPE` means a new `pnpm betting:deploy` (new package and house; replace every ID
+  it prints) and a Terraform apply. The web has no coin type of its own.
 - Testnet only: the deploy CLI refuses any other `SUI_NETWORK`.
 
 ## Deploy, once

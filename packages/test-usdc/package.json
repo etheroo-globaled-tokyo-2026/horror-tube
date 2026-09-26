@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit",
     "deploy": "tsx --env-file=../../.env src/deploy.ts",
     "mint": "tsx --env-file=../../.env src/mint.ts",
+    "send": "tsx --env-file=../../.env src/send.ts",
     "accounts": "tsx --env-file=../../.env src/accounts.ts"
   },
   "dependencies": {
