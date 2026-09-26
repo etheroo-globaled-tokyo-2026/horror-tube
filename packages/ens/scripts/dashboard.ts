@@ -14,6 +14,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  parseAbiItem,
   stringToBytes,
   toHex,
 } from "viem";
@@ -31,6 +32,15 @@ const STATUS_REGISTERED = 2;
 export const REGISTER_SELECTOR = "0x85f3e643" as const;
 export const TRANSFER_SINGLE_TOPIC0 =
   "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
+const transferSingleEvent = parseAbiItem(
+  "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
+);
+
+export function isPrunedHistoricalStateError(message: string): boolean {
+  return /historical state|missing trie node|state pruned|history has been pruned/iu.test(
+    message,
+  );
+}
 const LOG_CHUNK_SIZE = 40000n;
 
 const textResolverAbi = parseAbi([
@@ -272,13 +282,32 @@ ${cards}
 `;
 }
 
-async function findContractBirthBlock(
+async function hasBytecodeAt(
+  publicClient: PublicClient,
+  address: Address,
+  blockNumber: bigint,
+): Promise<boolean> {
+  try {
+    const code = await publicClient.getBytecode({ address, blockNumber });
+    return code !== undefined && code !== "0x";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isPrunedHistoricalStateError(message)) {
+      return false;
+    }
+    throw new Error(
+      `getBytecode(${address}, block ${blockNumber.toString()}) failed: ${message}`,
+    );
+  }
+}
+
+export async function findContractBirthBlock(
   publicClient: PublicClient,
   address: Address,
 ): Promise<bigint> {
   const latest = await publicClient.getBlockNumber();
-  const latestCode = await publicClient.getBytecode({ address, blockNumber: latest });
-  if (latestCode === undefined || latestCode === "0x") {
+  const latestHasCode = await hasBytecodeAt(publicClient, address, latest);
+  if (!latestHasCode) {
     throw new Error(
       `Subregistry ${address} has no bytecode at latest block ${latest.toString()}`,
     );
@@ -287,14 +316,67 @@ async function findContractBirthBlock(
   let hi = latest;
   while (lo < hi) {
     const mid = (lo + hi) / 2n;
-    const code = await publicClient.getBytecode({ address, blockNumber: mid });
-    if (code === undefined || code === "0x") {
-      lo = mid + 1n;
-    } else {
+    if (await hasBytecodeAt(publicClient, address, mid)) {
       hi = mid;
+    } else {
+      lo = mid + 1n;
     }
   }
   return lo;
+}
+
+async function historicalStateAvailable(
+  publicClient: PublicClient,
+  address: Address,
+  blockNumber: bigint,
+): Promise<boolean> {
+  try {
+    await publicClient.getBytecode({ address, blockNumber });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isPrunedHistoricalStateError(message)) {
+      return false;
+    }
+    throw new Error(
+      `getBytecode(${address}, block ${blockNumber.toString()}) failed: ${message}`,
+    );
+  }
+}
+
+export async function findTransferLogStartBlock(
+  publicClient: PublicClient,
+  address: Address,
+): Promise<bigint> {
+  const birthBlock = await findContractBirthBlock(publicClient, address);
+  if (birthBlock === 0n) {
+    return 0n;
+  }
+  const priorAvailable = await historicalStateAvailable(
+    publicClient,
+    address,
+    birthBlock - 1n,
+  );
+  if (priorAvailable) {
+    return birthBlock;
+  }
+
+  console.error(
+    `discover: getBytecode birthBlock=${birthBlock.toString()} is at the RPC state frontier; walking TransferSingle logs backward`,
+  );
+  let start = birthBlock;
+  let cursor = birthBlock;
+  while (cursor > 0n) {
+    const from = cursor > LOG_CHUNK_SIZE ? cursor - LOG_CHUNK_SIZE : 0n;
+    const to = cursor - 1n;
+    const logs = await getLogsChunked(publicClient, address, from, to);
+    if (logs.length === 0) {
+      break;
+    }
+    start = from;
+    cursor = from;
+  }
+  return start;
 }
 
 async function getLogsChunked(
@@ -309,9 +391,9 @@ async function getLogsChunked(
   try {
     return await publicClient.getLogs({
       address,
+      event: transferSingleEvent,
       fromBlock,
       toBlock,
-      topics: [TRANSFER_SINGLE_TOPIC0],
     });
   } catch (error) {
     if (fromBlock === toBlock) {
@@ -352,15 +434,15 @@ async function discoverRegisteredLabels(
   publicClient: PublicClient,
   subregistry: Address,
 ): Promise<string[]> {
-  const birthBlock = await findContractBirthBlock(publicClient, subregistry);
+  const logStartBlock = await findTransferLogStartBlock(publicClient, subregistry);
   const latestBlock = await publicClient.getBlockNumber();
   console.error(
-    `discover: subregistry=${subregistry} birthBlock=${birthBlock.toString()} latestBlock=${latestBlock.toString()}`,
+    `discover: subregistry=${subregistry} logStartBlock=${logStartBlock.toString()} latestBlock=${latestBlock.toString()}`,
   );
   const logs = await collectTransferSingleLogs(
     publicClient,
     subregistry,
-    birthBlock,
+    logStartBlock,
     latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
