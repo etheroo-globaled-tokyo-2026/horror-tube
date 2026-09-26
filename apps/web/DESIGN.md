@@ -51,7 +51,9 @@ reads the meter:
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
 - Bets and claims: `betting.ts` builds kinds with `@horror-tube/betting` (`betTx` / `claimTx`) and sends them through
-  `runKind` → `POST /tx`. IDs come from `GET /betting`. Odds use `RoundState.pool` and `feeBps`.
+  `runKind` → `POST /tx`. `runKind` waits for the digest and throws the chain's error when the transaction failed
+  (a bet that lands after `close_betting` aborts with `EBettingClosed`). IDs come from `GET /betting`. Odds use
+  `RoundState.pool` and `feeBps`.
 - The coin: the live game bets in the repo's own test USDC (`packages/test-usdc`, 6 decimals, no value), not Circle's
   testnet USDC. The web has no coin type of its own: it uses `coinType` from `GET /betting` (the server's
   `SUI_USDC_TYPE`) for the meter, deposits and withdrawals, and the coin box does not mount if that call fails.

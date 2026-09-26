@@ -1,3 +1,4 @@
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
 import { toBase64 } from "@mysten/sui/utils";
@@ -13,7 +14,7 @@ export type SessionStore = Pick<Storage, "getItem" | "setItem">;
 
 export type GameWallet = {
   address: string;
-  client: SuiGrpcClient;
+  client: ClientWithCoreApi;
   session: string;
 };
 
@@ -162,15 +163,22 @@ export async function runKind(
     onlyTransactionKind: true,
     assumeSufficientAddressBalances: true,
   });
-  const paid = await postSchema(
+  const { digest } = await postSchema(
     fetchImpl,
     "/tx",
     JSON.stringify({ txKind: toBase64(bytes) }),
     wallet.session,
     DigestResponse,
   );
-  await wallet.client.waitForTransaction({ digest: paid.digest });
-  return paid.digest;
+  const result = await wallet.client.core.waitForTransaction({ digest }).catch((err: Error) => {
+    throw new Error(`Transaction ${digest} was sent but not confirmed on chain. ${err.message}`);
+  });
+  if (result.$kind === "FailedTransaction") {
+    throw new Error(
+      `Transaction ${digest} failed on chain: ${result.FailedTransaction.status.error?.message ?? "no error message"}`,
+    );
+  }
+  return digest;
 }
 
 export async function sendUsdc(
