@@ -28,6 +28,7 @@ describe("RoundState contract", () => {
       pool: [0, 0],
       winner: null,
       videoUrl: null,
+      frameUrl: null,
       error: null,
       chars: [],
     };
@@ -39,6 +40,7 @@ describe("RoundState contract", () => {
       "endsAt",
       "error",
       "fighters",
+      "frameUrl",
       "phase",
       "pool",
       "quorum",

@@ -3,17 +3,19 @@ import { randomUUID } from "node:crypto";
 import { PutObjectCommand, S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 
 import { type FightMediaConfig, readFightMediaConfig } from "./env.js";
-import { fightMediaCdnUrl, videoObjectKey } from "./keys.js";
+import { fightMediaCdnUrl, frameObjectKey, videoObjectKey } from "./keys.js";
 
-export type PutFightVideoInput = {
+export type PutFightMediaInput = {
   Bucket: string;
   Key: string;
   Body: Uint8Array;
   ACL: "public-read";
-  ContentType: "video/mp4";
+  ContentType: "video/mp4" | "image/jpeg";
 };
 
-export type PutFightVideo = (input: PutFightVideoInput) => Promise<void>;
+export type PutFightVideoInput = PutFightMediaInput;
+
+export type PutFightVideo = (input: PutFightMediaInput) => Promise<void>;
 
 export type UploadFightVideoOptions = {
   /** Mp4 bytes. Required; empty body is rejected. */
@@ -26,17 +28,39 @@ export type UploadFightVideoOptions = {
   putObject?: PutFightVideo;
 };
 
+export type UploadFightFrameOptions = {
+  /** JPEG bytes from the last video frame. Required; empty body is rejected. */
+  body: Uint8Array;
+  env?: NodeJS.ProcessEnv;
+  config?: FightMediaConfig;
+  putObject?: PutFightVideo;
+};
+
 export function buildPutFightVideoInput(
   config: FightMediaConfig,
   body: Uint8Array,
   objectId: string,
-): PutFightVideoInput {
+): PutFightMediaInput {
   return {
     Bucket: config.bucket,
     Key: videoObjectKey(objectId),
     Body: body,
     ACL: "public-read",
     ContentType: "video/mp4",
+  };
+}
+
+export function buildPutFightFrameInput(
+  config: FightMediaConfig,
+  body: Uint8Array,
+  objectId: string,
+): PutFightMediaInput {
+  return {
+    Bucket: config.bucket,
+    Key: frameObjectKey(objectId),
+    Body: body,
+    ACL: "public-read",
+    ContentType: "image/jpeg",
   };
 }
 
@@ -66,6 +90,23 @@ function createSpacesPutObject(config: FightMediaConfig): PutFightVideo {
   };
 }
 
+async function putAndCdnUrl(
+  config: FightMediaConfig,
+  putInput: PutFightMediaInput,
+  putObject: PutFightVideo,
+): Promise<string> {
+  try {
+    await putObject(putInput);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `Spaces put_object failed for s3://${config.bucket}/${putInput.Key}: ${detail}. Refusing to return a placeholder CDN URL.`,
+      { cause },
+    );
+  }
+  return fightMediaCdnUrl(config.cdnHost, putInput.Key);
+}
+
 /**
  * Upload fight mp4 bytes to Spaces under videos/<uuid>.mp4 and return the public CDN URL.
  * That URL is what RoundState.videoUrl uses. Fails closed — no placeholder URL.
@@ -79,16 +120,20 @@ export async function uploadFightVideo(options: UploadFightVideoOptions): Promis
   const config = options.config ?? readFightMediaConfig(options.env ?? process.env);
   const putInput = buildPutFightVideoInput(config, options.body, randomUUID());
   const putObject = options.putObject ?? createSpacesPutObject(config);
+  return putAndCdnUrl(config, putInput, putObject);
+}
 
-  try {
-    await putObject(putInput);
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `Spaces put_object failed for s3://${config.bucket}/${putInput.Key}: ${detail}. Refusing to return a placeholder video URL.`,
-      { cause },
-    );
+/**
+ * Upload a last-frame JPEG under frames/<uuid>.jpg for the next fight's image-to-video seed.
+ * Same fight-media bucket as videos. Fails closed — no placeholder URL.
+ */
+export async function uploadFightFrame(options: UploadFightFrameOptions): Promise<string> {
+  if (options.body.byteLength === 0) {
+    throw new Error("fight frame body is empty. Refusing to upload.");
   }
 
-  return fightMediaCdnUrl(config.cdnHost, putInput.Key);
+  const config = options.config ?? readFightMediaConfig(options.env ?? process.env);
+  const putInput = buildPutFightFrameInput(config, options.body, randomUUID());
+  const putObject = options.putObject ?? createSpacesPutObject(config);
+  return putAndCdnUrl(config, putInput, putObject);
 }

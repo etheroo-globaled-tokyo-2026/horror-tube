@@ -80,10 +80,11 @@ fills the challenger slot from rotation after settle.
 
 ## Video continuity
 
-- **Stage 1:** text-to-video. The story prompt describes both fighters.
-- **After each fight:** save the last frame of the video to Spaces (use `ffmpeg`).
-- **Stage 2:** image-to-video. The start image is the last frame. The prompt describes the new challenger and the champion's damage.
+- **Stage 1:** text-to-video (`FAL_MODEL`). The story prompt describes both fighters.
+- **After each fight:** extract the last frame with `ffmpeg`, upload it to the fight-media bucket under `frames/<uuid>.jpg`, and store the CDN URL on `RoundState.frameUrl`.
+- **Stage 2+:** image-to-video (`FAL_IMAGE_TO_VIDEO_MODEL`) with `image_url` set to the previous `frameUrl`. The prompt describes the new challenger and the champion's damage, and must say the previous loser is gone.
 - The stage 2 prompt must say that the loser is gone. The last frame can show the loser. If the prompt does not say this, the dead character can come back in the next video.
+- If frame extract or upload fails, stop and surface the error. Do not substitute a still or a fixture. If a prior frame exists and `FAL_IMAGE_TO_VIDEO_MODEL` is blank, fail — do not drop the frame and call text-to-video.
 
 ## Config
 
@@ -122,6 +123,7 @@ type RoundState = {
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;
+  frameUrl: string | null; // last-frame CDN URL; seeds the next image-to-video bout
   error: string | null; // video failed, bets refunded
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
 };

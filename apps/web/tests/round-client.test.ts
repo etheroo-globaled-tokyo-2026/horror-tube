@@ -53,6 +53,7 @@ describe("postVote", () => {
       pool: [0, 0],
       winner: null,
       videoUrl: null,
+      frameUrl: null,
       error: null,
       chars: [],
     };
@@ -90,6 +91,7 @@ describe("RoundState client contract", () => {
       pool: [0, 0],
       winner: null,
       videoUrl: null,
+      frameUrl: null,
       error: null,
       chars: [
         { id: 0, alive: true, kills: 1, damage: 10 },
@@ -100,5 +102,6 @@ describe("RoundState client contract", () => {
     assert.equal(state.slots, 1);
     assert.equal(state.champion, 0);
     assert.equal(state.videoUrl, null);
+    assert.equal(state.frameUrl, null);
   });
 });
