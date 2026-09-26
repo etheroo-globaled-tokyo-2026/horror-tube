@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from roster.chain import (
     apply_register_plan,
     list_registered,
+    list_registered_labels,
     set_icons,
     snapshot_existing,
     unregister_labels,
@@ -34,7 +35,7 @@ from roster.plan import (
     build_register_plan,
     build_removal_plan,
 )
-from roster.propose import propose_sheets, sheets_payload
+from roster.propose import propose_cast, propose_sheets, sheets_payload
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -344,6 +345,66 @@ def cmd_register(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wipe(_args: argparse.Namespace) -> int:
+    """Unregister every character subname. Does not touch the parent .eth name."""
+    _require_chain_env()
+    labels = list_registered_labels()
+    if len(labels) == 0:
+        print("wipe: no registered character subnames.")
+        return 0
+    print(f"wipe: unregistering {len(labels)} label(s): {', '.join(labels)}")
+    unregister_labels(labels)
+    print("wipe: chain writes complete")
+    return 0
+
+
+def cmd_redeploy(_args: argparse.Namespace) -> int:
+    """Propose the 12 from Fandom, upload icons, and register them."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    _require_chain_env()
+    cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    spaces = spaces_store_from_env(os.environ)
+    characters = propose_cast()
+    require_no_duplicate_labels(characters, source="cast.json")
+    print(f"redeploy: proposed {len(characters)} sheet(s)")
+    for character in characters:
+        print(f"  {character['label']} {character['display_name']}")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        icon_dir = Path(tmp) / "icons"
+        _written, updated = write_face_icons(
+            characters,
+            icon_dir,
+            api_key=required_env("TOGETHER_API_KEY", os.environ),
+            model=required_env("TOGETHER_IMAGE_MODEL", os.environ),
+            api_url=required_env("TOGETHER_API_URL", os.environ),
+            spaces=spaces,
+            cdn_host=cdn_host,
+            override=False,
+        )
+        ens_label = _require_ens_label()
+        labels = [character["label"] for character in updated]
+        existing_on_chain = snapshot_existing(labels)
+        if len(existing_on_chain) != 0:
+            still = ", ".join(sorted(existing_on_chain))
+            raise RosterValidationError(
+                f"Refusing to register over existing subnames: {still}. "
+                "Run `python -m roster wipe` first."
+            )
+        plan = build_register_plan(
+            updated,
+            ens_label=ens_label,
+            existing_on_chain=existing_on_chain,
+            on_existing=None,
+        )
+        print(f"redeploy: registering {len(plan['characters'])} character(s)")
+        apply_register_plan(plan)
+    print("redeploy: chain writes complete")
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     _require_ens_label()
     input_path = Path(_require_flag(args.input, name="--input"))
@@ -569,6 +630,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to a JSON array of labels to unregister.",
     )
     remove_p.set_defaults(func=cmd_remove)
+
+    wipe_p = sub.add_parser(
+        "wipe",
+        help=(
+            "Unregister every character subname under ENS_LABEL. "
+            "Does not read text records and does not remove the parent .eth name."
+        ),
+    )
+    wipe_p.set_defaults(func=cmd_wipe)
+
+    redeploy_p = sub.add_parser(
+        "redeploy",
+        help=(
+            "Propose the 12 cast fighters from live Fandom pages, upload face icons, "
+            "and register them with display_name, injury_places, and injuries."
+        ),
+    )
+    redeploy_p.set_defaults(func=cmd_redeploy)
 
     return parser
 

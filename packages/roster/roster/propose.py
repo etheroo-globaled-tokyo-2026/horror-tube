@@ -7,7 +7,15 @@ import re
 from pathlib import Path
 from typing import Any, Sequence
 
-from roster.fandom import FandomError, PageLore
+from roster.fandom import (
+    BRIEF_SECTION_RES,
+    LOOK_SECTION_RES,
+    FandomError,
+    PageLore,
+    fetch_page_lore,
+    fetch_section,
+    resolve_page,
+)
 from roster.validate import (
     Character,
     CharacterList,
@@ -21,6 +29,7 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _NON_LABEL_RE = re.compile(r"[^a-z0-9]+")
 _LEADING_ARTICLES = frozenset({"a", "an", "the"})
 _INJURY_PLACES_PATH = Path(__file__).resolve().parent / "injury_places.json"
+_CAST_PATH = Path(__file__).resolve().parent / "cast.json"
 
 
 def display_name_from_title(title: str) -> str:
@@ -88,6 +97,60 @@ def sheet_from_lore(lore: PageLore, *, injury_places: str | None = None) -> Char
         "icon": "",
     }
     return parse_characters(character, source=str(lore.ref))[0]
+
+
+def propose_one(entry: dict[str, Any], *, wiki: str | None) -> Character:
+    source = entry.get("source")
+    look_source = entry.get("look_source")
+    brief_source = entry.get("brief_source")
+    if isinstance(source, str) and source.strip() != "":
+        if look_source is not None or brief_source is not None:
+            raise FandomError(
+                f"Cast entry has source and also look_source/brief_source: {entry!r}"
+            )
+        return sheet_from_lore(fetch_page_lore(resolve_page(source, wiki=wiki)))
+    if not isinstance(look_source, str) or look_source.strip() == "":
+        raise FandomError(f"Cast entry needs source or look_source. Got: {entry!r}")
+    if not isinstance(brief_source, str) or brief_source.strip() == "":
+        raise FandomError(f"Cast entry needs brief_source with look_source. Got: {entry!r}")
+    look_ref = resolve_page(look_source, wiki=wiki)
+    brief_ref = resolve_page(brief_source, wiki=wiki)
+    look_title, appearance = fetch_section(look_ref, LOOK_SECTION_RES, name="look")
+    brief_title, powers = fetch_section(brief_ref, BRIEF_SECTION_RES, name="brief")
+    look_label = label_from_title(look_title)
+    brief_label = label_from_title(brief_title)
+    if look_label != brief_label:
+        raise FandomError(
+            f"Look page {look_title!r} is label {look_label!r} but "
+            f"brief page {brief_title!r} is label {brief_label!r}. "
+            "Refusing to pair different characters."
+        )
+    return sheet_from_lore(
+        PageLore(ref=look_ref, title=look_title, appearance=appearance, powers=powers)
+    )
+
+
+def load_cast() -> list[dict[str, Any]]:
+    try:
+        raw = json.loads(_CAST_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FandomError(f"Failed to read cast {_CAST_PATH}: {exc}") from exc
+    if not isinstance(raw, list) or len(raw) != 12:
+        raise FandomError(
+            f"{_CAST_PATH.name} must be a list of 12 fighters. Got {type(raw).__name__} "
+            f"length {len(raw) if isinstance(raw, list) else 'n/a'}."
+        )
+    return raw
+
+
+def propose_cast() -> CharacterList:
+    characters = [propose_one(entry, wiki=None) for entry in load_cast()]
+    dupes = find_duplicate_labels(characters)
+    if dupes:
+        raise RosterValidationError(
+            f"duplicate label(s) in cast: {', '.join(dupes)}"
+        )
+    return characters
 
 
 def propose_sheets(lores: Sequence[PageLore]) -> CharacterList:
