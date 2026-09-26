@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 export type BattleBettingPorts = {
   /**
    * Operator: open a Sui pool for a fresh battle id.
-   * Returns the battle id string used as the pool key (not a Sepolia uint256).
+   * Returns the battle id string used as the pool key.
    */
   openBattle: (
     fighterA: string,
@@ -38,7 +38,7 @@ export type BattleBettingPorts = {
 /**
  * Sui betting operator for open / cancel / close / settle.
  * Players place bets through POST /tx (Shinami), not through this port.
- * Missing env fails by name — no Sepolia BATTLE_BETTING_ADDRESS fallback.
+ * Missing env fails by name.
  */
 export function createBattleBettingPorts(
   env: NodeJS.ProcessEnv = process.env,
