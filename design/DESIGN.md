@@ -25,6 +25,22 @@ winners **claim**) → vote again, until one is left.
 
 Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, Frankenstein wins, to match the video.
 
+## Onboarding: the waiver
+
+Onboarding happens in the room, not on a form page. It takes from Buckshot Roulette (you sign a waiver) and Paratopic
+(hard cuts, no loading screens).
+
+- **Read:** the camera looks down at a paper waiver on the table, below the TV. The TV shows static. No remote yet.
+- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
+- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the wallet step.
+- **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
+  NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
+- **Returning user:** a verified user skips the waiver and starts at the wallet step.
+- **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
+- The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
+
+Not done yet: the wallet step is still the old full-screen panel. Vote and bet stay on the remote.
+
 ## The room
 
 - **The room:** real 3D, low-poly, rusty textures with hard pixels, fog, one flickering bulb. Warm colours only.
