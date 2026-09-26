@@ -13,6 +13,8 @@ import {
   type RandomInt,
 } from "@horror-tube/fight/rotation";
 
+import { normalizeSuiAddress } from "@mysten/sui/utils";
+
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
 import type { Phase, RoundState } from "../types.js";
@@ -55,6 +57,14 @@ export type GameLoopOptions = {
 };
 
 type Listener = (state: RoundState) => void;
+
+/** The playback-start write to battle_results failed; nothing was stored. */
+export class PlaybackStartStoreError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PlaybackStartStoreError";
+  }
+}
 
 function emptyVotes(ids: number[]): Record<number, number> {
   const votes: Record<number, number> = {};
@@ -131,6 +141,12 @@ export class GameLoop {
   private frameUrl: string | null = null;
   private error: string | null = null;
   private betOpenedAt: number | null = null;
+  /** Set only from a room's playback report; never from setVideoReady. */
+  private videoStartedAt: number | null = null;
+  private bettingClosesAt: number | null = null;
+  private playbackStartWrite: Promise<void> | null = null;
+  private closeBettingInFlight = false;
+  private lastCloseBettingAt = 0;
   private videoDurationMs: number | null = null;
   private outcome: { winner: 0 | 1; damage: number } | null = null;
   private settleDamage = 0;
@@ -143,6 +159,7 @@ export class GameLoop {
   private holdingCopyApplied = false;
   private lastPoolReadAt = 0;
   private poolReadInFlight = false;
+  /** Also the retry spacing for a failed closeBetting. */
   private static readonly POOL_READ_INTERVAL_MS = 2000;
 
   constructor(options: GameLoopOptions) {
@@ -196,6 +213,8 @@ export class GameLoop {
       pool: [...this.pool] as [number, number],
       winner: this.phase === "settle" || this.phase === "over" ? this.winner : null,
       videoUrl: this.videoUrl,
+      videoStartedAt: this.videoStartedAt,
+      bettingClosesAt: this.bettingClosesAt,
       frameUrl: this.frameUrl,
       error: this.error,
       chars: this.chars.map((c) => ({
@@ -259,6 +278,7 @@ export class GameLoop {
 
   /** Record one human's picks. Nullifier comes from the waiver session. */
   voteWithNullifier(nullifier: string, picks: number[]): void {
+    this.assertBeforeCutoff("vote", this.now());
     if (this.phase !== "vote" && this.phase !== "countdown") {
       throw new Error(
         `vote is only allowed in vote or countdown phases. Current phase: ${this.phase}.`,
@@ -301,6 +321,105 @@ export class GameLoop {
       this.endsAt = now + this.config.voteCountdownSeconds * 1000;
     }
     this.emit();
+  }
+
+  /**
+   * Gate for POST /tx bets: only the live pool, only during bet, and never at
+   * or after the stored betting_closes_at (checked before the phase flips).
+   */
+  assertBetAllowed(poolId: string): void {
+    this.assertBeforeCutoff("bet", this.now());
+    if (this.phase !== "bet") {
+      throw new Error(
+        `bet rejected: betting is only open in the bet phase. Current phase: ${this.phase}.`,
+      );
+    }
+    if (
+      this.poolObjectId === null ||
+      normalizeSuiAddress(poolId) !== normalizeSuiAddress(this.poolObjectId)
+    ) {
+      throw new Error(
+        `bet rejected: pool ${poolId} is not the live pool ${String(this.poolObjectId)} (battleId=${String(this.onChainBattleId)}).`,
+      );
+    }
+  }
+
+  /**
+   * A room reports that this bout's video started playing. The first report
+   * fixes video_started_at and betting_closes_at on the battle_results row,
+   * then on the round. A failed write leaves both unset, so betting stays open.
+   */
+  async reportPlaybackStart(battleId: string): Promise<void> {
+    if (this.phase !== "bet") {
+      throw new Error(
+        `playback start is only accepted in the bet phase. Current phase: ${this.phase}.`,
+      );
+    }
+    if (battleId !== this.onChainBattleId) {
+      throw new Error(
+        `playback start battleId ${JSON.stringify(battleId)} does not match live battle ${JSON.stringify(this.onChainBattleId)}.`,
+      );
+    }
+    if (this.videoUrl === null) {
+      throw new Error(
+        `playback start refused for battle ${battleId}: the fight video is not ready.`,
+      );
+    }
+    if (this.videoStartedAt !== null) return;
+    if (this.playbackStartWrite === null) {
+      this.playbackStartWrite = this.storePlaybackStart(battleId, this.now()).finally(() => {
+        this.playbackStartWrite = null;
+      });
+    }
+    await this.playbackStartWrite;
+  }
+
+  private async storePlaybackStart(battleId: string, startedAt: number): Promise<void> {
+    const queueId = this.queuedAgentResultId;
+    if (queueId === null) {
+      throw new Error(
+        `playback start for battle ${battleId}: no battle_results row is attached. Betting stays open.`,
+      );
+    }
+    const closesAt = startedAt + this.config.bettingCloseAfterVideoStartSeconds * 1000;
+    try {
+      const record = await this.battleQueueStore.get(queueId);
+      if (record === null) {
+        throw new Error(`battle_results row ${queueId} is missing`);
+      }
+      await this.battleQueueStore.save({
+        ...record,
+        videoStartedAt: startedAt,
+        bettingClosesAt: closesAt,
+      });
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new PlaybackStartStoreError(
+        `Storing betting_closes_at failed for battle ${battleId} (battle_results ${queueId}): ${detail}. Betting stays open.`,
+        { cause },
+      );
+    }
+    if (!this.isSameBetBout(battleId)) return;
+    this.videoStartedAt = startedAt;
+    this.bettingClosesAt = closesAt;
+    console.log(
+      `playback started battleId=${battleId} video_started_at=${new Date(startedAt).toISOString()} betting_closes_at=${new Date(closesAt).toISOString()}`,
+    );
+    this.emit();
+  }
+
+  private assertBeforeCutoff(action: "vote" | "bet", now: number): void {
+    if (this.bettingClosesAt !== null && now >= this.bettingClosesAt) {
+      throw new Error(
+        `${action} rejected: betting closed at ${new Date(this.bettingClosesAt).toISOString()} (betting_closes_at, battleId=${String(this.onChainBattleId)}).`,
+      );
+    }
+  }
+
+  private clearPlaybackCutoff(): void {
+    this.videoStartedAt = null;
+    this.bettingClosesAt = null;
+    this.lastCloseBettingAt = 0;
   }
 
   /**
@@ -376,7 +495,8 @@ export class GameLoop {
   /**
    * Video job seam: record the CDN video URL, playback duration (ms), and the
    * last-frame CDN URL that seeds the next bout. Does not build a fal client.
-   * Bet closes when this is set, outcome is set, and BET_MIN_SECONDS has passed.
+   * Ready is not playing: betting stays open until a room reports playback
+   * start and betting_closes_at passes.
    */
   setVideoReady(url: string, durationMs: number, frameUrl: string): void {
     if (this.phase !== "bet") {
@@ -400,11 +520,7 @@ export class GameLoop {
     this.videoUrl = url.trim();
     this.frameUrl = frameUrl.trim();
     this.videoDurationMs = durationMs;
-    // Success path only advances to fight (or waits for BET_MIN_SECONDS); it does not failVideo.
-    void this.maybeLeaveBet(this.now()).catch((cause: unknown) => {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      console.error(`maybeLeaveBet after setVideoReady failed: ${detail}`);
-    });
+    this.emit();
   }
 
   /**
@@ -425,10 +541,6 @@ export class GameLoop {
       );
     }
     this.outcome = { winner, damage };
-    void this.maybeLeaveBet(this.now()).catch((cause: unknown) => {
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      console.error(`maybeLeaveBet after setOutcome failed: ${detail}`);
-    });
   }
 
   /**
@@ -453,6 +565,7 @@ export class GameLoop {
     this.onChainBattleId = null;
     this.poolObjectId = null;
     this.betOpenedAt = null;
+    this.clearPlaybackCutoff();
     this.endsAt = null;
     this.phase = "over";
     this.emit();
@@ -503,6 +616,7 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.clearPlaybackCutoff();
     this.queuedAgentResultId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
@@ -564,6 +678,7 @@ export class GameLoop {
     this.holdingCopyApplied = false;
     this.phase = "bet";
     this.betOpenedAt = now;
+    this.clearPlaybackCutoff();
     this.endsAt = null;
     await this.openOnChainBattle(now);
     this.emit();
@@ -586,9 +701,13 @@ export class GameLoop {
     return candidates;
   }
 
+  /**
+   * Leave bet only once betting_closes_at has passed and the operator's
+   * closeBetting succeeded. No playback report means no deadline, so betting
+   * stays open. A failed close keeps bettingClosed false and retries.
+   */
   private async maybeLeaveBet(now: number): Promise<void> {
     if (this.phase !== "bet" || this.betOpenedAt === null) return;
-    if (this.error !== null) return;
     if (this.videoUrl === null || this.videoDurationMs === null) {
       if (now - this.betOpenedAt >= this.config.videoTimeoutSeconds * 1000) {
         await this.failVideo(
@@ -597,32 +716,46 @@ export class GameLoop {
       }
       return;
     }
-    if (this.outcome === null) return;
-    const minMs = this.config.betMinSeconds * 1000;
-    if (now - this.betOpenedAt < minMs) {
-      this.endsAt = this.betOpenedAt + minMs;
-      this.emit();
+    const startedAt = this.videoStartedAt;
+    const closesAt = this.bettingClosesAt;
+    if (startedAt === null || closesAt === null || now < closesAt) return;
+    if (this.outcome === null) {
+      throw new Error(
+        `betting_closes_at passed for battle ${String(this.onChainBattleId)} but no outcome is set. Refusing to start the fight.`,
+      );
+    }
+    const battleId = this.onChainBattleId;
+    if (battleId === null) {
+      throw new Error("betting_closes_at passed but the bet phase has no battle id.");
+    }
+    if (this.closeBettingInFlight) return;
+    if (
+      this.lastCloseBettingAt !== 0 &&
+      now - this.lastCloseBettingAt < GameLoop.POOL_READ_INTERVAL_MS
+    ) {
       return;
     }
+    this.closeBettingInFlight = true;
+    this.lastCloseBettingAt = now;
+    try {
+      await this.battleBetting.closeBetting(battleId);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      this.error = `Sui closeBetting failed at betting_closes_at ${new Date(closesAt).toISOString()} (battleId=${battleId}): ${detail}. New bets stay rejected; bettingClosed is not set. Retrying.`;
+      console.error(this.error);
+      this.emit();
+      return;
+    } finally {
+      this.closeBettingInFlight = false;
+    }
+    if (!this.isSameBetBout(battleId)) return;
+    console.log(`Sui betting closeBetting battleId=${battleId}`);
+    this.error = null;
     this.winner = this.outcome.winner;
     this.settleDamage = this.outcome.damage;
     this.bettingClosedGate = true;
-    if (this.onChainBattleId !== null) {
-      try {
-        await this.battleBetting.closeBetting(this.onChainBattleId);
-        console.log(
-          `Sui betting closeBetting battleId=${this.onChainBattleId}`,
-        );
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        console.error(
-          `Sui betting closeBetting failed (battleId=${this.onChainBattleId}): ${detail}`,
-        );
-        throw cause;
-      }
-    }
     this.phase = "fight";
-    this.endsAt = now + this.videoDurationMs;
+    this.endsAt = startedAt + this.videoDurationMs;
     this.emit();
   }
 
@@ -745,6 +878,7 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.clearPlaybackCutoff();
     this.queuedAgentResultId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
@@ -802,6 +936,7 @@ export class GameLoop {
     this.holdingCopyApplied = false;
     this.phase = "bet";
     this.betOpenedAt = now;
+    this.clearPlaybackCutoff();
     this.endsAt = null;
     await this.openOnChainBattle(now);
     this.emit();
@@ -809,9 +944,9 @@ export class GameLoop {
   }
 
   /**
-   * Operator openPool for the current fighter pair. closesAt is a far upper
-   * bound; the game still ends betting via closeBetting when the video path does.
-   * Fighters stay off Sui (ENS / RoundState).
+   * Operator openPool for the current fighter pair. closesAt is only an upper
+   * bound the chain requires; betting ends at the stored betting_closes_at via
+   * closeBetting. Fighters stay off Sui (ENS / RoundState).
    */
   private async openOnChainBattle(now: number): Promise<void> {
     if (this.fighters === null) {
@@ -827,7 +962,7 @@ export class GameLoop {
     const closesAtUnix = BigInt(
       Math.floor(now / 1000) +
         this.config.videoTimeoutSeconds +
-        this.config.betMinSeconds +
+        this.config.bettingCloseAfterVideoStartSeconds +
         120,
     );
     this.onChainBattleId = await this.battleBetting.openBattle(

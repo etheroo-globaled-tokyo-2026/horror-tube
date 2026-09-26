@@ -1,6 +1,19 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
-import { S, char, face, usd, film, living, mmss, odds, replaying } from "./game.ts";
+import {
+  S,
+  applyRoundState,
+  char,
+  face,
+  usd,
+  film,
+  living,
+  mmss,
+  note,
+  odds,
+  replaying,
+} from "./game.ts";
+import { postPlaybackStart } from "./round-client.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { COL, RAMP } from "./room-palette.ts";
 import {
@@ -404,6 +417,23 @@ small.width = 160;
 small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" = "";
+let reportedBattleId: string | null = null;
+// The server's betting deadline starts from this report, so only a real `playing` event sends it.
+video.addEventListener("playing", () => {
+  const battleId = S.battleId;
+  if (vidMode !== "live" || S.phase !== "bet" || battleId === null) return;
+  if (S.bettingClosesAt !== null || reportedBattleId === battleId) return;
+  reportedBattleId = battleId;
+  postPlaybackStart(battleId)
+    .then(applyRoundState)
+    .catch((error: unknown) => {
+      reportedBattleId = null;
+      note(
+        `PLAYBACK START NOT RECORDED. ${error instanceof Error ? error.message : String(error)}`,
+        "bad",
+      );
+    });
+});
 export function syncVideo(): void {
   const url = S.videoUrl;
   if (!url) {
@@ -418,7 +448,8 @@ export function syncVideo(): void {
     video.src = url;
     lastVideoUrl = url;
   }
-  const mode = S.phase === "fight" ? "live" : replaying() ? "rec" : "";
+  // Betting stays open for the first seconds of playback, so the bout plays from bet on.
+  const mode = S.phase === "fight" || S.phase === "bet" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
   if (!mode) {
@@ -763,6 +794,26 @@ export function drawTV(): void {
         `${String(S.voters)} / ${String(S.quorum)} humans in`,
         300,
         26,
+        COL.bone,
+        "DotGothic16",
+        400,
+      );
+    } else if (S.phase === "bet" && vidMode === "live") {
+      band(H - 150, 100);
+      text(
+        S.bettingClosesAt === null
+          ? "BETS OPEN"
+          : `BETS CLOSE IN ${mmss(Math.max(0, (S.bettingClosesAt - Date.now()) / 1000))}`,
+        H - 110,
+        30,
+        COL.sulfur,
+      );
+      text(
+        S.bet
+          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`
+          : "HOLD A OR B TO BET",
+        H - 70,
+        24,
         COL.bone,
         "DotGothic16",
         400,

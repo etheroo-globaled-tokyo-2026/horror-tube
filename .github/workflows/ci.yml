@@ -150,7 +150,7 @@ jobs:
       # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
       QUORUM_VOTES: "1"
       VOTE_COUNTDOWN_SECONDS: "15"
-      BET_MIN_SECONDS: "10"
+      BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5"
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
       SKIP_BATTLE_SETTLEMENT: "1"
@@ -238,7 +238,7 @@ jobs:
             -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
             -e "QUORUM_VOTES=${QUORUM_VOTES}" \
             -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
-            -e "BET_MIN_SECONDS=${BET_MIN_SECONDS}" \
+            -e "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS=${BETTING_CLOSE_AFTER_VIDEO_START_SECONDS}" \
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
             -e "SKIP_BATTLE_SETTLEMENT=${SKIP_BATTLE_SETTLEMENT}" \

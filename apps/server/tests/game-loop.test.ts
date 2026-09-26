@@ -14,13 +14,13 @@ import {
   readGameLoopConfig,
   readRosterEnsLabels,
 } from "../src/game/config.js";
-import { GameLoop } from "../src/game/loop.js";
+import { GameLoop, PlaybackStartStoreError } from "../src/game/loop.js";
 import { refuseUnverifiedWorldId } from "../src/game/world-id.js";
 
 const baseConfig = {
   quorumVotes: 2,
   voteCountdownSeconds: 15,
-  betMinSeconds: 10,
+  bettingCloseAfterVideoStartSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
 };
@@ -146,6 +146,13 @@ function unusedSettleDeps(skipSettlement = true) {
   };
 }
 
+/** A room reports the live bout's video playing. */
+async function startPlayback(loop: GameLoop): Promise<void> {
+  const battleId = loop.getState().battleId;
+  assert.ok(battleId, "startPlayback needs a live battleId");
+  await loop.reportPlaybackStart(battleId);
+}
+
 async function flushFightJob(): Promise<void> {
   for (let i = 0; i < 10; i += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -171,17 +178,34 @@ describe("game loop config", () => {
     const cfg = readGameLoopConfig({
       QUORUM_VOTES: "1",
       VOTE_COUNTDOWN_SECONDS: "15",
-      BET_MIN_SECONDS: "10",
+      BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5",
       VIDEO_TIMEOUT_SECONDS: "300",
       SETTLE_SECONDS: "8",
     });
     assert.deepEqual(cfg, {
       quorumVotes: 1,
       voteCountdownSeconds: 15,
-      betMinSeconds: 10,
+      bettingCloseAfterVideoStartSeconds: 5,
       videoTimeoutSeconds: 300,
       settleSeconds: 8,
     });
+  });
+
+  it("refuses a missing, blank, or sub-1 BETTING_CLOSE_AFTER_VIDEO_START_SECONDS", () => {
+    const env = {
+      QUORUM_VOTES: "1",
+      VOTE_COUNTDOWN_SECONDS: "15",
+      VIDEO_TIMEOUT_SECONDS: "300",
+      SETTLE_SECONDS: "8",
+    };
+    for (const value of [undefined, " ", "0", "2.5"]) {
+      assert.throws(
+        () =>
+          readGameLoopConfig({ ...env, BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: value }),
+        /BETTING_CLOSE_AFTER_VIDEO_START_SECONDS .*See \.env\.example\./u,
+        `value ${JSON.stringify(value)}`,
+      );
+    }
   });
 
   it("requires ROSTER_ENS_LABELS with at least two labels", () => {
@@ -301,7 +325,7 @@ describe("GameLoop ENS status", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: trio,
@@ -326,6 +350,7 @@ describe("GameLoop ENS status", () => {
       1,
       "https://cdn.example/frames/seed.jpg",
     );
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -353,7 +378,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 2,
         voteCountdownSeconds: 5,
-        betMinSeconds: 2,
+        bettingCloseAfterVideoStartSeconds: 2,
         settleSeconds: 3,
       },
       ensLabels: labels,
@@ -409,6 +434,7 @@ describe("GameLoop phases", () => {
       "https://cdn.example/frames/fight1.jpg",
     );
     assert.equal(loop.getState().phase, "bet");
+    await startPlayback(loop);
     now += 2_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
@@ -461,7 +487,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 2,
         voteCountdownSeconds: 5,
-        betMinSeconds: 10,
+        bettingCloseAfterVideoStartSeconds: 10,
         settleSeconds: 3,
       },
       ensLabels: labels,
@@ -515,7 +541,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -538,6 +564,7 @@ describe("GameLoop phases", () => {
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "settle-on" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -573,7 +600,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -593,6 +620,7 @@ describe("GameLoop phases", () => {
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "fail-status" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -626,7 +654,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -646,6 +674,7 @@ describe("GameLoop phases", () => {
     await loop.attachAgentResult(sampleAgentInsert({ id: "wrong-winner" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -659,7 +688,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().error !== null, true);
   });
 
-  it("names the missing agent result when settle runs without attachAgentResult", async () => {
+  it("refuses a playback report when no agent result is attached", async () => {
     let now = 0;
     const settle = unusedSettleDeps(true);
     const loop = new GameLoop({
@@ -667,7 +696,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -686,13 +715,11 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
-    now += 1_000;
+    await assert.rejects(() => startPlayback(loop), /no battle_results row is attached/u);
+    now += 60_000;
     await loop.tick(now);
-    now += 1;
-    await assert.rejects(
-      () => loop.tick(now),
-      /attached agent result/u,
-    );
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().bettingClosesAt, null);
     assert.deepEqual(settle.calls, []);
   });
 
@@ -704,7 +731,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 2,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -728,7 +755,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -752,6 +779,7 @@ describe("GameLoop phases", () => {
     await loop2.attachAgentResult(agentInsertForAlphaWin({ id: "dup-path" }));
     loop2.setOutcome(0, 0);
     loop2.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop2);
     now += 1_000;
     await loop2.tick(now);
     now += 1;
@@ -774,7 +802,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
       },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -811,7 +839,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -830,6 +858,7 @@ describe("GameLoop phases", () => {
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "no-random" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -849,7 +878,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         videoTimeoutSeconds: 5,
       },
       ensLabels: labels,
@@ -889,7 +918,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
       },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -930,7 +959,10 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/job.mp4");
     assert.equal(loop.getState().frameUrl, "https://cdn.example/frames/job.jpg");
     assert.equal(loop.getState().error, null);
-    assert.equal(loop.getState().phase, "bet", "bet stays open until BET_MIN_SECONDS");
+    now += 60_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet", "a ready video does not close betting");
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
@@ -944,7 +976,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
       },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -1041,7 +1073,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         settleSeconds: 1,
       },
       ensLabels: labels,
@@ -1109,6 +1141,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await flushFightJob();
     assert.equal(requests[0]?.priorFrameUrl, null);
+    await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
@@ -1136,7 +1169,7 @@ describe("GameLoop phases", () => {
         ...baseConfig,
         quorumVotes: 1,
         voteCountdownSeconds: 1,
-        betMinSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
         videoTimeoutSeconds: 2,
       },
       ensLabels: labels,
@@ -1159,5 +1192,131 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "over");
     assert.match(loop.getState().error ?? "", /VIDEO_TIMEOUT_SECONDS/u);
     assert.ok(settle.betCalls.some((c) => c.startsWith("cancel:")));
+  });
+});
+
+describe("betting cutoff", () => {
+  const VIDEO_MS = 8_000;
+
+  /** Stage-1 bout in bet with the agent result attached and the video ready. */
+  async function readyBout(
+    overrides: { battleBetting?: BattleBettingPorts; battleQueueStore?: MemoryBattleQueueStore } = {},
+  ) {
+    const clock = { now: 1_000_000 };
+    const settle = unusedSettleDeps(true);
+    let n = 0;
+    const loop = new GameLoop({
+      config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => clock.now,
+      randomInt: pickFirst,
+      battleQueueStore: overrides.battleQueueStore ?? settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: overrides.battleBetting ?? settle.battleBetting,
+      fightJob: settle.fightJob,
+      skipSettlement: true,
+      verifyWorldId: async () => {
+        n += 1;
+        return { nullifier: `cutoff-${String(n)}` };
+      },
+    });
+    await loop.vote({}, [0, 1]);
+    clock.now += 1_000;
+    await loop.tick(clock.now);
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "cutoff-row" }));
+    loop.setOutcome(0, 2);
+    loop.setVideoReady("https://cdn.example/v.mp4", VIDEO_MS, "https://cdn.example/frames/seed.jpg");
+    const poolId = loop.getState().poolId;
+    assert.ok(poolId);
+    return { loop, clock, settle, poolId };
+  }
+
+  it("keeps betting open until a room reports playback start", async () => {
+    const { loop, clock, settle, poolId } = await readyBout();
+    clock.now += 10 * 60_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().bettingClosesAt, null);
+    assert.doesNotThrow(() => loop.assertBetAllowed(poolId));
+    assert.ok(!settle.betCalls.some((c) => c.startsWith("close:")));
+  });
+
+  it("stores betting_closes_at from playback start and rejects bets and votes at it", async () => {
+    const { loop, clock, settle, poolId } = await readyBout();
+    const startedAt = clock.now + 30_000;
+    clock.now = startedAt;
+    await startPlayback(loop);
+    const closesAt = startedAt + baseConfig.bettingCloseAfterVideoStartSeconds * 1_000;
+    assert.equal(loop.getState().videoStartedAt, startedAt);
+    assert.equal(loop.getState().bettingClosesAt, closesAt);
+    const row = await settle.battleQueueStore.get("cutoff-row");
+    assert.equal(row?.videoStartedAt, startedAt);
+    assert.equal(row?.bettingClosesAt, closesAt);
+    assert.throws(() => loop.assertBetAllowed("0xabc"), /not the live pool/u);
+
+    clock.now = closesAt - 1;
+    assert.doesNotThrow(() => loop.assertBetAllowed(poolId));
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "bet");
+
+    clock.now = closesAt;
+    const iso = new Date(closesAt).toISOString();
+    assert.throws(() => loop.assertBetAllowed(poolId), new RegExp(`bet rejected: betting closed at ${iso}`, "u"));
+    assert.throws(
+      () => loop.voteWithNullifier("late-voter", [2, 3]),
+      new RegExp(`vote rejected: betting closed at ${iso}`, "u"),
+    );
+    assert.equal(loop.getState().phase, "bet", "rejected before the phase flips");
+
+    await loop.tick(clock.now);
+    assert.ok(settle.betCalls.includes(`close:${String(loop.getState().battleId)}`));
+    assert.equal(loop.getState().phase, "fight");
+    assert.equal(loop.getState().endsAt, startedAt + VIDEO_MS);
+  });
+
+  it("a failed closeBetting stays in bet, shows the error, and retries", async () => {
+    const calls: string[] = [];
+    const battleBetting = trackingBattleBetting(calls);
+    let closeFails = true;
+    battleBetting.closeBetting = async (battleId) => {
+      if (closeFails) throw new Error("sui rpc 503");
+      calls.push(`close:${battleId}`);
+    };
+    const { loop, clock, poolId } = await readyBout({ battleBetting });
+    await startPlayback(loop);
+    clock.now += baseConfig.bettingCloseAfterVideoStartSeconds * 1_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "bet");
+    assert.match(loop.getState().error ?? "", /closeBetting failed .*sui rpc 503.*bettingClosed is not set/u);
+    assert.throws(() => loop.assertBetAllowed(poolId), /betting closed at/u);
+
+    closeFails = false;
+    clock.now += 2_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "fight");
+    assert.equal(loop.getState().error, null);
+  });
+
+  it("a failed battle_results write leaves betting open and names the battle", async () => {
+    class FailingStore extends MemoryBattleQueueStore {
+      override async save(record: Parameters<MemoryBattleQueueStore["save"]>[0]): Promise<void> {
+        if (record.bettingClosesAt !== null) throw new Error("disk full");
+        await super.save(record);
+      }
+    }
+    const { loop, clock } = await readyBout({ battleQueueStore: new FailingStore() });
+    const battleId = loop.getState().battleId;
+    await assert.rejects(
+      () => startPlayback(loop),
+      (err: unknown) =>
+        err instanceof PlaybackStartStoreError &&
+        err.message.includes(`battle ${String(battleId)}`) &&
+        err.message.includes("disk full"),
+    );
+    assert.equal(loop.getState().bettingClosesAt, null);
+    clock.now += 60_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "bet");
   });
 });

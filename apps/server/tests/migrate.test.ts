@@ -106,7 +106,11 @@ describe("migration SQL shape", () => {
     const dir = migrationsDir();
     assert.equal(dir, join(packageRoot, "migrations"));
     const files = await listMigrationFiles(dir);
-    assert.deepEqual(files, ["001_game_loop.sql", "002_battle_results.sql"]);
+    assert.deepEqual(files, [
+      "001_game_loop.sql",
+      "002_battle_results.sql",
+      "003_betting_closes_at.sql",
+    ]);
   });
 
   it("defines seasons, rounds, votes, and tallies with ENS-label ids and tie-break", async () => {
