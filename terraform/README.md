@@ -172,6 +172,9 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
 | `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `production`) |
+| `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
+| `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
+| `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
 
 `FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet).
 
@@ -200,6 +203,9 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
   : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
+  : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
+  : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
+  : "${SUI_USDC_TYPE:?SUI_USDC_TYPE is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
@@ -217,6 +223,9 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
   export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
+  export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
+  export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
+  export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
   export SPACES_ACCESS_KEY_ID
   export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
   cd "$root/terraform"

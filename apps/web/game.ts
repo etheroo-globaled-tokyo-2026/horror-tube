@@ -1,6 +1,7 @@
 import { parsePinAddressesFromMarkdown } from "@horror-tube/ens/scripts/pin.ts";
 import pinMarkdown from "@horror-tube/ens/scripts/pin/sepolia-addresses.md?raw";
 import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
+import { readWebEnv } from "./env.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
 
 export const $ = (s: string): HTMLElement => {
@@ -9,7 +10,6 @@ export const $ = (s: string): HTMLElement => {
   return el;
 };
 export const hooks = { render: (): void => {} };
-export const countdown = { hold: false };
 const render = (): void => hooks.render();
 
 const C = {
@@ -32,12 +32,9 @@ const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 export const hex = (n: number): string =>
   "0x" + Array.from({ length: n }, () => "0123456789abcdef"[(rnd() * 16) | 0]).join("");
 export const usd = (n: number): string => n.toFixed(2);
-export const mmss = (s: number): string =>
-  `${Math.floor(s / 60)}:${String(Math.ceil(s) % 60).padStart(2, "0")}`;
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
-export const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
 const CHAPTERS = [
@@ -69,7 +66,6 @@ export type LogEntry = { round: number; text: string; cls: string };
 export type GameState = {
   view: number;
   phase: Phase;
-  t: number;
   round: number;
   chars: Character[];
   picks: number[];
@@ -97,7 +93,6 @@ export type GameState = {
 export const S: GameState = {
   view: 1,
   phase: "gate",
-  t: 0,
   round: 1,
   chars: [],
   picks: [],
@@ -141,12 +136,6 @@ export const note = (text: string, kind = ""): void => {
   render();
 };
 
-const env = (name: string): string => {
-  const value = String(import.meta.env[name] ?? "").trim();
-  if (!value)
-    throw new Error(`${name} is required. Set it in the repo-root .env. See .env.example.`);
-  return value;
-};
 async function loadIcon(name: string, url: string): Promise<HTMLImageElement> {
   if (!url.startsWith("https://"))
     throw new Error(
@@ -172,10 +161,11 @@ const isAlive = (name: string, status: string): boolean => {
   );
 };
 const ROSTER = (async () => {
+  const env = readWebEnv();
   const ethRegistry = parsePinAddressesFromMarkdown(pinMarkdown).ETHRegistry;
   const { parentName, sheets } = await readRosterFromChain(
-    env("ENS_LABEL"),
-    env("VITE_SEPOLIA_RPC_URL"),
+    env.ENS_LABEL,
+    env.VITE_SEPOLIA_RPC_URL,
     ethRegistry,
   );
   return {
@@ -241,7 +231,6 @@ export function face(ch: Character): HTMLCanvasElement {
 function startVote(): void {
   Object.assign(S, {
     phase: "vote",
-    t: DUR.vote,
     picks: [],
     cast: null,
     votes: {},
@@ -277,14 +266,13 @@ function startStory(): void {
   S.story = `${a.short} ${(CHAPTERS[S.round % CHAPTERS.length] ?? "").replace("{b}", b.short)}`;
   log(`LOADED ${a.ens} + ${b.ens}`, "t-house");
   log("THE STORY IS BEING WRITTEN", "t-house");
-  Object.assign(S, { phase: "story", t: DUR.story, note: "" });
+  Object.assign(S, { phase: "story", note: "" });
   render();
 }
 function startBet(): void {
   log("VOTING CLOSED · BETTING OPEN", "t-house");
   Object.assign(S, {
     phase: "bet",
-    t: DUR.bet,
     pool: [20 + rnd() * 30, 20 + rnd() * 30],
     side: 0,
     note: "",
@@ -292,7 +280,7 @@ function startBet(): void {
   render();
 }
 function startFight(): void {
-  Object.assign(S, { phase: "fight", t: DUR.fight, frame: 0, note: "" });
+  Object.assign(S, { phase: "fight", frame: 0, note: "" });
   log(`ON AIR · ${S.story}`, "t-yours");
   render();
 }
@@ -320,11 +308,11 @@ function startSettle(): void {
   }
   S.last = { fighters: f, winner: S.winner, round: S.round };
   S.focus = w.id;
-  Object.assign(S, { phase: "settle", t: DUR.settle });
+  S.phase = "settle";
   render();
 }
 function end(): void {
-  Object.assign(S, { phase: "over", t: 0 });
+  S.phase = "over";
   log("SEASON OVER", "t-yours");
   render();
 }
@@ -339,18 +327,6 @@ export function next(): void {
     else end();
   }
 }
-
-setInterval(() => {
-  if (S.phase === "gate" || S.phase === "over" || countdown.hold) return;
-  S.t -= 0.25;
-  if (S.phase === "vote" && rnd() < 0.8) {
-    const l = living(),
-      c = l[(rnd() * l.length) | 0];
-    if (c) S.votes[c.id] = (S.votes[c.id] || 0) + 1 + ((rnd() * 2) | 0);
-  }
-  if (S.phase === "bet") S.pool[rnd() < 0.5 ? 0 : 1] += rnd() * 2;
-  if (S.t <= 0) next();
-}, 250);
 
 export const replaying = (): boolean => (S.phase === "vote" || S.phase === "story") && !!S.last;
 setInterval(() => {

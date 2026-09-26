@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,7 @@ import {
 import {
   AGENT_TEXT_KEYS,
   ROSTER_TEXT_KEYS,
+  assertWritePermissionGranted,
   buildSetTextSetter,
   grantTextSetterRoles,
 } from "../scripts/grant-text-roles.js";
@@ -95,6 +97,26 @@ async function waitForRpc(url: string): Promise<void> {
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`anvil RPC at ${url} did not become ready`);
+}
+
+async function getFreeLocalPort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert(address !== null && typeof address !== "string");
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  return address.port;
 }
 
 describe("process key config (unit, no network)", () => {
@@ -195,6 +217,31 @@ describe("empty injuries rewrite classifier (unit, no network)", () => {
   });
 });
 
+describe("grant result assertion (unit, no network)", () => {
+  const account = "0x0000000000000000000000000000000000000001";
+
+  it("accepts a true grant result", () => {
+    assert.doesNotThrow(() =>
+      assertWritePermissionGranted(true, "status", account),
+    );
+  });
+
+  it("rejects a false grant result with grant context", () => {
+    assert.throws(
+      () => assertWritePermissionGranted(false, "status", account),
+      (error: Error) => {
+        assert.match(
+          error.message,
+          /grantSetterRoles\(status, 0x0000000000000000000000000000000000000001\)/u,
+        );
+        assert.match(error.message, /did not grant write permission/u);
+        assert.match(error.message, /result=false/u);
+        return true;
+      },
+    );
+  });
+});
+
 describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
   let anvil: ChildProcess | undefined;
   let rpcUrl: string;
@@ -212,7 +259,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     assert.equal(factoryPin.contractsV2Commit, CONTRACTS_V2_COMMIT);
     assert.equal(implPin.contractsV2Commit, CONTRACTS_V2_COMMIT);
 
-    const port = 18545;
+    const port = await getFreeLocalPort();
     rpcUrl = `http://127.0.0.1:${port}`;
     anvil = spawn(
       "anvil",
@@ -248,20 +295,26 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
       bootstrapAddress: bootstrap.address,
     });
 
-    await grantTextSetterRoles({
-      publicClient,
-      walletClient: wallet,
-      resolver,
-      account: agent.address,
-      keys: [...AGENT_TEXT_KEYS],
-    });
-    await grantTextSetterRoles({
-      publicClient,
-      walletClient: wallet,
-      resolver,
-      account: roster.address,
-      keys: [...ROSTER_TEXT_KEYS],
-    });
+    assert.deepEqual(
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient: wallet,
+        resolver,
+        account: roster.address,
+        keys: [...ROSTER_TEXT_KEYS],
+      }),
+      [true, true, true],
+    );
+    assert.deepEqual(
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient: wallet,
+        resolver,
+        account: agent.address,
+        keys: [...AGENT_TEXT_KEYS],
+      }),
+      [true, true],
+    );
   });
 
   after(() => {
@@ -270,6 +323,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
   async function setTextAs(
     key: Hex,
+    name: string,
     textKey: string,
     value: string,
   ): Promise<"ok" | "revert"> {
@@ -279,7 +333,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
       chain: foundry,
       transport: http(rpcUrl),
     });
-    const dnsName = dnsEncodeName("fighter.test.eth");
+    const dnsName = dnsEncodeName(name);
     const before = await readText(dnsName, textKey);
     try {
       const hash = await wallet.writeContract({
@@ -344,26 +398,77 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     );
   });
 
-  it("agent can set status and injuries only", async () => {
-    assert.equal(await setTextAs(AGENT_KEY, "status", "alive"), "ok");
-    assert.equal(await setTextAs(AGENT_KEY, "injuries", "[]"), "ok");
-    assert.equal(await setTextAs(AGENT_KEY, "look", "x"), "revert");
-    assert.equal(await setTextAs(AGENT_KEY, "brief", "x"), "revert");
-    assert.equal(await setTextAs(AGENT_KEY, "icon", "https://x.example/a.png"), "revert");
+  it("agent can overwrite status and injuries", async () => {
+    const name = "agent-exercise.test.eth";
+    assert.equal(await setTextAs(AGENT_KEY, name, "status", "alive"), "ok");
+    assert.equal(await setTextAs(AGENT_KEY, name, "status", "dead"), "ok");
+    assert.equal(await setTextAs(AGENT_KEY, name, "injuries", "[]"), "ok");
+    assert.equal(
+      await setTextAs(AGENT_KEY, name, "injuries", '["left arm"]'),
+      "ok",
+    );
   });
 
-  it("roster can set look, brief, and icon only", async () => {
-    assert.equal(await setTextAs(ROSTER_KEY, "look", "body"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, "brief", "lore"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, "icon", "https://x.example/a.png"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, "status", "dead"), "revert");
-    assert.equal(await setTextAs(ROSTER_KEY, "injuries", "[]"), "revert");
+  it("roster can overwrite look, brief, and icon", async () => {
+    const name = "roster-exercise.test.eth";
+    assert.equal(await setTextAs(ROSTER_KEY, name, "look", "tall"), "ok");
+    assert.equal(await setTextAs(ROSTER_KEY, name, "look", "scarred"), "ok");
+    assert.equal(await setTextAs(ROSTER_KEY, name, "brief", "lore"), "ok");
+    assert.equal(await setTextAs(ROSTER_KEY, name, "brief", "later lore"), "ok");
+    assert.equal(
+      await setTextAs(ROSTER_KEY, name, "icon", "https://cdn.example/a.png"),
+      "ok",
+    );
+    assert.equal(
+      await setTextAs(ROSTER_KEY, name, "icon", "https://cdn.example/b.png"),
+      "ok",
+    );
+  });
+
+  it("bootstrap can set all five card keys", async () => {
+    const name = "bootstrap-exercise.test.eth";
+    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "status", "alive"), "ok");
+    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "injuries", "[]"), "ok");
+    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "look", "admin-look"), "ok");
+    assert.equal(
+      await setTextAs(BOOTSTRAP_KEY, name, "brief", "admin-brief"),
+      "ok",
+    );
+    assert.equal(
+      await setTextAs(
+        BOOTSTRAP_KEY,
+        name,
+        "icon",
+        "https://cdn.example/admin.png",
+      ),
+      "ok",
+    );
+  });
+
+  it("agent reverts on roster keys", async () => {
+    const name = "agent-deny.test.eth";
+    assert.equal(await setTextAs(AGENT_KEY, name, "look", "x"), "revert");
+    assert.equal(await setTextAs(AGENT_KEY, name, "brief", "x"), "revert");
+    assert.equal(
+      await setTextAs(AGENT_KEY, name, "icon", "https://x.example/a.png"),
+      "revert",
+    );
+  });
+
+  it("roster reverts on agent keys", async () => {
+    const name = "roster-deny.test.eth";
+    assert.equal(await setTextAs(ROSTER_KEY, name, "status", "dead"), "revert");
+    assert.equal(await setTextAs(ROSTER_KEY, name, "injuries", "[]"), "revert");
   });
 
   it("a third non-bootstrap key reverts on all five text keys", async () => {
     assert.notEqual(third.address, bootstrap.address);
     for (const key of ["status", "injuries", "look", "brief", "icon"]) {
-      assert.equal(await setTextAs(THIRD_KEY, key, "x"), "revert", key);
+      assert.equal(
+        await setTextAs(THIRD_KEY, "third-deny.test.eth", key, "x"),
+        "revert",
+        key,
+      );
     }
   });
 
