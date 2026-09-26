@@ -200,15 +200,14 @@ function holdEnd(): void {
 }
 let coinBox: CoinBox | null = null;
 let coinBoxError = "";
-let chainCredit = 0;
 async function mountCoinBox(): Promise<void> {
   if (coinBox !== null) return;
   const wallet = await getGameWallet();
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
-  void refreshClaimable().catch((err: unknown) => {
+  void refreshClaimable().catch((cause: unknown) => {
     console.error(
-      `claimable after wallet mount failed: ${err instanceof Error ? err.message : String(err)}`,
+      `claimable after wallet mount failed: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   });
   coinBox = createCoinBox(
@@ -216,7 +215,6 @@ async function mountCoinBox(): Promise<void> {
     coinType,
     (usdc) => {
       S.credit = usdc;
-      chainCredit = usdc;
       hintText();
     },
     say,
@@ -231,8 +229,8 @@ async function mountCoinBox(): Promise<void> {
   scene.add(coinBox.group);
 }
 if (hasWalletSession()) {
-  void mountCoinBox().catch((err: Error) => {
-    coinBoxError = err instanceof Error ? err.message : String(err);
+  void mountCoinBox().catch((cause: unknown) => {
+    coinBoxError = cause instanceof Error ? cause.message : String(cause);
     console.error(`Shinami wallet failed: ${coinBoxError}`);
   });
 }

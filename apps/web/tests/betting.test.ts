@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 
 import { betTx } from "@horror-tube/betting";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { normalizeSuiAddress } from "@mysten/sui/utils";
+import * as v from "valibot";
 
 import { fetchBettingIds, toContractIds } from "../betting.ts";
 import { formatPoolOdds } from "../odds.ts";
@@ -20,13 +22,9 @@ const TO = `0x${"dd".repeat(32)}`;
 const COIN_TYPE = `0x${"ee".repeat(32)}::usdc::USDC`;
 
 function fakeWallet(session = "sess"): GameWallet {
-  return {
-    address: ADDRESS,
-    session,
-    client: {
-      waitForTransaction: async () => undefined,
-    } as unknown as GameWallet["client"],
-  };
+  const client = new SuiGrpcClient({ network: "testnet", baseUrl: "http://127.0.0.1:9" });
+  mock.method(client, "waitForTransaction", async () => undefined);
+  return { address: ADDRESS, session, client };
 }
 
 describe("fetchBettingIds", () => {
@@ -99,7 +97,7 @@ describe("runKind /tx", () => {
       assert.equal(String(input), "/tx");
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("authorization"), "Bearer sess");
-      const body = JSON.parse(String(init?.body)) as { txKind: string };
+      const body = v.parse(v.object({ txKind: v.string() }), JSON.parse(String(init?.body)));
       assert.ok(body.txKind.length > 0);
       posted = true;
       return new Response(JSON.stringify({ digest: "0xdigest" }), {

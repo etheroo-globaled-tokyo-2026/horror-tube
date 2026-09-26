@@ -1,42 +1,60 @@
-import { IDKit, proofOfHuman, type IDKitRequestConfig } from "@worldcoin/idkit-core";
+import { IDKit, proofOfHuman, type IDKitResult } from "@worldcoin/idkit-core";
+import * as v from "valibot";
 
-export type EnterRoomIdkitContext = IDKitRequestConfig & {
-  action: string;
-  allow_legacy_proofs: false;
-};
+const AppIdString = v.pipe(v.string(), v.startsWith("app_"));
 
-export async function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
-  const res = await fetch("/world-id/request", { method: "POST" });
+const EnterRoomIdkitContext = v.object({
+  app_id: v.custom<`app_${string}`>(
+    (input) => v.is(AppIdString, input),
+    "app_id must start with app_",
+  ),
+  action: v.literal("enter-room"),
+  environment: v.optional(v.picklist(["production", "staging", "sandbox"])),
+  allow_legacy_proofs: v.literal(false),
+  rp_context: v.object({
+    rp_id: v.string(),
+    nonce: v.string(),
+    created_at: v.number(),
+    expires_at: v.number(),
+    signature: v.string(),
+  }),
+});
+export type EnterRoomIdkitContext = v.InferOutput<typeof EnterRoomIdkitContext>;
+
+const VerifyResponse = v.object({ ok: v.literal(true) });
+
+async function postWorldId<TSchema extends v.GenericSchema>(
+  path: string,
+  init: RequestInit,
+  schema: TSchema,
+): Promise<v.InferOutput<TSchema>> {
+  const res = await fetch(path, { ...init, method: "POST" });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`POST /world-id/request failed: HTTP ${String(res.status)} body=${text}`);
+    throw new Error(`POST ${path} failed: HTTP ${String(res.status)} body=${text}`);
   }
-  let parsed: unknown;
+  let parsed;
   try {
-    parsed = JSON.parse(text) as unknown;
-  } catch (err) {
+    parsed = v.safeParse(schema, JSON.parse(text));
+  } catch (cause) {
     throw new Error(
-      `POST /world-id/request returned non-JSON. Underlying: ${err instanceof Error ? err.message : String(err)} body=${text}`,
-      { cause: err },
+      `POST ${path} returned non-JSON. Underlying: ${cause instanceof Error ? cause.message : String(cause)} body=${text}`,
+      { cause },
     );
   }
-  const body = parsed as EnterRoomIdkitContext;
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    body.allow_legacy_proofs !== false ||
-    body.action !== "enter-room" ||
-    typeof body.app_id !== "string" ||
-    typeof body.rp_context?.signature !== "string"
-  ) {
-    throw new Error(`POST /world-id/request returned an invalid IDKit context. body=${text}`);
+  if (!parsed.success) {
+    throw new Error(
+      `POST ${path} returned an unexpected body: ${v.summarize(parsed.issues)} body=${text}`,
+    );
   }
-  return body;
+  return parsed.output;
 }
 
-export async function startEnterRoomProof(
-  context: EnterRoomIdkitContext,
-): Promise<{ connectorURI: string; wait: () => Promise<unknown> }> {
+export function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
+  return postWorldId("/world-id/request", {}, EnterRoomIdkitContext);
+}
+
+export async function startEnterRoomProof(context: EnterRoomIdkitContext) {
   const request = await IDKit.request({
     app_id: context.app_id,
     action: context.action,
@@ -47,7 +65,7 @@ export async function startEnterRoomProof(
 
   return {
     connectorURI: request.connectorURI,
-    wait: async () => {
+    wait: async (): Promise<IDKitResult> => {
       const completion = await request.pollUntilCompletion({
         pollInterval: 2_000,
         timeout: 300_000,
@@ -60,27 +78,10 @@ export async function startEnterRoomProof(
   };
 }
 
-export async function verifyEnterRoomProof(idkitResult: unknown): Promise<void> {
-  const res = await fetch("/world-id/verify", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(idkitResult),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`POST /world-id/verify failed: HTTP ${String(res.status)} body=${text}`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch (err) {
-    throw new Error(
-      `POST /world-id/verify returned non-JSON. Underlying: ${err instanceof Error ? err.message : String(err)} body=${text}`,
-      { cause: err },
-    );
-  }
-  const body = parsed as { ok?: boolean };
-  if (body.ok !== true) {
-    throw new Error(`POST /world-id/verify did not confirm ok. body=${text}`);
-  }
+export async function verifyEnterRoomProof(idkitResult: IDKitResult): Promise<void> {
+  await postWorldId(
+    "/world-id/verify",
+    { headers: { "content-type": "application/json" }, body: JSON.stringify(idkitResult) },
+    VerifyResponse,
+  );
 }
