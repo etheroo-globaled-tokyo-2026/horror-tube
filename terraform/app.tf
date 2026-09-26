@@ -215,13 +215,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "BET_FEE_BPS"
-        value = var.bet_fee_bps
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "SUI_OPERATOR_PRIVATE_KEY"
         value = var.sui_operator_private_key
         scope = "RUN_TIME"

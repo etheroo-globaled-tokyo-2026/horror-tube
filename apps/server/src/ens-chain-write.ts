@@ -298,7 +298,7 @@ async function setText(
 }
 
 export type EnsSettlePort = {
-  settle: (battleId: string, side: 0 | 1) => Promise<void>;
+  settle: (battleId: string, side: 0 | 1) => Promise<string>;
 };
 
 export function createEnsChainWritePorts(
@@ -332,8 +332,7 @@ export function createEnsChainWritePorts(
           `Sui pool settlement requires a settle port (battleId=${battleId}). Pass createEnsChainWritePorts(env, { settle }) from the game process.`,
         );
       }
-      await sui.settle(battleId, winningSide);
-      return battleId;
+      return sui.settle(battleId, winningSide);
     },
   };
 }

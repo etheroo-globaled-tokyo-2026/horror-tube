@@ -9,15 +9,13 @@ import { cancelTx, closeBettingTx, openPoolTx, settleTx } from "./transactions.j
 
 export type OperatorChain = {
   readPool(id: string): Promise<Pool | null>;
-  run(tx: Transaction): Promise<void>;
+  run(tx: Transaction): Promise<string>;
 };
 
 export function createChain(client: SuiGrpcClient, signer: Signer): OperatorChain {
   return {
     readPool: (id) => getPool(client, id),
-    run: async (tx) => {
-      await execute(client, signer, tx);
-    },
+    run: async (tx) => (await execute(client, signer, tx)).digest,
   };
 }
 
@@ -52,14 +50,14 @@ export function createOperator(chain: OperatorChain, ids: ContractIds, cap: stri
           await chain.run(closeBettingTx(ids, cap, pool(battleId)));
       }),
     settle: (battleId: string, side: 0 | 1) =>
-      serial(async () => {
+      serial(async (): Promise<string | null> => {
         const found = await current(battleId);
-        if (found.status === PoolStatus.settled && found.winningSide === BigInt(side)) return;
+        if (found.status === PoolStatus.settled && found.winningSide === BigInt(side)) return null;
         if (found.status !== PoolStatus.open)
           throw new Error(
             `Battle ${battleId}: pool status ${found.status}, cannot settle for side ${side}.`,
           );
-        await chain.run(settleTx(ids, cap, pool(battleId), side));
+        return chain.run(settleTx(ids, cap, pool(battleId), side));
       }),
     cancel: (battleId: string) =>
       serial(async () => {

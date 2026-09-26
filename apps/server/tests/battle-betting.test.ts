@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+
 import { createBattleBettingPorts } from "../src/battle-betting.js";
+import { createEnsChainWritePorts } from "../src/ens-chain-write.js";
 
 describe("createBattleBettingPorts", () => {
   const base = {
@@ -16,6 +19,7 @@ describe("createBattleBettingPorts", () => {
     SUI_OPERATOR_CAP_ID:
       "0x9719983f791ebd479c0127299aaa685a1e02e63fce330e9587e543d7d5b46847",
   };
+  const operatorKey = Ed25519Keypair.generate().getSecretKey();
 
   it("fails closed when BETTING_PACKAGE_ID is missing", () => {
     assert.throws(
@@ -23,8 +27,7 @@ describe("createBattleBettingPorts", () => {
         createBattleBettingPorts({
           ...base,
           BETTING_PACKAGE_ID: "",
-          SUI_OPERATOR_PRIVATE_KEY:
-            "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q",
+          SUI_OPERATOR_PRIVATE_KEY: operatorKey,
         }),
       /BETTING_PACKAGE_ID is required\. Set it in \.env\. See \.env\.example\./u,
     );
@@ -43,10 +46,16 @@ describe("createBattleBettingPorts", () => {
         createBattleBettingPorts({
           ...base,
           SUI_OPERATOR_CAP_ID: "",
-          SUI_OPERATOR_PRIVATE_KEY:
-            "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q",
+          SUI_OPERATOR_PRIVATE_KEY: operatorKey,
         }),
       /SUI_OPERATOR_CAP_ID is required\. Set it in \.env\. See \.env\.example\./u,
     );
+  });
+});
+
+describe("settleBattle", () => {
+  it("returns the Sui settle digest, not the battle id", async () => {
+    const ports = createEnsChainWritePorts({}, { settle: async () => "SettleDigest111" });
+    assert.equal(await ports.settleBattle("battle-1", 0), "SettleDigest111");
   });
 });

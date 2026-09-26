@@ -63,6 +63,7 @@ function fakeChain(start: Pool | null) {
       }
       calls.push(name);
       pool = apply(pool, name, side);
+      return `digest-${name}`;
     },
   };
   return {
@@ -89,8 +90,8 @@ describe("operator", () => {
     const chain = fakeChain(openPool());
     await chain.operator.closeBetting(battleId);
     await chain.operator.closeBetting(battleId);
-    await chain.operator.settle(battleId, 1);
-    await chain.operator.settle(battleId, 1);
+    assert.equal(await chain.operator.settle(battleId, 1), "digest-settle");
+    assert.equal(await chain.operator.settle(battleId, 1), null);
     assert.deepEqual(chain.calls, ["close_betting", "settle"]);
     assert.equal(chain.pool()?.winningSide, 1n);
   });

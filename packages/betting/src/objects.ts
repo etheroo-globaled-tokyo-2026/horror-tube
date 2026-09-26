@@ -1,5 +1,6 @@
 import { bcs } from "@mysten/sui/bcs";
 import { ObjectError, type ClientWithCoreApi, type SuiClientTypes } from "@mysten/sui/client";
+import { normalizeStructTag } from "@mysten/sui/utils";
 import type { ContractIds } from "./env.js";
 
 export const PoolStatus = { open: 0, settled: 1, cancelled: 2 } as const;
@@ -15,6 +16,14 @@ const PoolBcs = bcs.struct("Pool", {
   fee: bcs.u64(),
   totals: bcs.vector(bcs.u64()),
   pot: bcs.u64(),
+});
+
+const HouseBcs = bcs.struct("House", {
+  id: bcs.Address,
+  fee_bps: bcs.u64(),
+  min_bet: bcs.u64(),
+  operators: bcs.struct("VecSet", { contents: bcs.vector(bcs.Address) }),
+  treasury: bcs.struct("Balance", { value: bcs.u64() }),
 });
 
 const TicketBcs = bcs.struct("Ticket", {
@@ -43,13 +52,33 @@ export function parsePool(content: Uint8Array) {
   };
 }
 
+export function parseHouse(content: Uint8Array) {
+  const raw = HouseBcs.parse(content);
+  return { id: raw.id, feeBps: BigInt(raw.fee_bps), minBet: BigInt(raw.min_bet) };
+}
+
 export function parseTicket(content: Uint8Array) {
   const raw = TicketBcs.parse(content);
   return { id: raw.id, poolId: raw.pool_id, side: BigInt(raw.side), stake: BigInt(raw.stake) };
 }
 
 export type Pool = ReturnType<typeof parsePool>;
+export type House = ReturnType<typeof parseHouse>;
 export type Ticket = ReturnType<typeof parseTicket>;
+
+export async function getHouse(
+  client: ClientWithCoreApi,
+  ids: Pick<ContractIds, "packageId" | "houseId" | "coinType">,
+): Promise<House> {
+  const { object } = await client.core.getObject({
+    objectId: ids.houseId,
+    include: { content: true },
+  });
+  const expected = `${ids.packageId}::betting::House<${ids.coinType}>`;
+  if (normalizeStructTag(object.type) !== normalizeStructTag(expected))
+    throw new Error(`Object ${ids.houseId} is a ${object.type}, not a ${expected}.`);
+  return parseHouse(object.content);
+}
 
 export async function getPool(client: ClientWithCoreApi, id: string): Promise<Pool | null> {
   try {

@@ -1,4 +1,4 @@
-import { requiredEnv } from "../env.js";
+import { requiredEnv } from "@horror-tube/betting";
 
 /**
  * DigitalOcean Managed Postgres project CA PEM (from GET .../databases/{id}/ca).
@@ -7,7 +7,7 @@ import { requiredEnv } from "../env.js";
 export function readDatabaseCaCert(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const raw = requiredEnv("DATABASE_CA_CERT", env).trim();
+  const raw = requiredEnv("DATABASE_CA_CERT", env);
   let pem = raw.includes("\\n") ? raw.replace(/\\n/gu, "\n") : raw;
   if (!pem.includes("BEGIN CERTIFICATE")) {
     try {
