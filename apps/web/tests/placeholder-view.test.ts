@@ -7,7 +7,6 @@ function state(overrides: Partial<PlaceholderInput>): PlaceholderInput {
   return {
     phase: "bet",
     fighters: null,
-    selectable: [],
     pool: [0, 0],
     bettingClosesAt: null,
     chars: [
@@ -42,26 +41,14 @@ describe("placeholderView", () => {
     assert.equal(waiting?.screen === "bet" ? waiting.closesAt : "", CLOSES_AT_UNSET);
   });
 
-  it("lists the server's selectable fighters for the opening booking and the next fighter", () => {
-    const opening = placeholderView(
-      state({ phase: "waiting", selectable: [0, 2], fighters: null }),
-    );
-    assert.equal(opening?.screen, "pick");
-    if (opening?.screen !== "pick") return;
-    assert.equal(opening.title, "BOOK THE FIRST FIGHTER");
-    assert.equal(opening.act, "book");
-    assert.deepEqual(opening.choices, [
-      { id: 0, name: "Jason" },
-      { id: 2, name: "Chucky" },
-    ]);
-    const next = placeholderView(state({ phase: "pick", selectable: [1], fighters: null }));
-    if (next?.screen !== "pick") return;
-    assert.equal(next.act, "next-fighter");
-    assert.deepEqual(next.choices, [{ id: 1, name: "Freddy" }]);
+  it("does not open a book dialog while a fighter can be typed", () => {
+    for (const phase of ["waiting", "over", "pick"]) {
+      assert.equal(placeholderView(state({ phase, fighters: null })), null, phase);
+    }
   });
 
   it("shows the bet screen only in bet", () => {
-    for (const phase of ["gate", "waiting", "fight", "settle", "over"]) {
+    for (const phase of ["gate", "waiting", "pick", "fight", "settle", "over"]) {
       assert.equal(placeholderView(state({ phase, fighters: [0, 2] })), null, phase);
     }
   });
