@@ -88,6 +88,7 @@ describe("fightJobResultFromTurn", () => {
         winnerInjuries: ["cut"],
         nextOpponentSubname: "charlie",
         videoUrl: "https://cdn.example/videos/a.mp4",
+        videoStyle: "film",
         frameUrl: "https://cdn.example/frames/a.jpg",
       },
       8000,
@@ -115,6 +116,7 @@ describe("fightJobResultFromTurn", () => {
             winnerInjuries: [],
             nextOpponentSubname: "delta",
             videoUrl: "https://cdn.example/v.mp4",
+            videoStyle: "film",
             frameUrl: "https://cdn.example/f.jpg",
           },
           1000,
@@ -156,6 +158,7 @@ describe("createFightJobRunner", () => {
       rationale: "alpha by a cut",
       videoPrompt: "prompt",
       videoUrl: "https://cdn.example/videos/job.mp4",
+      videoStyle: "film",
       frameUrl: "https://cdn.example/frames/job.jpg",
       expandedPrompt: null,
     };
@@ -231,6 +234,7 @@ describe("createFightJobRunner", () => {
           rationale: "ok",
           videoPrompt: "p",
           videoUrl: "https://cdn.example/v.mp4",
+          videoStyle: "film",
           frameUrl: "https://cdn.example/f.jpg",
           expandedPrompt: null,
         };

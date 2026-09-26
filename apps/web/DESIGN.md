@@ -154,7 +154,7 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     touch. Exponential fog makes far things darker. The TV picture has no fog.
   - The tapes are real VHS cases (6 × 25 cm spines) in the room palette, never the resident's hue: black plastic,
     a `--sulfur` number sticker (the same colour as the numbers in the TV guide), an aged paper label with the short
-    name, and the face at the bottom, tinted with the same warm ramp as the fight video. Plain dark tapes fill the
+    name, and the face at the bottom, tinted with the same warm ramp as a film fight video. Plain dark tapes fill the
     rest of the shelf. A dead resident's tape stays, with a grey sticker and label and the name struck out. The
     spines are lit, with a little glow to stay readable.
   - The tape in your hand is the case: a black frame, a faint plastic shine, a `--rust` header, and the spine on its
@@ -168,8 +168,10 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     `DEAD`, with a static cut between cards.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. The name shows again after OK.
-  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
-    PROGRAM", the loser, and OK to collect.
+  - Bet: A and B with the odds and your stake. Fight: the video (`RoundState.videoStyle`). A film gets a warm,
+    low-res filter. A rotoscope is a 256×144 line drawing, so the TV reads it at those pixels and keeps its colours
+    (one per character, red or green blood). It is letterboxed: the whole drawing shows, never cropped, with black
+    bars. Settle: "WE INTERRUPT THIS PROGRAM", the loser, and OK to collect.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.

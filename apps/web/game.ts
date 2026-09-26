@@ -7,6 +7,7 @@ import {
   postBet,
   postVote,
   type ServerRoundState,
+  type VideoStyle,
 } from "./round-client.ts";
 import { formatPoolOdds } from "./odds.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
@@ -99,6 +100,7 @@ export type GameState = {
   voters: number;
   quorum: number;
   videoUrl: string | null;
+  videoStyle: VideoStyle | null;
   frameUrl: string | null;
   error: string | null;
 };
@@ -135,6 +137,7 @@ export const S: GameState = {
   voters: 0,
   quorum: 1,
   videoUrl: null,
+  videoStyle: null,
   frameUrl: null,
   error: null,
 };
@@ -177,6 +180,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.pool = [...state.pool] as [number, number];
   S.winner = state.winner === null ? -1 : state.winner;
   S.videoUrl = state.videoUrl;
+  S.videoStyle = state.videoStyle;
   S.frameUrl = state.frameUrl;
   S.error = state.error;
   // #114: a new bout must accept a fresh hold; do not keep the prior round's bet.
