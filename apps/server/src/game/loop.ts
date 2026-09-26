@@ -274,6 +274,19 @@ export class GameLoop {
     if (this.settleInFlight) {
       return;
     }
+    // Entering over mid-tick (failVideo / afterSettle) returns without resetting so
+    // the room can show the result once; the next tick starts the new season.
+    if (this.phase === "over") {
+      try {
+        this.resetFromOver();
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        console.error(
+          `resetFromOver failed (round ${String(this.round)}): ${detail}`,
+        );
+      }
+      return;
+    }
     this.kickHouseBot(now);
     if (this.phase === "countdown" && this.endsAt !== null && now >= this.endsAt) {
       await this.closeVoting(now);
