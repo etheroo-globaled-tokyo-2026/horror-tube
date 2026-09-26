@@ -89,27 +89,32 @@ jobs:
       - name: Run Postgres with TLS and check health + ffmpeg + index
         run: |
           set -euo pipefail
-          cert_dir="$(mktemp -d)"
           net="horror-tube-ci-$$"
           docker network create "$net"
-          openssl req -x509 -newkey rsa:2048 -nodes \
-            -keyout "${cert_dir}/ca.key" -out "${cert_dir}/ca.crt" \
-            -days 1 -subj "/CN=horror-tube-ci-ca"
-          openssl req -newkey rsa:2048 -nodes \
-            -keyout "${cert_dir}/server.key" -out "${cert_dir}/server.csr" \
-            -subj "/CN=ht-pg" \
-            -addext "subjectAltName=DNS:ht-pg,DNS:localhost"
-          openssl x509 -req -in "${cert_dir}/server.csr" \
-            -CA "${cert_dir}/ca.crt" -CAkey "${cert_dir}/ca.key" -CAcreateserial \
-            -out "${cert_dir}/server.crt" -days 1 \
-            -copy_extensions copy
-          chmod 755 "${cert_dir}"
-          chmod 644 "${cert_dir}/server.key" "${cert_dir}/server.crt" "${cert_dir}/ca.crt" "${cert_dir}/ca.key"
+          docker volume create ht-pg-certs
+          docker run --rm -v ht-pg-certs:/certs alpine:3.20 sh -c '
+            set -euo pipefail
+            apk add --no-cache openssl >/dev/null
+            openssl req -x509 -newkey rsa:2048 -nodes \
+              -keyout /certs/ca.key -out /certs/ca.crt \
+              -days 1 -subj "/CN=horror-tube-ci-ca"
+            openssl req -newkey rsa:2048 -nodes \
+              -keyout /certs/server.key -out /certs/server.csr \
+              -subj "/CN=ht-pg" \
+              -addext "subjectAltName=DNS:ht-pg,DNS:localhost"
+            openssl x509 -req -in /certs/server.csr \
+              -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+              -out /certs/server.crt -days 1 -copy_extensions copy
+            # postgres alpine runs as uid 70
+            chown -R 70:70 /certs
+            chmod 600 /certs/server.key /certs/ca.key
+            chmod 644 /certs/server.crt /certs/ca.crt
+          '
           pg_cid="$(docker run -d --name ht-pg --network "$net" \
             -e POSTGRES_PASSWORD=ci \
             -e POSTGRES_USER=ci \
             -e POSTGRES_DB=ci \
-            -v "${cert_dir}:/certs:ro" \
+            -v ht-pg-certs:/certs:ro \
             postgres:16-alpine \
             -c ssl=on \
             -c ssl_cert_file=/certs/server.crt \
@@ -126,7 +131,9 @@ jobs:
             sleep 1
           done
           DATABASE_URL="postgres://ci:ci@ht-pg:5432/ci"
-          DATABASE_CA_CERT="$(base64 -w0 < "${cert_dir}/ca.crt" 2>/dev/null || base64 < "${cert_dir}/ca.crt" | tr -d '\n')"
+          DATABASE_CA_CERT="$(docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
+            cat /certs/ca.crt | base64 -w0 2>/dev/null || docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
+            cat /certs/ca.crt | base64 | tr -d '\n')"
           cid="$(docker run -d --network "$net" \
             -e "GAME_PORT=${GAME_PORT}" \
             -e "DATABASE_URL=${DATABASE_URL}" \
@@ -137,6 +144,7 @@ jobs:
             docker rm -f "$cid" >/dev/null 2>&1 || true
             docker rm -f "$pg_cid" >/dev/null 2>&1 || true
             docker network rm "$net" >/dev/null 2>&1 || true
+            docker volume rm ht-pg-certs >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
           for i in $(seq 1 45); do
