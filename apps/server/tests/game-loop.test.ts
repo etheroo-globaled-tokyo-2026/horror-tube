@@ -1160,6 +1160,99 @@ describe("GameLoop phases", () => {
     assert.match(loop.getState().error ?? "", /VIDEO_TIMEOUT_SECONDS/u);
     assert.ok(settle.betCalls.some((c) => c.startsWith("cancel:")));
   });
+
+  it("tick after failVideo leaves over once then starts a new season at vote", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps();
+    const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
+    });
+    await loop.voteWithNullifier("auto-reset-fail", [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await loop.failVideo("fal render failed: timeout");
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().error, "fal render failed: timeout");
+
+    now += 1;
+    await loop.tick(now);
+    const after = loop.getState();
+    assert.notEqual(after.phase, "over");
+    assert.equal(after.phase, "vote");
+    assert.equal(after.round, 1);
+    assert.equal(after.champion, null);
+    assert.equal(after.error, null);
+  });
+
+  it("tick after season-ending settle leaves over once then starts a new season at vote", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps();
+    const duo = ["alpha", "bravo"];
+    const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: duo,
+      ensStatuses: ["alive", "alive"],
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
+    });
+    await loop.voteWithNullifier("auto-reset-settle", [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "auto-reset-settle" }));
+    loop.setOutcome(0, 0);
+    await loop.setVideoReady(
+      "https://cdn.example/v.mp4",
+      1,
+      "https://cdn.example/frames/seed.jpg",
+    );
+    await startPlayback(loop);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "fight");
+    now += 1;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "settle");
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().chars.filter((c) => c.alive).length, 1);
+
+    now += 1;
+    await loop.tick(now);
+    const after = loop.getState();
+    assert.notEqual(after.phase, "over");
+    assert.equal(after.phase, "vote");
+    assert.equal(after.round, 1);
+    assert.equal(after.champion, null);
+    assert.equal(after.chars.filter((c) => c.alive).length, 2);
+  });
 });
 
 describe("betting cutoff", () => {
