@@ -184,7 +184,13 @@ pays out. Stakes are not defined here (no stake columns).
 
 ## Client
 
-The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow server `RoundState` (SSE `/events` and `GET /round`). Votes go to the server; bets go through `/tx` once the web builds bet kinds (plan 4). The fight video is `RoundState.videoUrl`.
+The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow server `RoundState` (SSE `/events` and `GET /round`). Votes go to the server; bets go through `/tx`. The fight video is `RoundState.videoUrl`.
+
+Placeholder screens (`apps/web/placeholders.ts`, roots `[data-placeholder="vote"]` and
+`[data-placeholder="bet"]`) stand in for the final vote and bet UI. The server phase picks the
+screen (`vote`/`countdown`, then `bet`); the client runs no timer. The vote screen shows stored
+vote counts and `RoundState.tally`; the bet screen shows the stored `bettingClosesAt`. A rejected
+submission stays on the screen that sent it until dismissed. The final UI deletes these roots.
 
 ## Out of scope
 

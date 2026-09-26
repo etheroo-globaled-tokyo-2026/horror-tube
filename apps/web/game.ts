@@ -91,6 +91,7 @@ export type GameState = {
   picks: number[];
   cast: string | null;
   votes: Record<number, number>;
+  tally: ServerRoundState["tally"];
   fighters: Pair | null;
   story: string;
   winner: number;
@@ -131,6 +132,7 @@ export const S: GameState = {
   picks: [],
   cast: null,
   votes: {},
+  tally: null,
   fighters: null,
   story: "",
   winner: -1,
@@ -188,6 +190,24 @@ export async function refreshClaimable(): Promise<void> {
   render();
 }
 
+/** Bet on the live pool through POST /tx. Throws the server's or the wallet's reason. */
+export async function submitBet(side: 0 | 1, amt: number): Promise<string> {
+  if (S.poolId === null || S.poolId.trim() === "") throw new Error("Pool is not open yet.");
+  if (gameWallet === null) throw new Error("Wallet is not ready.");
+  if (bettingIds === null) throw new Error("Betting IDs are not loaded.");
+  const digest = await placeBet(
+    gameWallet,
+    toContractIds(bettingIds),
+    S.poolId,
+    side,
+    toUsdcUnits(amt),
+  );
+  S.bet = { side, amt };
+  log(`BET ${usd(amt)} ON ${side === 0 ? "A" : "B"} · ${digest.slice(0, 8)}`, "t-alive");
+  render();
+  return digest;
+}
+
 export async function loadBettingIds(
   fetchImpl: typeof fetch = fetch,
 ): Promise<BettingIds> {
@@ -230,6 +250,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.voters = state.voters;
   S.quorum = state.quorum;
   S.votes = { ...state.votes };
+  S.tally = state.tally;
   S.fighters = state.fighters;
   S.battleId = state.battleId;
   S.poolId = state.poolId;
@@ -606,44 +627,14 @@ document.addEventListener("click", (e) => {
     S.amt = Number(el.dataset.a);
     render();
   } else if (act === "bet") {
-    void (async () => {
-      if (S.bet) return;
-      if (S.poolId === null || S.poolId.trim() === "") {
-        note("BET REJECTED. Pool is not open yet.", "bad");
-        return;
-      }
-      if (gameWallet === null) {
-        note("BET REJECTED. Wallet is not ready.", "bad");
-        return;
-      }
-      if (bettingIds === null) {
-        note("BET REJECTED. Betting IDs are not loaded.", "bad");
-        return;
-      }
-      if (S.side !== 0 && S.side !== 1) {
-        note(`BET REJECTED. Side must be 0 or 1. Got ${String(S.side)}.`, "bad");
-        return;
-      }
-      const side = S.side as 0 | 1;
-      const amt = S.amt;
-      try {
-        const digest = await placeBet(
-          gameWallet,
-          toContractIds(bettingIds),
-          S.poolId,
-          side,
-          toUsdcUnits(amt),
-        );
-        S.bet = { side, amt };
-        log(`BET ${usd(amt)} ON ${side === 0 ? "A" : "B"} · ${digest.slice(0, 8)}`, "t-alive");
-        render();
-      } catch (error) {
-        note(
-          `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`,
-          "bad",
-        );
-      }
-    })();
+    if (S.bet) return;
+    if (S.side !== 0 && S.side !== 1) {
+      note(`BET REJECTED. Side must be 0 or 1. Got ${String(S.side)}.`, "bad");
+      return;
+    }
+    submitBet(S.side, S.amt).catch((error: unknown) => {
+      note(`BET REJECTED. ${error instanceof Error ? error.message : String(error)}`, "bad");
+    });
   } else if (act === "claim") {
     void (async () => {
       if (!S.claim) return;
