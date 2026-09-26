@@ -171,6 +171,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_APP_ID` | `TF_VAR_world_id_app_id` | from `.env` |
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
+| `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `production`) |
 
 `FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet).
 
@@ -197,6 +198,7 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${WORLD_ID_APP_ID:?WORLD_ID_APP_ID is required. See .env.example.}"
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
+  : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
   : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
@@ -214,6 +216,7 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_world_id_app_id="$WORLD_ID_APP_ID"
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
+  export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
   export SPACES_ACCESS_KEY_ID
   export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
   cd "$root/terraform"

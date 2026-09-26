@@ -23,6 +23,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@horror-tube/world-id':
+        specifier: workspace:*
+        version: link:../../packages/world-id
       dotenv:
         specifier: ^18.0.3
         version: 18.0.3
@@ -54,6 +57,9 @@ importers:
       '@mysten/sui':
         specifier: ^2.33.0
         version: 2.33.0(typescript@7.0.2)
+      '@worldcoin/idkit-core':
+        specifier: 4.3.0
+        version: 4.3.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4

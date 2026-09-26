@@ -31,7 +31,13 @@ import {
   type CoinBoxView,
   createCoinBox,
 } from "./coinbox.ts";
+import QRCode from "qrcode";
 import { getGameWallet } from "./wallet.ts";
+import {
+  fetchEnterRoomRequest,
+  startEnterRoomProof,
+  verifyEnterRoomProof,
+} from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -590,8 +596,8 @@ burnLight.position.set(STOOL.x, STOOL.top + 0.11, STOOL.z + 0.05);
 scene.add(burnLight);
 const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
-type Waiver = { step: Step; at: number; ink: number };
-const W8: Waiver = { step: "read", at: 0, ink: 0 };
+type Waiver = { step: Step; at: number; ink: number; qrUri: string };
+const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "" };
 const SCRIBBLE = Array.from({ length: 28 }, (_, i): [number, number] => [
   70 + i * 9,
   388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
@@ -1657,40 +1663,26 @@ function drawTV(): void {
     if (W8.step === "scan") {
       noise = 0.1;
       fill(COL.soot);
-      const cell = 12,
-        n = 25,
-        ox = (W - n * cell) / 2,
-        oy = 40;
-      seedT = 23;
-      g.fillStyle = COL.bone;
-      for (let y = 0; y < n; y++)
-        for (let x = 0; x < n; x++) {
-          const finder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(
-            ([fx = 0, fy = 0]) =>
-              x >= fx &&
-              x < fx + 7 &&
-              y >= fy &&
-              y < fy + 7 &&
-              (x === fx ||
-                x === fx + 6 ||
-                y === fy ||
-                y === fy + 6 ||
-                (x > fx + 1 && x < fx + 5 && y > fy + 1 && y < fy + 5)),
-          );
-          const inFinder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(([fx = 0, fy = 0]) => x >= fx && x < fx + 8 && y >= fy && y < fy + 8);
-          if (finder || (!inFinder && r() < 0.48))
-            g.fillRect(ox + x * cell, oy + y * cell, cell, cell);
-        }
-      text("SCAN WITH WORLD APP", 380, 30, COL.sulfur);
-      text("Orb only. We check it on our side.", 420, 24, COL.bone, "DotGothic16", 400);
+      if (W8.qrUri !== "") {
+        const { modules } = QRCode.create(W8.qrUri, { errorCorrectionLevel: "M" });
+        const pad = 36;
+        const cell = Math.floor(Math.min(W - pad * 2, 280) / modules.size);
+        const side = cell * modules.size;
+        const ox = Math.floor((W - side) / 2);
+        const oy = 28;
+        g.fillStyle = COL.bone;
+        g.fillRect(ox - 8, oy - 8, side + 16, side + 16);
+        g.fillStyle = COL.soot;
+        for (let row = 0; row < modules.size; row++)
+          for (let col = 0; col < modules.size; col++)
+            if (modules.get(row, col))
+              g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
+        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
+        text("Orb only. We check it on our side.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+      } else {
+        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
+        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+      }
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
@@ -2049,6 +2041,7 @@ function step(name: Step): void {
   STEP_SOUND.get(name)?.();
   hintText();
 }
+let scanAbort: AbortController | null = null;
 function sign(): void {
   if (W8.step !== "read") return;
   step("ink");
@@ -2057,11 +2050,35 @@ function sign(): void {
     W8.ink = Math.min(1, (performance.now() - t0) / 700);
     if (W8.ink < 1) return;
     clearInterval(inkTimer);
-    step("scan");
-    scanTimer = window.setTimeout(verified, 2800);
+    void beginWorldIdScan();
   }, 30);
 }
-let scanTimer = 0;
+async function beginWorldIdScan(): Promise<void> {
+  if (W8.step !== "ink" && W8.step !== "scan") return;
+  scanAbort?.abort();
+  scanAbort = new AbortController();
+  const { signal } = scanAbort;
+  W8.qrUri = "";
+  step("scan");
+  try {
+    const context = await fetchEnterRoomRequest();
+    if (signal.aborted) return;
+    const proof = await startEnterRoomProof(context);
+    if (signal.aborted) return;
+    W8.qrUri = proof.connectorURI;
+    const idkitResult = await proof.wait();
+    if (signal.aborted) return;
+    await verifyEnterRoomProof(idkitResult);
+    if (signal.aborted) return;
+    verified();
+  } catch (err) {
+    if (signal.aborted) return;
+    console.error(
+      `World ID enter-room failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    noOrb();
+  }
+}
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
@@ -2206,7 +2223,9 @@ $("#hint").addEventListener("click", (e) => {
 });
 function noOrb(): void {
   if (W8.step !== "read" && W8.step !== "scan") return;
-  clearTimeout(scanTimer);
+  scanAbort?.abort();
+  scanAbort = null;
+  W8.qrUri = "";
   step("off");
   setTimeout(() => step("burn"), LOW ? 0 : 500);
   setTimeout(() => step("dark"), LOW ? 0 : 3100);
@@ -2214,6 +2233,7 @@ function noOrb(): void {
 function retry(): void {
   cut(() => {
     W8.ink = 0;
+    W8.qrUri = "";
     burnLight.intensity = 0;
     paperDrawn = false;
     step("read");
