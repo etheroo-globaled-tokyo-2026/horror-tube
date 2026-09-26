@@ -58,7 +58,7 @@ fills the challenger slot from rotation after settle.
 
 ### Errors
 
-- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error and refund all bets.
+- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the on-chain battle (claimable refunds), refuse further `bet()` calls, and leave `bet` for `over` so `resetFromOver` can start a new season.
 - Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`). The fight plays `RoundState.videoUrl` only.
 
 ### Settle
