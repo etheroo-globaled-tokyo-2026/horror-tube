@@ -43,41 +43,69 @@ export const mmss = (s: number): string =>
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
-const CAST: [name: string, handle: string, kind: Kind][] = [
-  ["Jason Voorhees", "jason", "mask"],
-  ["Laurie Strode", "laurie", "hair"],
-  ["Freddy Krueger", "freddy", "hat"],
-  ["Michael Myers", "michael", "blank"],
-  ["Nancy Thompson", "nancy", "pony"],
-  ["Leatherface", "leatherface", "leather"],
-  ["Chucky", "chucky", "doll"],
-  ["Ellen Ripley", "ripley", "short"],
-  ["Pinhead", "pinhead", "pins"],
-  ["Ghostface", "ghostface", "ghost"],
-  ["Ash Williams", "ash", "chin"],
-  ["Pennywise", "pennywise", "clown"],
-  ["Candyman", "candyman", "hook"],
-  ["Sidney Prescott", "sidney", "hair"],
-  ["Samara", "samara", "girl"],
-  ["Van Helsing", "vanhelsing", "straw"],
-  ["Annabelle", "annabelle", "doll"],
-  ["Art the Clown", "art", "clown"],
-  ["Lorraine Warren", "lorraine", "cross"],
-  ["Victor Crowley", "victor", "leather"],
-  ["The Creeper", "creeper", "hat"],
-  ["Ed Warren", "ed", "cross"],
-  ["Kayako", "kayako", "girl"],
-  ["Hannibal Lecter", "hannibal", "blank"],
-  ["Alice Hardy", "alice", "pony"],
-  ["Frankenstein", "frankenstein", "chin"],
-  ["Jigsaw", "jigsaw", "doll"],
-  ["Tommy Jarvis", "tommy", "short"],
-  ["Count Dracula", "dracula", "blank"],
-  ["Esther", "esther", "girl"],
-  ["Kirsty Cotton", "kirsty", "hair"],
-  ["Dr. Loomis", "loomis", "chin"],
+const CAST: [name: string, handle: string, kind: Kind, bio: string[]][] = [
+  [
+    "Jason Voorhees",
+    "jason",
+    "mask",
+    ["Drowned at camp. Came back.", "Never runs. Always arrives.", "The lake still wants him."],
+  ],
+  [
+    "Freddy Krueger",
+    "freddy",
+    "hat",
+    ["Visits while you sleep.", "Wears the same sweater.", "Hates the smell of coffee."],
+  ],
+  [
+    "Leatherface",
+    "leatherface",
+    "leather",
+    ["Family man. Big family.", "Wears what he can find.", "The saw is always warm."],
+  ],
+  [
+    "Chucky",
+    "chucky",
+    "doll",
+    ["Small. Loud. Sharp.", "Someone else lives inside.", "Wants a new body. Yours."],
+  ],
+  [
+    "Pinhead",
+    "pinhead",
+    "pins",
+    ["Came when the box opened.", "Calls pain a gift.", "Speaks very politely."],
+  ],
+  [
+    "Ghostface",
+    "ghostface",
+    "ghost",
+    ["Likes scary movies.", "Could be anyone. Often is.", "Always calls first."],
+  ],
+  [
+    "Pennywise",
+    "pennywise",
+    "clown",
+    ["Lives under the town.", "Wakes every 27 years.", "Knows what scares you."],
+  ],
+  [
+    "Samara",
+    "samara",
+    "girl",
+    ["Lived at the bottom of a well.", "Watch the tape. Get a call.", "Seven days. Count them."],
+  ],
+  [
+    "Frankenstein",
+    "frankenstein",
+    "chin",
+    ["Stitched from many men.", "Afraid of fire.", "Wanted a friend. Killed one."],
+  ],
+  [
+    "Count Dracula",
+    "dracula",
+    "blank",
+    ["Old money. Old country.", "No reflection in mirrors.", "Only enters if invited."],
+  ],
 ];
-const CAPS = {
+export const CAPS = {
   mask: ["machete", "regrowth", "silence"],
   hat: ["claws", "dream walk", "burns"],
   blank: ["kitchen knife", "patience", "the mask"],
@@ -120,6 +148,8 @@ export type Character = {
   ens: string;
   hue: Hue;
   kind: Kind;
+  bio: string[];
+  fights: number;
   alive: boolean;
   kills: number;
   damage: number;
@@ -208,13 +238,15 @@ export const note = (text: string, kind = ""): void => {
 };
 
 export function newSeason(): void {
-  S.chars = CAST.map(([name, handle, kind], id) => ({
+  S.chars = CAST.map(([name, handle, kind, bio], id) => ({
     id,
     name,
     short: (name.split(" ").at(-1) ?? name).toUpperCase(),
     ens: handle + ".horrortube.eth",
     hue: HUES[id % 3],
     kind,
+    bio,
+    fights: 0,
     alive: true,
     kills: 0,
     damage: 0,
@@ -288,6 +320,8 @@ function startSettle(): void {
   const w = char(f[S.winner] ?? -1),
     l = char(f[1 - S.winner] ?? -1);
   l.alive = false;
+  w.fights++;
+  l.fights++;
   w.kills++;
   w.damage = Math.min(95, w.damage + S.dmg);
   const lost = (w.damage >= 67 ? 2 : w.damage >= 34 ? 1 : 0) - w.lost;

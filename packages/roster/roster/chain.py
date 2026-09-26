@@ -10,9 +10,9 @@ from typing import Any, Mapping, Sequence
 
 from roster.validate import Character, RosterValidationError
 
-ROOT = Path(__file__).resolve().parents[1]
-TSX = ROOT / "node_modules" / ".bin" / "tsx"
-CHAIN_SCRIPT = ROOT / "scripts" / "character-subnames.ts"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+TSX = REPO_ROOT / "packages" / "ens" / "node_modules" / ".bin" / "tsx"
+CHAIN_SCRIPT = REPO_ROOT / "packages" / "ens" / "scripts" / "character-subnames.ts"
 
 
 def _require_tsx() -> Path:
@@ -31,7 +31,7 @@ def run_chain(args: Sequence[str]) -> None:
     cmd = [str(tsx), str(CHAIN_SCRIPT), *args]
     print(f"chain: {' '.join(cmd)}", flush=True)
     try:
-        completed = subprocess.run(cmd, cwd=str(ROOT), check=False)
+        completed = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
     except OSError as exc:
         raise RosterValidationError(
             f"Failed to run chain script {CHAIN_SCRIPT}: {exc}"
@@ -98,3 +98,99 @@ def unregister_labels(labels: Sequence[str]) -> None:
         labels_path = Path(tmp) / "labels.json"
         labels_path.write_text(json.dumps(list(labels)) + "\n", encoding="utf-8")
         run_chain(["unregister", "--labels", str(labels_path)])
+
+
+def list_registered() -> dict[str, Character]:
+    """Discover every registered character subname and read its text records."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "registered.json"
+        run_chain(["list", "--out", str(out_path)])
+        try:
+            raw: Any = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RosterValidationError(
+                f"Failed to read registered roster list {out_path}: {exc}"
+            ) from exc
+    if not isinstance(raw, dict):
+        raise RosterValidationError(
+            f"Registered roster list must be an object keyed by label. "
+            f"Got {type(raw).__name__}."
+        )
+    out: dict[str, Character] = {}
+    for label, value in raw.items():
+        if not isinstance(label, str) or not isinstance(value, dict):
+            raise RosterValidationError(
+                f"Registered roster entry for {label!r} must be a character object."
+            )
+        for key in ("label", "look", "brief", "injuries", "status", "icon"):
+            if key not in value or not isinstance(value[key], str):
+                raise RosterValidationError(
+                    f"Registered roster {label!r} missing string field {key!r}."
+                )
+        out[label] = {
+            "label": value["label"],
+            "look": value["look"],
+            "brief": value["brief"],
+            "injuries": value["injuries"],
+            "status": value["status"],
+            "icon": value["icon"],
+        }
+    return out
+
+
+def set_icons(
+    updates: Sequence[Mapping[str, str]],
+) -> list[dict[str, str]]:
+    """setText only the icon key for each update. Does not touch other text keys."""
+    if len(updates) == 0:
+        raise RosterValidationError(
+            "set_icons requires at least one {label, icon} update. Refusing empty list."
+        )
+    payload: list[dict[str, str]] = []
+    for entry in updates:
+        label = entry.get("label")
+        icon = entry.get("icon")
+        if not isinstance(label, str) or label.strip() == "":
+            raise RosterValidationError(
+                f"set_icons update missing non-empty label. Got: {entry!r}"
+            )
+        if not isinstance(icon, str) or not icon.startswith("https://"):
+            raise RosterValidationError(
+                f"set_icons for {label!r}: icon must be an https URL. Got: {icon!r}"
+            )
+        payload.append({"label": label.strip(), "icon": icon.strip()})
+
+    with tempfile.TemporaryDirectory() as tmp:
+        updates_path = Path(tmp) / "icon-updates.json"
+        out_path = Path(tmp) / "icon-results.json"
+        updates_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        run_chain(["set-icon", "--updates", str(updates_path), "--out", str(out_path)])
+        try:
+            raw: Any = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RosterValidationError(
+                f"Failed to read set-icon results {out_path}: {exc}"
+            ) from exc
+    if not isinstance(raw, list):
+        raise RosterValidationError(
+            f"set-icon results must be a JSON array. Got {type(raw).__name__}."
+        )
+    results: list[dict[str, str]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise RosterValidationError(
+                f"set-icon result entry must be an object. Got {type(entry).__name__}."
+            )
+        for key in ("label", "icon", "txHash"):
+            if key not in entry or not isinstance(entry[key], str) or entry[key].strip() == "":
+                raise RosterValidationError(
+                    f"set-icon result missing string field {key!r}: {entry!r}"
+                )
+        results.append(
+            {
+                "label": entry["label"],
+                "icon": entry["icon"],
+                "txHash": entry["txHash"],
+            }
+        )
+    return results

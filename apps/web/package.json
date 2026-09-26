@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 8123 --strictPort",
+    "dev": "vite --port ${PORT:-8123} --strictPort",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
