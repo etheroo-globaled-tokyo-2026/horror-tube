@@ -10,6 +10,7 @@ import {
   DASHBOARD_PORT,
   decodeRegisterLabel,
   parseDashboardPort,
+  parseListenerPids,
   recentLogScanChunks,
   renderDashboardHtml,
   type CharacterSheet,
@@ -99,5 +100,13 @@ describe("dashboard env (unit, no network)", () => {
 
   it("a non-numeric DASHBOARD_PORT fails and names the variable", () => {
     assert.throws(() => parseDashboardPort("nope"), /DASHBOARD_PORT/u);
+  });
+
+  it("listener pid output skips blanks and this process", () => {
+    assert.deepEqual(parseListenerPids("\n42\n\n99\n", 99), [42]);
+  });
+
+  it("a non-pid lsof line fails", () => {
+    assert.throws(() => parseListenerPids("nope\n", 1), /lsof/u);
   });
 });

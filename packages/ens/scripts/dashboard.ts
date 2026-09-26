@@ -1,4 +1,5 @@
 import { config as loadDotenv } from "dotenv";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -145,6 +146,107 @@ export function parseDashboardPort(value: string | undefined): number {
     );
   }
   return port;
+}
+
+export function parseListenerPids(stdout: string, selfPid: number): number[] {
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      continue;
+    }
+    if (!/^[0-9]+$/u.test(trimmed)) {
+      throw new Error(`lsof listener line was not a pid. Got: ${JSON.stringify(trimmed)}`);
+    }
+    const pid = Number(trimmed);
+    if (pid === selfPid) {
+      continue;
+    }
+    pids.push(pid);
+  }
+  return pids;
+}
+
+function lsofListeners(port: number): Promise<string> {
+  return new Promise((resolvePromise, reject) => {
+    execFile(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      { encoding: "utf8" },
+      (error, stdout, stderr) => {
+        if (error === null) {
+          resolvePromise(stdout);
+          return;
+        }
+        const exitCode = "code" in error ? error.code : undefined;
+        if (exitCode === 1) {
+          resolvePromise(stdout);
+          return;
+        }
+        const detail = stderr.trim() === "" ? error.message : stderr.trim();
+        reject(new Error(`lsof failed for port ${port}: ${detail}`));
+      },
+    );
+  });
+}
+
+function stopPid(pid: number, signal: NodeJS.Signals, port: number): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code === "ESRCH") {
+      return;
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to send ${signal} to pid ${pid} on port ${port}: ${detail}`,
+    );
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
+
+async function waitUntilPortFree(port: number, attempts: number): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const stdout = await lsofListeners(port);
+    if (parseListenerPids(stdout, process.pid).length === 0) {
+      return true;
+    }
+    await delay(100);
+  }
+  return false;
+}
+
+export async function reclaimPort(port: number): Promise<number[]> {
+  const stdout = await lsofListeners(port);
+  const pids = parseListenerPids(stdout, process.pid);
+  if (pids.length === 0) {
+    return [];
+  }
+  for (const pid of pids) {
+    stopPid(pid, "SIGTERM", port);
+    console.error(`Sent SIGTERM to pid ${pid} listening on port ${port}`);
+  }
+  if (await waitUntilPortFree(port, 10)) {
+    return pids;
+  }
+  const remaining = parseListenerPids(await lsofListeners(port), process.pid);
+  for (const pid of remaining) {
+    stopPid(pid, "SIGKILL", port);
+    console.error(`Sent SIGKILL to pid ${pid} listening on port ${port}`);
+  }
+  if (await waitUntilPortFree(port, 10)) {
+    return pids;
+  }
+  const left = parseListenerPids(await lsofListeners(port), process.pid);
+  throw new Error(
+    `Port ${port} still in use after SIGKILL. pid=${left.join(",")}`,
+  );
 }
 
 function labelId(label: string): bigint {
@@ -556,6 +658,11 @@ async function main(): Promise<void> {
   const port = parseDashboardPort(portEnv);
   const portSource =
     portEnv === undefined || portEnv.trim() === "" ? "fixed" : "DASHBOARD_PORT";
+
+  const stopped = await reclaimPort(port);
+  if (stopped.length > 0) {
+    console.error(`Reclaimed port ${port} from pid ${stopped.join(",")}`);
+  }
 
   const server = createServer((req, res) => {
     void (async () => {
