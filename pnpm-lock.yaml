@@ -39,6 +39,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@horror-tube/ens':
+        specifier: workspace:*
+        version: link:../../packages/ens
       '@mysten/dapp-kit-core':
         specifier: ^1.6.32
         version: 1.6.32(@mysten/sui@2.33.0(typescript@7.0.2))(typescript@7.0.2)
@@ -70,6 +73,8 @@ importers:
       vite:
         specifier: ^7.1.0
         version: 7.3.6(@types/node@26.6.2)(tsx@4.23.15)
+
+  packages/contracts: {}
 
   packages/ens:
     dependencies:

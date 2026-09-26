@@ -12,6 +12,7 @@
 terraform/terraform.tfvars
 *.md
 !apps/web/DESIGN.md
+!packages/ens/scripts/pin/**/*.md
 docs
 tools
 scripts
