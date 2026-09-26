@@ -19,6 +19,8 @@ const StateJson = v.object({
     phase: v.string(),
     fighters: v.nullable(v.tuple([v.number(), v.number()])),
     battleId: v.nullable(v.string()),
+    votes: v.array(v.number()),
+    voters: v.number(),
   }),
 });
 const ErrorJson = v.object({
@@ -30,9 +32,9 @@ const ErrorJson = v.object({
 function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): GameLoop {
   return new GameLoop({
     config: {
-      quorumVotes: 2,
-      voteCountdownSeconds: 10,
-      bettingCloseAfterVideoStartSeconds: 5,
+      quorumVotes: 5,
+      voteCountdownSeconds: 30,
+      bettingWindowSeconds: 5,
       videoTimeoutSeconds: 300,
       settleSeconds: 8,
     },
@@ -115,92 +117,74 @@ describe("session routes", () => {
     return fetch(`${base}${path}`, { method: "POST", headers, body });
   }
 
-  it("POST /start needs a waiver session and leaves the game waiting without one", async () => {
+  it("POST /vote needs a waiver session and leaves the game waiting without one", async () => {
     const game = testLoop();
     const base = await listen(game, PEPPER);
-    const res = await post(base, "/start", "");
+    const res = await post(base, "/vote", JSON.stringify({ fighter: 0 }));
     assert.equal(res.status, 401);
     assert.match(
       v.parse(ErrorJson, await res.json()).error,
       /Authorization Bearer session is required/u,
     );
     assert.equal(game.getState().phase, "waiting");
+    assert.equal(game.getState().voters, 0);
   });
 
-  it("POST /start opens one bout and refuses a second with 409 bout_open", async () => {
-    const opens: string[] = [];
-    const game = testLoop(new MemoryRoundStore(), opens);
+  it("POST /vote answers 400 for a fighter that is not on the roster", async () => {
+    const game = testLoop();
+    const base = await listen(game, PEPPER);
+    const res = await post(
+      base,
+      "/vote",
+      JSON.stringify({ fighter: 99 }),
+      issueSession("111", PEPPER),
+    );
+    assert.equal(res.status, 400);
+    const body = v.parse(ErrorJson, await res.json());
+    assert.match(body.error, /fighter rejected: character id 99 is not on the roster/u);
+    assert.equal(game.getState().voters, 0);
+  });
+
+  it("POST /vote refuses a second vote from the same session with 409 already_voted", async () => {
+    const game = testLoop();
     const base = await listen(game, PEPPER);
     const session = issueSession("111", PEPPER);
 
-    const first = await post(base, "/start", JSON.stringify({ fighter: 0 }), session);
+    const first = await post(base, "/vote", JSON.stringify({ fighter: 0 }), session);
     assert.equal(first.status, 200);
-    const started = v.parse(StateJson, await first.json()).state;
-    assert.equal(started.phase, "vote");
-    assert.deepEqual(started.fighters, [0, 1]);
-    assert.equal(started.battleId, null);
 
-    const second = await post(
-      base,
-      "/start",
-      JSON.stringify({ fighter: 0 }),
-      issueSession("222", PEPPER),
-    );
+    const second = await post(base, "/vote", JSON.stringify({ fighter: 1 }), session);
     assert.equal(second.status, 409);
-    const refused = v.parse(ErrorJson, await second.json());
-    assert.equal(refused.code, "bout_open");
-    assert.match(refused.error, /start refused: a bout is already open \(phase=vote/u);
-    assert.deepEqual(opens, []);
+    const body = v.parse(ErrorJson, await second.json());
+    assert.equal(body.code, "already_voted");
+    assert.equal(game.getState().voters, 1, "the duplicate vote was not counted");
   });
 
-  it("POST /start answers 500 start_failed naming the failure and stays waiting", async () => {
-    const roundStore = new MemoryRoundStore();
-    roundStore.startSeason = async () => {
-      throw new Error("INSERT INTO seasons failed: disk full");
-    };
-    const game = testLoop(roundStore);
+  it("POST /vote counts a fresh vote and returns the state with it included", async () => {
+    const game = testLoop();
     const base = await listen(game, PEPPER);
     const res = await post(
       base,
-      "/start",
+      "/vote",
       JSON.stringify({ fighter: 0 }),
       issueSession("111", PEPPER),
     );
-    assert.equal(res.status, 500);
-    const body = v.parse(ErrorJson, await res.json());
-    assert.equal(body.code, "start_failed");
-    assert.match(body.error, /disk full/u);
-    assert.equal(game.getState().phase, "waiting");
-  });
-
-  it("POST /playback-start needs a session and is refused outside the bet phase", async () => {
-    const base = await listen(testLoop(), PEPPER);
-    const anonymous = await post(base, "/playback-start", JSON.stringify({ battleId: "x" }));
-    assert.equal(anonymous.status, 401);
-    const res = await post(
-      base,
-      "/playback-start",
-      JSON.stringify({ battleId: "x" }),
-      issueSession("111", PEPPER),
-    );
-    assert.equal(res.status, 409);
-    assert.match(
-      v.parse(ErrorJson, await res.json()).error,
-      /playback start is only accepted in the bet phase/u,
-    );
+    assert.equal(res.status, 200);
+    const state = v.parse(StateJson, await res.json()).state;
+    assert.equal(state.phase, "waiting");
+    assert.equal(state.voters, 1);
+    assert.deepEqual(state.votes, [1, 0, 0]);
   });
 
   it("session routes answer 500 when WALLET_SECRET_PEPPER is missing", async () => {
     const base = await listen(testLoop(), undefined);
-    for (const path of ["/start", "/playback-start"]) {
-      const res = await post(
-        base,
-        path,
-        JSON.stringify({ battleId: "x" }),
-        issueSession("111", PEPPER),
-      );
-      assert.equal(res.status, 500, path);
-      assert.match(v.parse(ErrorJson, await res.json()).error, /WALLET_SECRET_PEPPER/u);
-    }
+    const res = await post(
+      base,
+      "/vote",
+      JSON.stringify({ fighter: 0 }),
+      issueSession("111", PEPPER),
+    );
+    assert.equal(res.status, 500);
+    assert.match(v.parse(ErrorJson, await res.json()).error, /WALLET_SECRET_PEPPER/u);
   });
 });

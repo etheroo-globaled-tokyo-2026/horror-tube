@@ -239,12 +239,12 @@ variable "house_bot_stake_units" {
 }
 
 variable "quorum_votes" {
-  description = "QUORUM_VOTES: humans plus house bots needed before the vote countdown (docs/game-loop.md). Required; no default."
+  description = "QUORUM_VOTES: votes (humans plus house bots) needed before the fighter vote starts closing (docs/game-loop.md). Required; no default."
   type        = number
 }
 
 variable "vote_countdown_seconds" {
-  description = "VOTE_COUNTDOWN_SECONDS after quorum (docs/game-loop.md). Required; no default."
+  description = "VOTE_COUNTDOWN_SECONDS: seconds the fighter vote stays open after quorum (docs/game-loop.md). Required; no default."
   type        = number
 }
 
@@ -258,8 +258,8 @@ variable "pairing_timeout_seconds" {
   type        = number
 }
 
-variable "betting_close_after_video_start_seconds" {
-  description = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: seconds after fight playback starts until betting closes (docs/game-loop.md). Required; no default."
+variable "betting_window_seconds" {
+  description = "BETTING_WINDOW_SECONDS: seconds bets stay open after the fight video is ready (docs/game-loop.md). Required; no default."
   type        = number
 }
 

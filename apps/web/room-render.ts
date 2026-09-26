@@ -9,8 +9,8 @@ import { COL } from "./room-palette.ts";
 
 const canvas = $("#view");
 if (!(canvas instanceof HTMLCanvasElement)) throw new Error("#view is not a canvas");
-let ps1 = Number(localStorage.getItem("ps1") ?? 0.25);
-let ps1Text = Number(localStorage.getItem("ps1Text") ?? 0.1);
+const ps1 = 0.41;
+const ps1Text = 0.1;
 export const textTex = <T extends THREE.Texture>(t: T): T => {
   t.userData.text = true;
   return t;
@@ -167,19 +167,6 @@ export function size() {
   camera.updateProjectionMatrix();
 }
 addEventListener("resize", size);
-for (const [id, get, set] of [
-  ["ps1", () => ps1, (v: number) => (ps1 = v)],
-  ["ps1Text", () => ps1Text, (v: number) => (ps1Text = v)],
-] as const) {
-  const el = $(`#${id}`);
-  if (!(el instanceof HTMLInputElement)) continue;
-  el.value = String(get());
-  el.addEventListener("input", () => {
-    set(Number(el.value));
-    localStorage.setItem(id, el.value);
-    size();
-  });
-}
 size();
 
 export { canvas };
