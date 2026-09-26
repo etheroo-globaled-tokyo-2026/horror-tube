@@ -299,6 +299,13 @@ export type EnsSettlePort = {
   settle: (battleId: string, side: 0 | 1) => Promise<string>;
 };
 
+export function readEnsWriteEnv(env: NodeJS.ProcessEnv = process.env): void {
+  parseEnsLabel(requiredSettleEnv("ENS_LABEL", env));
+  requiredSettleEnv("SEPOLIA_RPC_URL", env);
+  loadAgentKey(env);
+  loadEthRegistryAddress();
+}
+
 export function createEnsChainWritePorts(
   env: NodeJS.ProcessEnv = process.env,
   sui?: EnsSettlePort,

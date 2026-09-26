@@ -29,6 +29,9 @@ importers:
       '@horror-tube/fight':
         specifier: workspace:*
         version: link:../../packages/fight
+      '@horror-tube/fight-media':
+        specifier: workspace:*
+        version: link:../../packages/fight-media
       '@horror-tube/world-id':
         specifier: workspace:*
         version: link:../../packages/world-id
