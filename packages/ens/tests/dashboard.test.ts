@@ -1,21 +1,22 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
-import { encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
+import { encodeFunctionData, type Hex } from "viem";
 
 import { userRegistryAbi } from "../scripts/abis.js";
 import {
+  MAX_LOG_CHUNK_BLOCKS,
+  MAX_RECENT_LOG_CHUNKS,
+  MIN_LOG_BLOCK,
+  DASHBOARD_PORT,
   decodeRegisterLabel,
-  findContractBirthBlock,
-  findTransferLogStartBlock,
-  isPrunedHistoricalStateError,
+  ensAppUrl,
+  parseDashboardPort,
+  parseListenerPids,
+  recentLogScanChunks,
   renderDashboardHtml,
+  sepoliaAddressUrl,
   type CharacterSheet,
 } from "../scripts/dashboard.js";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("dashboard register calldata (unit, no network)", () => {
   it("decoding a register calldata returns the label", () => {
@@ -41,11 +42,40 @@ describe("dashboard register calldata (unit, no network)", () => {
   });
 });
 
+describe("dashboard recent log windows (unit, no network)", () => {
+  it("walks backward in chunks of at most 49999 blocks from head", () => {
+    const latest = 11_785_000n;
+    const chunks = recentLogScanChunks(latest);
+    assert.equal(chunks.length, MAX_RECENT_LOG_CHUNKS);
+    assert.equal(chunks[0]!.toBlock, latest);
+    assert.equal(chunks[0]!.fromBlock, latest - (MAX_LOG_CHUNK_BLOCKS - 1n));
+    for (const chunk of chunks) {
+      const span = chunk.toBlock - chunk.fromBlock + 1n;
+      assert.ok(span <= MAX_LOG_CHUNK_BLOCKS);
+      assert.ok(chunk.fromBlock >= MIN_LOG_BLOCK);
+    }
+    assert.equal(chunks[1]!.toBlock, chunks[0]!.fromBlock - 1n);
+    assert.equal(
+      chunks[3]!.fromBlock,
+      latest - 4n * MAX_LOG_CHUNK_BLOCKS + 1n,
+    );
+  });
+
+  it("never includes block 0 when head is near genesis", () => {
+    const chunks = recentLogScanChunks(100n, 4, 49999n);
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0]!.fromBlock, MIN_LOG_BLOCK);
+    assert.equal(chunks[0]!.toBlock, 100n);
+  });
+});
+
 describe("dashboard HTML (unit, no network)", () => {
   it("rendered HTML escapes < and quotes in look/brief", () => {
+    const owner = "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02";
     const sheet: CharacterSheet = {
       label: "pinhead",
       name: "pinhead.horrortube.eth",
+      owner,
       look: `<script>alert("x")</script>`,
       brief: `He said "boo" & left`,
       injuries: "",
@@ -57,130 +87,34 @@ describe("dashboard HTML (unit, no network)", () => {
     assert.ok(html.includes("&lt;script&gt;"));
     assert.ok(html.includes("&quot;boo&quot;"));
     assert.ok(html.includes("&amp; left"));
+    assert.ok(html.includes(`href="${ensAppUrl(sheet.name)}"`));
+    assert.ok(html.includes(`href="${sepoliaAddressUrl(owner)}"`));
+    assert.ok(html.includes(owner));
   });
 });
 
 describe("dashboard env (unit, no network)", () => {
-  it("spawning with DASHBOARD_PORT empty exits and names the variable", async () => {
-    const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
-    const result = await new Promise<{
-      code: number | null;
-      stdout: string;
-      stderr: string;
-    }>((resolvePromise, rejectPromise) => {
-      const child = spawn(tsxBin, [join(repoRoot, "scripts", "dashboard.ts")], {
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          ENS_LABEL: "horrortube",
-          SEPOLIA_RPC_URL: "http://127.0.0.1:1",
-          DASHBOARD_PORT: "",
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
-      });
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-      child.on("error", rejectPromise);
-      child.on("close", (code) => {
-        resolvePromise({ code, stdout, stderr });
-      });
-    });
-    assert.notEqual(result.code, 0);
-    assert.match(result.stderr, /DASHBOARD_PORT/u);
+  it("blank DASHBOARD_PORT uses the fixed port", () => {
+    assert.equal(DASHBOARD_PORT, 8130);
+    assert.equal(parseDashboardPort(undefined), 8130);
+    assert.equal(parseDashboardPort(""), 8130);
+    assert.equal(parseDashboardPort("   "), 8130);
+  });
+
+  it("DASHBOARD_PORT overrides the fixed port", () => {
+    assert.equal(parseDashboardPort("9000"), 9000);
+  });
+
+  it("a non-numeric DASHBOARD_PORT fails and names the variable", () => {
+    assert.throws(() => parseDashboardPort("nope"), /DASHBOARD_PORT/u);
+  });
+
+  it("listener pid output skips blanks and this process", () => {
+    assert.deepEqual(parseListenerPids("\n42\n\n99\n", 99), [42]);
+  });
+
+  it("a non-pid lsof line fails", () => {
+    assert.throws(() => parseListenerPids("nope\n", 1), /lsof/u);
   });
 });
 
-const SUBREGISTRY = "0x0000000000000000000000000000000000000001" as Address;
-
-function discoveryClient(behavior: {
-  latest: bigint;
-  codeFrom?: bigint;
-  failBelow?: bigint;
-  failMessage?: string;
-  logsInRange?: { from: bigint; to: bigint; hash: Hex }[];
-}): PublicClient {
-  return {
-    async getBlockNumber() {
-      return behavior.latest;
-    },
-    async getBytecode(args: { blockNumber?: bigint }) {
-      const block = args.blockNumber ?? behavior.latest;
-      if (behavior.failBelow !== undefined && block < behavior.failBelow) {
-        throw new Error(behavior.failMessage ?? "historical state is not available");
-      }
-      if (behavior.codeFrom !== undefined && block >= behavior.codeFrom) {
-        return "0x1234" as Hex;
-      }
-      return "0x";
-    },
-    async getLogs(args: { fromBlock?: bigint; toBlock?: bigint }) {
-      const from = args.fromBlock ?? 0n;
-      const to = args.toBlock ?? behavior.latest;
-      return (behavior.logsInRange ?? [])
-        .filter((log) => log.from <= to && log.to >= from)
-        .map((log) => ({ transactionHash: log.hash }));
-    },
-  } as PublicClient;
-}
-
-describe("pruned historical state (unit, no network)", () => {
-  it("recognizes pruned-state errors and rejects unrelated RPC failures", () => {
-    assert.equal(
-      isPrunedHistoricalStateError("missing trie node: historical state is not available"),
-      true,
-    );
-    assert.equal(isPrunedHistoricalStateError("state pruned"), true);
-    assert.equal(isPrunedHistoricalStateError("history has been pruned"), true);
-    assert.equal(isPrunedHistoricalStateError("RPC method is not available"), false);
-    assert.equal(isPrunedHistoricalStateError("Unknown block 10"), false);
-  });
-
-  it("finds the birth block when historical bytecode reads succeed", async () => {
-    const birth = await findContractBirthBlock(
-      discoveryClient({ latest: 100n, codeFrom: 40n }),
-      SUBREGISTRY,
-    );
-    assert.equal(birth, 40n);
-    const start = await findTransferLogStartBlock(
-      discoveryClient({ latest: 100n, codeFrom: 40n }),
-      SUBREGISTRY,
-    );
-    assert.equal(start, 40n);
-  });
-
-  it("propagates a getBytecode failure that is not pruned state", async () => {
-    await assert.rejects(
-      () =>
-        findContractBirthBlock(
-          discoveryClient({
-            latest: 100n,
-            failBelow: 101n,
-            failMessage: "RPC method is not available",
-          }),
-          SUBREGISTRY,
-        ),
-      /RPC method is not available/u,
-    );
-  });
-
-  it("walks TransferSingle logs backward when history is pruned", async () => {
-    const hash =
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Hex;
-    const start = await findTransferLogStartBlock(
-      discoveryClient({
-        latest: 50000n,
-        codeFrom: 50000n,
-        failBelow: 50000n,
-        logsInRange: [{ from: 10000n, to: 49999n, hash }],
-      }),
-      SUBREGISTRY,
-    );
-    assert.equal(start, 10000n);
-  });
-});
