@@ -9,7 +9,6 @@ const client = createClient({ network, grpcUrl: requiredEnv("SUI_GRPC_URL") });
 const coinType = requiredEnv("SUI_USDC_TYPE");
 const feeBps = readUnits("BET_FEE_BPS");
 const minBet = readUnits("SUI_MIN_BET");
-const sponsor = requiredEnv("SUI_BET_SPONSOR");
 const admin = readKeypair("SUI_ADMIN_PRIVATE_KEY");
 const operator = readKeypair("SUI_OPERATOR_PRIVATE_KEY").toSuiAddress();
 
@@ -37,17 +36,12 @@ const published = await execute(client, admin, publish);
 const packageId = publishedPackageId(published);
 const adminCap = createdId(published, "::betting::AdminCap");
 
-console.log(`Creating the house (fee ${feeBps} bps, min bet ${minBet}, sponsor ${sponsor})…`);
+console.log(`Creating the house (fee ${feeBps} bps, min bet ${minBet})…`);
 const create = new Transaction();
 create.moveCall({
   target: `${packageId}::betting::create_house`,
   typeArguments: [coinType],
-  arguments: [
-    create.object(adminCap),
-    create.pure.u64(feeBps),
-    create.pure.u64(minBet),
-    create.pure.address(sponsor),
-  ],
+  arguments: [create.object(adminCap), create.pure.u64(feeBps), create.pure.u64(minBet)],
 });
 const houseId = createdId(await execute(client, admin, create), "::betting::House<");
 
