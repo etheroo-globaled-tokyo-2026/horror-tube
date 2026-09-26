@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars (gitignored). Never commit terraform.tfvars.
-# DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
-# for that one terraform command only. See README.md.
+# DigitalOcean API token is NOT set here — pass TF_VAR_do_token from DO_KEY
+# in the repo-root .env. Do not call op read. See README.md.
 #
 # App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*, SHINAMI_ACCESS_KEY,
 # WALLET_SECRET_PEPPER, SUI_USDC_TYPE, SUI_OPERATOR_PRIVATE_KEY,

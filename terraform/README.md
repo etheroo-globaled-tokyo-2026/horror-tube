@@ -36,23 +36,25 @@ Skip flags (`skip_credentials_validation`, `skip_metadata_api_check`, `skip_regi
 
 `backend.hcl` and `*.tfstate` are gitignored. `terraform/.backend-credentials` is the old two-line file (access key id, then secret); agents should read `TF_STATE_SPACES_*` from `.env` instead. Never commit state or Spaces keys.
 
-## Auth (token never on disk, never pasted into shell history)
+## Auth
 
-Terraform’s DigitalOcean token is a **single** input: `var.do_token`, set only via `TF_VAR_do_token` (or the provider’s `DIGITALOCEAN_TOKEN` if you wire the provider that way). Do **not** put the token in `*.tfvars`, do **not** write it to a file in the repo, and do **not** `export` a pasted secret (that lands the secret in shell history).
-
-Load the token from 1Password item **DigitalOcean IRC** into the process environment for that one command only:
+Terraform’s DigitalOcean token is `DO_KEY` in the repo-root `.env`, passed as `TF_VAR_do_token` for that command (or `DIGITALOCEAN_TOKEN` if you wire the provider that way). Do not put the token in `*.tfvars`. Do not call `op read` for it. Do not print it. If `DO_KEY` is missing or blank, stop and name `DO_KEY`.
 
 ```bash
-cd terraform
-
-env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
-  terraform plan
-
-env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
-  terraform apply
+(
+  set -euo pipefail
+  root=$(git rev-parse --show-toplevel)
+  set -a
+  # shellcheck disable=SC1091
+  source "$root/.env"
+  set +a
+  : "${DO_KEY:?DO_KEY is required. Set it in .env. See .env.example.}"
+  cd "$root/terraform"
+  env TF_VAR_do_token="$DO_KEY" terraform plan
+)
 ```
 
-The secret stays in the child process environment for that invocation; it is not written to disk and is not an `export` of a literal token.
+Use the same `TF_VAR_do_token="$DO_KEY"` assignment for `terraform apply`.
 
 ### Spaces API keys (icon uploads)
 
@@ -86,7 +88,7 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
 )
 ```
 
-`terraform apply` still loads the DigitalOcean API token from 1Password for that one command. Remote state and the provider Spaces env come from `TF_STATE_SPACES_*`; App Platform icons vars still come from `SPACES_*`:
+`terraform apply` reads the DigitalOcean API token from `DO_KEY` in `.env` and passes it as `TF_VAR_do_token`. Remote state and the provider Spaces env come from `TF_STATE_SPACES_*`; App Platform icons vars still come from `SPACES_*`:
 
 ```bash
 (
@@ -100,6 +102,7 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
   : "${TF_STATE_SPACES_SECRET:?TF_STATE_SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
   : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
+  : "${DO_KEY:?DO_KEY is required. Set it in .env. See .env.example.}"
   unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
   export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
   export TF_VAR_spaces_secret="$SPACES_SECRET"
@@ -107,9 +110,7 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
   export AWS_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
   export SPACES_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
   export SPACES_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
-  TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
-  : "${TF_VAR_do_token:?TF_VAR_do_token is required}"
-  export TF_VAR_do_token
+  export TF_VAR_do_token="$DO_KEY"
   cd "$root/terraform"
   terraform apply
 )
@@ -286,9 +287,9 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
       exit 1
       ;;
   esac
+  : "${DO_KEY:?DO_KEY is required. Set it in .env. See .env.example.}"
   unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
-  TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
-  export TF_VAR_do_token
+  export TF_VAR_do_token="$DO_KEY"
   export TF_VAR_ens_label="$ENS_LABEL"
   export TF_VAR_vite_sepolia_rpc_url="$VITE_SEPOLIA_RPC_URL"
   export TF_VAR_sepolia_rpc_url="$SEPOLIA_RPC_URL"
