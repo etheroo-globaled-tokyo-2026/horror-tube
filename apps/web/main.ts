@@ -19,7 +19,7 @@ import {
   type CoinBoxView,
   createCoinBox,
 } from "./coinbox.ts";
-import { getGameWallet, hasWalletSession } from "./wallet.ts";
+import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
@@ -86,13 +86,15 @@ function hintText(): void {
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
           ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY${W8.qrUri === "" ? "" : ` <a href="${esc(W8.qrUri)}" target="_blank" rel="noopener">OPEN LINK</a> <button data-copy-link>COPY LINK</button>`}`
-          : W8.fail !== ""
-            ? `NOT IN · TRY AGAIN ${b("ENTER")}`
-            : W8.step === "done" && S.noteKind === "bad"
-              ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
-              : W8.step === "done"
-                ? "WARMING UP"
-                : `NEXT ${b("ENTER")}`
+          : W8.step === "wallet"
+            ? `${b("VERIFIED")} · OPENING YOUR WALLET`
+            : W8.fail !== ""
+              ? `${b("NOT IN")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
+              : W8.step === "done" && S.noteKind === "bad"
+                ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
+                : W8.step === "done"
+                  ? "WARMING UP"
+                  : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast
@@ -200,9 +202,8 @@ function holdEnd(): void {
 }
 let coinBox: CoinBox | null = null;
 let coinBoxError = "";
-async function mountCoinBox(): Promise<void> {
-  if (coinBox !== null) return;
-  const wallet = await getGameWallet();
+let coinBoxMount: Promise<CoinBox> | null = null;
+async function buildCoinBox(wallet: GameWallet): Promise<CoinBox> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
   void refreshClaimable().catch((cause: unknown) => {
@@ -210,7 +211,7 @@ async function mountCoinBox(): Promise<void> {
       `claimable after wallet mount failed: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   });
-  coinBox = createCoinBox(
+  const box = createCoinBox(
     wallet,
     coinType,
     (usdc) => {
@@ -224,15 +225,31 @@ async function mountCoinBox(): Promise<void> {
       hintText();
     },
   );
-  coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
-  shade(coinBox.group);
-  scene.add(coinBox.group);
+  box.group.position.set(-0.59, TV_Y + 0.19, -1.055);
+  shade(box.group);
+  scene.add(box.group);
+  coinBox = box;
+  return box;
+}
+async function mountCoinBox(wallet: GameWallet): Promise<void> {
+  coinBoxMount ??= buildCoinBox(wallet).catch((cause: unknown) => {
+    coinBoxMount = null;
+    throw cause;
+  });
+  const box = await coinBoxMount;
+  if (box.address !== wallet.address) {
+    throw new Error(
+      `The coin box is open for wallet ${box.address}, not yours (${wallet.address}). Reload the page to open yours.`,
+    );
+  }
 }
 if (hasWalletSession()) {
-  void mountCoinBox().catch((cause: unknown) => {
-    coinBoxError = cause instanceof Error ? cause.message : String(cause);
-    console.error(`Shinami wallet failed: ${coinBoxError}`);
-  });
+  void getGameWallet()
+    .then(mountCoinBox)
+    .catch((cause: unknown) => {
+      coinBoxError = cause instanceof Error ? cause.message : String(cause);
+      console.error(`Shinami wallet failed: ${coinBoxError}`);
+    });
 }
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
@@ -500,7 +517,7 @@ renderer.setAnimationLoop(() => {
   const dark = waiver && W8.step === "dark";
   if (waiver) {
     camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
-    const up = W8.step === "scan" ? 1 : 0;
+    const up = W8.step === "scan" || W8.step === "wallet" ? 1 : 0;
     gaze = LOW ? up : gaze + (up - gaze) * 0.06;
     camera.lookAt(look.x * 0.06, 0.57 + gaze * (TV_Y - 0.55) - look.y * 0.04, -0.86 - gaze * 0.54);
     snap = true;

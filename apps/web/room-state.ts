@@ -48,7 +48,7 @@ export const say = (text: string, ms = 3600): void => {
 
 export const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
+export type Step = "read" | "ink" | "scan" | "wallet" | "signed" | "done" | "off" | "burn" | "dark";
 export type Waiver = {
   step: Step;
   at: number;
