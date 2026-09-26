@@ -114,7 +114,7 @@ function panel(): HTMLDialogElement {
 export function createCoinBox(
   wallet: GameWallet,
   onCredit: (usdc: number) => void,
-  say: (text: string, ms?: number) => void,
+  say: (text: string) => void,
 ): CoinBox {
   const colors = {
     soot: cssVar("soot"),
@@ -215,10 +215,12 @@ export function createCoinBox(
 
   async function deposit(dollars: number): Promise<void> {
     const payer = await connectBrowserWallet();
-    if (payer === null) return say("No wallet. The slot stays shut.");
+    if (payer === null) throw new Error("No wallet connected. The slot stays shut.");
     const gas = await dAppKit.getClient().core.getBalance({ owner: payer });
     if (BigInt(gas.balance.balance) === 0n)
-      return say("No SUI for gas. Get some at faucet.sui.io.", 8000);
+      throw new Error(
+        "Your wallet has no testnet SUI to pay the gas. Get some at faucet.sui.io, then try again.",
+      );
     setStatus("INSERTING");
     const result = await dAppKit.signAndExecuteTransaction({
       transaction: usdcTransfer(wallet.address, toUsdcUnits(dollars)),
@@ -234,9 +236,9 @@ export function createCoinBox(
     const units = await getUsdcBalance(wallet);
     if (units === 0n) return say("Nothing to give back.");
     if ((await getSuiBalance(wallet)) === 0n)
-      return say("Coin return jammed. The box has no SUI for gas.");
+      throw new Error("The coin return is jammed: the box has no testnet SUI to pay the gas.");
     const to = storedPayout() ?? (await connectBrowserWallet());
-    if (to === null) return say("No wallet to pay back to.");
+    if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");
     await sendUsdc(wallet, to, units);
     say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
@@ -266,11 +268,25 @@ export function createCoinBox(
   close.addEventListener("click", () => stickerPanel.close());
   stickerPanel.append(qr, address, close);
 
+  const errorPanel = panel();
+  errorPanel.innerHTML = `<h2 class="lit">THE BOX SPAT IT OUT</h2>`;
+  const errorText = document.createElement("p");
+  const errorClose = document.createElement("button");
+  errorClose.className = "btn";
+  errorClose.textContent = "OK";
+  errorClose.addEventListener("click", () => errorPanel.close());
+  errorPanel.append(errorText, errorClose);
+
+  function showError(message: string): void {
+    errorText.textContent = message;
+    if (!errorPanel.open) errorPanel.showModal();
+  }
+
   function run(task: () => Promise<void>): void {
     if (busy) return;
     busy = true;
     task()
-      .catch((error: Error) => say(error.message))
+      .catch((error: Error) => showError(error.message))
       .finally(() => {
         busy = false;
         setStatus("");
