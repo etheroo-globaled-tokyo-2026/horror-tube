@@ -45,6 +45,20 @@ function trackingPorts(calls: string[]): ChainWritePorts {
   };
 }
 
+/** Stage-1 vote [0, 1] ranks alpha then bravo; outcome 0 is an alpha win. */
+function agentInsertForAlphaWin(
+  overrides: Partial<BattleQueueInsert> = {},
+): BattleQueueInsert {
+  return sampleAgentInsert({
+    fighterASubname: "alpha",
+    fighterBSubname: "bravo",
+    winnerSubname: "alpha",
+    loserSubname: "bravo",
+    ensLines: ["bravo|status=dead", 'alpha|injuries=["cut"]'],
+    ...overrides,
+  });
+}
+
 function sampleAgentInsert(
   overrides: Partial<BattleQueueInsert> = {},
 ): BattleQueueInsert {
@@ -271,7 +285,7 @@ describe("GameLoop phases", () => {
     await loop.vote({}, [0, 1]);
     now += 1_000;
     await loop.tick(now);
-    await loop.attachAgentResult(sampleAgentInsert({ id: "settle-on" }));
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "settle-on" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1);
     now += 1_000;
@@ -280,6 +294,44 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     assert.equal(loop.getState().phase, "settle");
     assert.deepEqual(settle.calls, ["injuries", "status", "settle:99"]);
+  });
+
+  it("refuses an agent result that names a different winner than the bout", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "mismatch" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await loop.attachAgentResult(sampleAgentInsert({ id: "wrong-winner" }));
+    loop.setOutcome(0, 0);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    now += 1_000;
+    await loop.tick(now);
+    now += 1;
+    await assert.rejects(
+      () => loop.tick(now),
+      /does not match bout winner/u,
+    );
+    assert.deepEqual(settle.calls, []);
+    assert.equal(loop.getState().chars[0]?.alive, true);
+    assert.equal(loop.getState().chars[1]?.alive, true);
+    assert.equal(loop.getState().error !== null, true);
   });
 
   it("names the missing agent result when settle runs without attachAgentResult", async () => {
@@ -363,7 +415,7 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
-    await loop2.attachAgentResult(sampleAgentInsert({ id: "dup-path" }));
+    await loop2.attachAgentResult(agentInsertForAlphaWin({ id: "dup-path" }));
     loop2.setOutcome(0, 0);
     loop2.setVideoReady("https://cdn.example/v.mp4", 1);
     now += 1_000;
@@ -437,7 +489,7 @@ describe("GameLoop phases", () => {
     await loop.vote({}, [0, 1]);
     now += 1_000;
     await loop.tick(now);
-    await loop.attachAgentResult(sampleAgentInsert({ id: "no-random" }));
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "no-random" }));
     loop.setOutcome(0, 0);
     loop.setVideoReady("https://cdn.example/v.mp4", 1);
     now += 1_000;
