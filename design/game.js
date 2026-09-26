@@ -460,11 +460,11 @@ function gate(step) {
   if (step === "wallet")
     g.innerHTML = `<p class="osd t-alive lit">■ VERIFIED · HUMAN 18+</p><h1 class="lit">CONNECT A WALLET</h1>
     <p>Voting is free. To bet, you need test ETH on Sepolia.</p>
-    <div class="row"><button class="btn primary" data-act="wallet">CONNECT BROWSER WALLET</button><button class="btn" data-act="empty">CONNECT AN EMPTY WALLET</button></div>`;
+    <div class="row"><button class="btn primary" data-act="wallet">OPEN YOUR WALLET</button><button class="btn" data-act="empty">CONNECT AN EMPTY WALLET</button></div>`;
   if (step === "funds")
     g.innerHTML = `<p class="osd t-alive lit">■ ${S.wallet}</p><h1 class="lit">${S.credit > 0 ? "FUNDS OK" : "NO FUNDS"}</h1>
     <p class="ens">check_funds(${S.wallet}) → ${S.credit.toFixed(4)} Ξ on Sepolia</p>
-    <p>${S.credit > 0 ? "You can vote and bet." : "You can vote, but you cannot bet. Get Sepolia ETH from a faucet, then connect again."}</p>
+    <p>${S.credit > 0 ? "You can vote and bet." : "You can vote, but you cannot bet. Send Sepolia ETH to this address, then open your wallet again."}</p>
     <div class="row"><button class="btn primary" data-act="enter">ENTER</button></div>`;
 }
 
@@ -475,9 +475,15 @@ document.addEventListener("click", (e) => {
   if (act === "verify") gate("wallet");
   else if (act === "fail") gate("fail");
   else if (act === "retry") gate("id");
-  else if (act === "wallet" || act === "empty") {
+  else if (act === "wallet") {
+    HT.wallet().then(async (w) => {
+      S.wallet = w.account.address;
+      S.credit = Number(await w.getBalance({ address: S.wallet })) / 1e18;
+      gate("funds");
+    });
+  } else if (act === "empty") {
     S.wallet = hex(4) + "…" + hex(2).slice(2);
-    S.credit = act === "wallet" ? 0.1 : 0;
+    S.credit = 0;
     gate("funds");
   } else if (act === "enter") {
     $("#gate").hidden = true;
