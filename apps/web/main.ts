@@ -2191,6 +2191,7 @@ function enterRoom(): void {
   void newSeason();
 }
 let coinBox: CoinBox | null = null;
+let coinBoxError = "";
 let chainCredit = 0;
 async function mountCoinBox(): Promise<void> {
   if (coinBox !== null) return;
@@ -2215,7 +2216,8 @@ async function mountCoinBox(): Promise<void> {
 }
 if (hasWalletSession()) {
   void mountCoinBox().catch((err: Error) => {
-    console.error(`Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`);
+    coinBoxError = err instanceof Error ? err.message : String(err);
+    console.error(`Shinami wallet failed: ${coinBoxError}`);
   });
 }
 const cable = new THREE.Mesh(
@@ -2316,6 +2318,14 @@ function useCoinPart(part: CoinBoxPart): void {
     coinBox?.open();
   } else zoom(Z.at ?? "meter", Z.pick);
 }
+function openCoinKey(part: CoinBoxPart): void {
+  if (coinBox === null) {
+    say(coinBoxError === "" ? "The coin box is still opening." : coinBoxError);
+    return;
+  }
+  if (walk >= 0) walkTo(WALK.length);
+  useCoinPart(part);
+}
 $("#hint").addEventListener("click", (e) => {
   const coin = e.target instanceof Element ? e.target.closest("[data-coin]") : null;
   if (coin instanceof HTMLElement) insertCoin(Number(coin.dataset.coin));
@@ -2373,17 +2383,20 @@ const PART_CURSOR = {
   body: "press",
 } satisfies Record<CoinBoxPart, string>;
 function cursorFor(pick: Pick | null): string {
+  if (pick?.at === "coin") return PART_CURSOR[pick.part];
   if (walk >= 0) return "press";
   if (pick === null) return "";
   if (pick.at === "paper") return "pen";
-  if (pick.at === "coin") return PART_CURSOR[pick.part];
   return pick.at === "shelf" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   if (S.phase === "gate" && W8.step === "signed") return nextGateStep();
-  if (walk >= 0) return walkTo(walk + 1);
   const pick = pickAt(e);
+  if (walk >= 0) {
+    if (pick?.at === "coin") return openCoinKey(pick.part);
+    return walkTo(walk + 1);
+  }
   if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
   if (pick === null) return;
   if (pick.at === "paper") return sign();
@@ -2418,6 +2431,12 @@ addEventListener(
     const k = e.key.toLowerCase();
     if (k === "m") return muteKey();
     const coinKey = COIN_KEYS.get(k);
+    if (coinKey !== undefined) {
+      e.preventDefault();
+      e.stopPropagation();
+      openCoinKey(coinKey);
+      return;
+    }
     if (walk >= 0) {
       if (k === "escape") walkTo(WALK.length);
       else if (k === "enter" || k === " " || k === "arrowright") walkTo(walk + 1);
@@ -2428,15 +2447,9 @@ addEventListener(
     if (Z.at !== null) {
       if (k === "escape" || k === "backspace") stepBack();
       else if (Z.pick && /^[1-3]$/.test(k)) insertCoin(COINS[Number(k) - 1]);
-      else if (coinKey !== undefined) useCoinPart(coinKey);
       e.preventDefault();
       e.stopPropagation();
       return;
-    }
-    if (coinKey !== undefined && coinBox !== null) {
-      e.preventDefault();
-      e.stopPropagation();
-      return useCoinPart(coinKey);
     }
     let id: string | null = null;
     if (/^\d$/.test(k)) id = k;
