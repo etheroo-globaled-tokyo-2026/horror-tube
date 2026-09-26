@@ -14,10 +14,11 @@ import {
   createWalletClient,
   decodeAbiParameters,
   encodeFunctionData,
+  getAddress,
   http,
   parseAbi,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 
 import { permissionedResolverAbi } from "../scripts/abis.js";
@@ -295,6 +296,45 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
       bootstrapAddress: bootstrap.address,
     });
 
+    const chainId = await publicClient.getChainId();
+    assert.equal(chainId, 31337);
+    // anvil automines one block per transaction, so the factory, implementation,
+    // and deployProxy transactions are the last three blocks.
+    const blockNumber = await publicClient.getBlockNumber();
+    const deployBlock = await publicClient.getBlock({ blockNumber });
+    assert.equal(deployBlock.transactions.length, 1);
+    const [deployTx] = deployBlock.transactions;
+    const deployReceipt = await publicClient.getTransactionReceipt({ hash: deployTx });
+    const [factoryReceipt, implReceipt] = await Promise.all(
+      [blockNumber - 2n, blockNumber - 1n].map(async (n) => {
+        const block = await publicClient.getBlock({ blockNumber: n });
+        assert.equal(block.transactions.length, 1);
+        return publicClient.getTransactionReceipt({ hash: block.transactions[0] });
+      }),
+    );
+    assert(factoryReceipt.contractAddress);
+    assert(implReceipt.contractAddress);
+    const factory = getAddress(factoryReceipt.contractAddress);
+    assert(deployReceipt.to);
+    assert.equal(getAddress(deployReceipt.to), factory);
+    for (const receipt of [factoryReceipt, implReceipt, deployReceipt]) {
+      assert.equal(getAddress(receipt.from), bootstrap.address);
+    }
+    console.log(
+      `passFailLocation=${JSON.stringify({
+        chainId,
+        resolver,
+        blockNumber: Number(blockNumber),
+        deployTx,
+        factory,
+        implementation: getAddress(implReceipt.contractAddress),
+        bootstrap: bootstrap.address,
+        roster: roster.address,
+        agent: agent.address,
+        third: third.address,
+      })}`,
+    );
+
     assert.deepEqual(
       await grantTextSetterRoles({
         publicClient,
@@ -322,12 +362,15 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
   });
 
   async function setTextAs(
-    key: Hex,
+    account: PrivateKeyAccount,
     name: string,
     textKey: string,
     value: string,
   ): Promise<"ok" | "revert"> {
-    const account = privateKeyToAccount(key);
+    assert.ok(
+      [bootstrap, roster, agent, third].includes(account),
+      `setText signer ${account.address} is not one of the four test accounts`,
+    );
     const wallet = createWalletClient({
       account,
       chain: foundry,
@@ -346,6 +389,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
       if (receipt.status !== "success") {
         throw new Error(`setText(${textKey}) mined but reverted: ${hash}`);
       }
+      assert.equal(getAddress(receipt.from), account.address);
     } catch (error) {
       const reverted =
         error instanceof BaseError &&
@@ -400,43 +444,43 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
   it("agent can overwrite status and injuries", async () => {
     const name = "agent-exercise.test.eth";
-    assert.equal(await setTextAs(AGENT_KEY, name, "status", "alive"), "ok");
-    assert.equal(await setTextAs(AGENT_KEY, name, "status", "dead"), "ok");
-    assert.equal(await setTextAs(AGENT_KEY, name, "injuries", "[]"), "ok");
+    assert.equal(await setTextAs(agent, name, "status", "alive"), "ok");
+    assert.equal(await setTextAs(agent, name, "status", "dead"), "ok");
+    assert.equal(await setTextAs(agent, name, "injuries", "[]"), "ok");
     assert.equal(
-      await setTextAs(AGENT_KEY, name, "injuries", '["left arm"]'),
+      await setTextAs(agent, name, "injuries", '["left arm"]'),
       "ok",
     );
   });
 
   it("roster can overwrite look, brief, and icon", async () => {
     const name = "roster-exercise.test.eth";
-    assert.equal(await setTextAs(ROSTER_KEY, name, "look", "tall"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, name, "look", "scarred"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, name, "brief", "lore"), "ok");
-    assert.equal(await setTextAs(ROSTER_KEY, name, "brief", "later lore"), "ok");
+    assert.equal(await setTextAs(roster, name, "look", "tall"), "ok");
+    assert.equal(await setTextAs(roster, name, "look", "scarred"), "ok");
+    assert.equal(await setTextAs(roster, name, "brief", "lore"), "ok");
+    assert.equal(await setTextAs(roster, name, "brief", "later lore"), "ok");
     assert.equal(
-      await setTextAs(ROSTER_KEY, name, "icon", "https://cdn.example/a.png"),
+      await setTextAs(roster, name, "icon", "https://cdn.example/a.png"),
       "ok",
     );
     assert.equal(
-      await setTextAs(ROSTER_KEY, name, "icon", "https://cdn.example/b.png"),
+      await setTextAs(roster, name, "icon", "https://cdn.example/b.png"),
       "ok",
     );
   });
 
   it("bootstrap can set all five card keys", async () => {
     const name = "bootstrap-exercise.test.eth";
-    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "status", "alive"), "ok");
-    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "injuries", "[]"), "ok");
-    assert.equal(await setTextAs(BOOTSTRAP_KEY, name, "look", "admin-look"), "ok");
+    assert.equal(await setTextAs(bootstrap, name, "status", "alive"), "ok");
+    assert.equal(await setTextAs(bootstrap, name, "injuries", "[]"), "ok");
+    assert.equal(await setTextAs(bootstrap, name, "look", "admin-look"), "ok");
     assert.equal(
-      await setTextAs(BOOTSTRAP_KEY, name, "brief", "admin-brief"),
+      await setTextAs(bootstrap, name, "brief", "admin-brief"),
       "ok",
     );
     assert.equal(
       await setTextAs(
-        BOOTSTRAP_KEY,
+        bootstrap,
         name,
         "icon",
         "https://cdn.example/admin.png",
@@ -447,25 +491,25 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
   it("agent reverts on roster keys", async () => {
     const name = "agent-deny.test.eth";
-    assert.equal(await setTextAs(AGENT_KEY, name, "look", "x"), "revert");
-    assert.equal(await setTextAs(AGENT_KEY, name, "brief", "x"), "revert");
+    assert.equal(await setTextAs(agent, name, "look", "x"), "revert");
+    assert.equal(await setTextAs(agent, name, "brief", "x"), "revert");
     assert.equal(
-      await setTextAs(AGENT_KEY, name, "icon", "https://x.example/a.png"),
+      await setTextAs(agent, name, "icon", "https://x.example/a.png"),
       "revert",
     );
   });
 
   it("roster reverts on agent keys", async () => {
     const name = "roster-deny.test.eth";
-    assert.equal(await setTextAs(ROSTER_KEY, name, "status", "dead"), "revert");
-    assert.equal(await setTextAs(ROSTER_KEY, name, "injuries", "[]"), "revert");
+    assert.equal(await setTextAs(roster, name, "status", "dead"), "revert");
+    assert.equal(await setTextAs(roster, name, "injuries", "[]"), "revert");
   });
 
   it("a third non-bootstrap key reverts on all five text keys", async () => {
     assert.notEqual(third.address, bootstrap.address);
     for (const key of ["status", "injuries", "look", "brief", "icon"]) {
       assert.equal(
-        await setTextAs(THIRD_KEY, "third-deny.test.eth", key, "x"),
+        await setTextAs(third, "third-deny.test.eth", key, "x"),
         "revert",
         key,
       );
