@@ -1,31 +1,24 @@
+import { z } from "zod";
+
 import type { FightInput, LivingCard, Shot } from "./types.js";
 
 export type { Shot };
 
-/**
- * Queued fight result while betting is open. ENS writes and the Sui pool
- * settle run only after both gates are set — never from a timer.
- */
 export type BattleQueueRecord = {
   id: string;
-  /** Sui pool battle id (UUID string). */
   battleId: string;
   fighterASubname: string;
   fighterBSubname: string;
   shots: Shot[];
-  /** Loser line first, winner line last (narration contract). */
-  ensLines: [string, string];
+  ensLines: [loser: string, winner: string];
   rationale: string;
   winnerSubname: string;
   loserSubname: string;
   winnerInjuries: string[];
-  /** Challenger for the following bout; set by rotation, not the model. */
   nextOpponentSubname: string;
   bettingClosed: boolean;
   playbackFinished: boolean;
-  /** ms epoch when a room reported the fight video playing; null until then. */
   videoStartedAt: number | null;
-  /** ms epoch: videoStartedAt + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS. */
   bettingClosesAt: number | null;
   injuriesTxHash: string | null;
   statusTxHash: string | null;
@@ -52,10 +45,6 @@ export type SettleStep =
   | "done";
 
 export type ChainWritePorts = {
-  /**
-   * Read current on-chain injuries text, then write the winner's injuries.
-   * Must refuse "" or non-array encodings (#55) before sending a tx.
-   */
   writeWinnerInjuries: (args: {
     subname: string;
     injuries: string[];
@@ -65,10 +54,6 @@ export type ChainWritePorts = {
     subname: string;
     ensLine: string;
   }) => Promise<string>;
-  /**
-   * Settle the Sui pool for this battle with the winning side (0 = fighter A,
-   * 1 = fighter B). Called after the loser ENS status is dead.
-   */
   settleBattle: (battleId: string, winningSide: 0 | 1) => Promise<string>;
 };
 
@@ -84,7 +69,6 @@ export class BattleQueueError extends Error {
   }
 }
 
-/** New row: queued, no chain writes yet. Zero bets is fine; gates stay false. */
 export function createQueuedRecord(insert: BattleQueueInsert): BattleQueueRecord {
   assertInsert(insert);
   return {
@@ -109,9 +93,6 @@ export function markPlaybackFinished(
   return { ...record, playbackFinished: true };
 }
 
-/**
- * Both signals are required. A timer, guessed delay, or early write is a failure.
- */
 export function assertSettleGates(record: BattleQueueRecord): void {
   if (!record.bettingClosed) {
     throw new BattleQueueError(
@@ -125,9 +106,6 @@ export function assertSettleGates(record: BattleQueueRecord): void {
   }
 }
 
-/**
- * First incomplete chain step. Confirmed tx hashes are never repeated.
- */
 export function nextSettleStep(record: BattleQueueRecord): SettleStep {
   if (record.injuriesTxHash === null) return "injuries";
   if (record.statusTxHash === null) return "status";
@@ -135,10 +113,8 @@ export function nextSettleStep(record: BattleQueueRecord): SettleStep {
   return "next_bout";
 }
 
-/**
- * Parse an on-chain injuries text record. "" or non-array encodings fail;
- * do not coerce (#55).
- */
+const injuryListSchema = z.array(z.string());
+
 export function parseInjuriesTextRecord(raw: string): string[] {
   if (raw === "") {
     throw new BattleQueueError(
@@ -159,21 +135,15 @@ export function parseInjuriesTextRecord(raw: string): string[] {
       `injuries text record must be a JSON array. Got: ${JSON.stringify(raw)}`,
     );
   }
-  for (const item of parsed) {
-    if (typeof item !== "string") {
-      throw new BattleQueueError(
-        `injuries array items must be strings. Got: ${JSON.stringify(raw)}`,
-      );
-    }
+  const injuries = injuryListSchema.safeParse(parsed);
+  if (!injuries.success) {
+    throw new BattleQueueError(
+      `injuries array items must be strings. Got: ${JSON.stringify(raw)}`,
+    );
   }
-  return parsed as string[];
+  return injuries.data;
 }
 
-/**
- * Apply injuries → status=dead → settleBattle in that order.
- * Resumes at the first step without a confirmed tx hash.
- * Does not start the next bout; caller uses fightInputFromQueuedNext after done.
- */
 export async function settleQueuedBattle(
   record: BattleQueueRecord,
   ports: ChainWritePorts,
@@ -235,10 +205,6 @@ export async function settleQueuedBattle(
   return current;
 }
 
-/**
- * Following bout: winner stays vs the stored next opponent (rotation result).
- * Does not re-roll. Winner and opponent must be alive and distinct.
- */
 export function fightInputFromQueuedNext(
   livingCards: readonly LivingCard[],
   winnerSubname: string,
@@ -325,7 +291,7 @@ function assertInsert(insert: BattleQueueInsert): void {
 }
 
 function assertTxHash(hash: string, step: string): void {
-  if (typeof hash !== "string" || hash.trim() === "") {
+  if (hash.trim() === "") {
     throw new BattleQueueError(
       `${step} write returned an empty transaction hash.`,
     );
@@ -344,7 +310,6 @@ function wrapStepError(
   );
 }
 
-/** In-memory store for unit tests. Not a second database. */
 export class MemoryBattleQueueStore implements BattleQueueStore {
   private readonly rows = new Map<string, BattleQueueRecord>();
 

@@ -190,7 +190,6 @@ export async function refreshClaimable(): Promise<void> {
   render();
 }
 
-/** Bet on the live pool through POST /tx. Throws the server's or the wallet's reason. */
 export async function submitBet(side: 0 | 1, amt: number): Promise<string> {
   if (S.poolId === null || S.poolId.trim() === "") throw new Error("Pool is not open yet.");
   if (gameWallet === null) throw new Error("Wallet is not ready.");
@@ -254,13 +253,12 @@ export function applyRoundState(state: ServerRoundState): void {
   S.fighters = state.fighters;
   S.battleId = state.battleId;
   S.poolId = state.poolId;
-  S.pool = [...state.pool] as [number, number];
+  S.pool = [state.pool[0], state.pool[1]];
   S.winner = state.winner === null ? -1 : state.winner;
   S.videoUrl = state.videoUrl;
   S.bettingClosesAt = state.bettingClosesAt;
   S.frameUrl = state.frameUrl;
   S.error = state.error;
-  // #114: a new bout must accept a fresh hold; do not keep the prior round's bet.
   if (state.round !== prevRound) {
     S.bet = null;
   }
@@ -291,20 +289,21 @@ export function applyRoundState(state: ServerRoundState): void {
       S.last = { fighters: f, winner: state.winner, round: state.round };
       S.focus = w.id;
     }
-    void refreshClaimable().catch((error: unknown) => {
+    void refreshClaimable().catch((cause: unknown) => {
       note(
-        `CLAIM LOOKUP FAILED. ${error instanceof Error ? error.message : String(error)}`,
+        `CLAIM LOOKUP FAILED. ${cause instanceof Error ? cause.message : String(cause)}`,
         "bad",
       );
     });
   }
-  if (state.phase === "vote" || state.phase === "countdown") {
-    // New voting window: clear local picks if we have not cast this round yet.
-    if (prevPhase !== "vote" && prevPhase !== "countdown") {
-      S.picks = [];
-      S.cast = null;
-      S.bet = null;
-    }
+  const votingWindowOpened =
+    (state.phase === "vote" || state.phase === "countdown") &&
+    prevPhase !== "vote" &&
+    prevPhase !== "countdown";
+  if (votingWindowOpened) {
+    S.picks = [];
+    S.cast = null;
+    S.bet = null;
   }
   render();
 }
@@ -632,8 +631,8 @@ document.addEventListener("click", (e) => {
       note(`BET REJECTED. Side must be 0 or 1. Got ${String(S.side)}.`, "bad");
       return;
     }
-    submitBet(S.side, S.amt).catch((error: unknown) => {
-      note(`BET REJECTED. ${error instanceof Error ? error.message : String(error)}`, "bad");
+    submitBet(S.side, S.amt).catch((cause: unknown) => {
+      note(`BET REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`, "bad");
     });
   } else if (act === "claim") {
     void (async () => {

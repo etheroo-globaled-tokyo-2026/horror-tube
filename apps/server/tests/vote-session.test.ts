@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
-import type { AddressInfo } from "node:net";
 
 import { MemoryBattleQueueStore } from "@horror-tube/fight/battle-queue";
+import * as v from "valibot";
 
 import { MemoryRoundStore } from "../src/db/rounds.js";
 import { GameLoop } from "../src/game/loop.js";
 import { issueSession } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
+import { baseUrl } from "./base-url.js";
 
 const PEPPER = "vote-test-pepper";
 const NULLIFIER = "12345678901234567890";
+
+const StateJson = v.object({ ok: v.boolean(), state: v.object({ voters: v.number() }) });
+const ErrorJson = v.object({ ok: v.boolean(), error: v.string() });
 
 const config = {
   quorumVotes: 2,
@@ -97,8 +101,7 @@ describe("POST /vote session", () => {
     });
     servers.push(server);
     await listenGameServer(server, { port: 0, host: "127.0.0.1", game, sessionPepper });
-    const addr = server.address() as AddressInfo;
-    return `http://127.0.0.1:${String(addr.port)}`;
+    return baseUrl(server);
   }
 
   it("counts a vote from a valid waiver session", async () => {
@@ -114,7 +117,7 @@ describe("POST /vote session", () => {
       body: JSON.stringify({ picks: [0, 1] }),
     });
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { ok: boolean; state: { voters: number } };
+    const body = v.parse(StateJson, await res.json());
     assert.equal(body.ok, true);
     assert.equal(body.state.voters, 1);
     assert.equal(game.getState().voters, 1);
@@ -136,7 +139,7 @@ describe("POST /vote session", () => {
       body: JSON.stringify({ picks: [0, 1] }),
     });
     assert.equal(res.status, 500);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = v.parse(ErrorJson, await res.json());
     assert.match(body.error, /Vote insert failed for round 1 .*too many clients already/u);
     assert.equal(game.getState().voters, 0);
   });
@@ -149,7 +152,7 @@ describe("POST /vote session", () => {
       body: JSON.stringify({ picks: [0, 1] }),
     });
     assert.equal(res.status, 401);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = v.parse(ErrorJson, await res.json());
     assert.equal(body.ok, false);
     assert.match(body.error, /Authorization Bearer session is required/u);
   });
@@ -165,7 +168,7 @@ describe("POST /vote session", () => {
       body: JSON.stringify({ picks: [0, 1] }),
     });
     assert.equal(res.status, 401);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = v.parse(ErrorJson, await res.json());
     assert.equal(body.ok, false);
     assert.match(body.error, /Session is not valid/u);
   });
@@ -181,7 +184,7 @@ describe("POST /vote session", () => {
       body: JSON.stringify({ picks: [0, 1] }),
     });
     assert.equal(res.status, 500);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = v.parse(ErrorJson, await res.json());
     assert.equal(body.ok, false);
     assert.match(body.error, /WALLET_SECRET_PEPPER/u);
   });
@@ -197,7 +200,7 @@ describe("POST /vote session", () => {
     assert.equal((await post({})).status, 401);
     const res = await post({ authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}` });
     assert.equal(res.status, 409);
-    const body = (await res.json()) as { ok: boolean; error: string };
+    const body = v.parse(ErrorJson, await res.json());
     assert.match(body.error, /only accepted in the bet phase\. Current phase: vote/u);
   });
 

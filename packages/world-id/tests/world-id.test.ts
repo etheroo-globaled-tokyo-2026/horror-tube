@@ -18,6 +18,7 @@ import {
   stakeActionForBattle,
   verifyProofOfHuman,
   voteActionForRound,
+  type IdkitResultJson,
   type VerifyFetch,
 } from "../src/index.js";
 
@@ -169,7 +170,7 @@ test("parseProofOfHumanResult rejects legacy, session, and non-Orb results", () 
   const base = v4Result("vote-round-1");
   const item = pohItem();
   assert.equal(parseProofOfHumanResult(base).responses[0].nullifier, NULLIFIER_DECIMAL);
-  const rejected: [unknown, RegExp][] = [
+  const rejected: [IdkitResultJson, RegExp][] = [
     [{ ...base, protocol_version: "3.0" }, /legacy proofs are rejected/],
     [{ ...base, session_id: "session_x" }, /session proofs are rejected/],
     [{ ...base, responses: [{ ...item, identifier: "orb" }] }, /identifier must be proof_of_human/],

@@ -21,7 +21,6 @@ export type VoteInsert = {
   roundId: string;
   nullifier: string;
   picks: string[];
-  /** ms epoch; the tally's reached_at is the latest of these per label. */
   at: number;
 };
 
@@ -31,13 +30,10 @@ export type StoredTally = {
   reachedAt: number;
 };
 
-/** Seasons, rounds, votes, and tallies (migration 001_game_loop.sql). */
 export type RoundStore = {
   startSeason(characters: SeasonCharacter[]): Promise<string>;
   startRound(round: RoundInsert): Promise<string>;
-  /** Throws DuplicateVoteError when this nullifier already voted in the round. */
   insertVote(vote: VoteInsert): Promise<void>;
-  /** Counts the round's stored votes into tallies and returns the stored rows. */
   storeTally(roundId: string): Promise<StoredTally[]>;
 };
 
@@ -130,7 +126,6 @@ function isUniqueViolation(cause: unknown, constraint: string): boolean {
   );
 }
 
-/** In-process RoundStore with the same uniqueness and tally rules, for tests. */
 export class MemoryRoundStore implements RoundStore {
   readonly seasons: SeasonCharacter[][] = [];
   readonly rounds = new Map<string, RoundInsert>();

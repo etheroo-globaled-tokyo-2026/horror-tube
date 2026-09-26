@@ -24,7 +24,6 @@ import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 loadRepoDotenv(join(repoRoot, ".env"));
 
-// Fail closed before listen: the waiver gate needs a signed World ID request.
 loadWorldIdEnv();
 
 const port = readGamePort();

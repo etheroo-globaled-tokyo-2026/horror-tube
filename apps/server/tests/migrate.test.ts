@@ -29,10 +29,10 @@ describe("DATABASE_URL", () => {
   it("throws and names DATABASE_URL when missing", () => {
     assert.throws(
       () => readDatabaseUrl({}),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /DATABASE_URL/u);
-        assert.match(err.message, /\.env\.example/u);
+      (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(cause.message, /DATABASE_URL/u);
+        assert.match(cause.message, /\.env\.example/u);
         return true;
       },
     );
@@ -159,10 +159,10 @@ describe("migrate without DATABASE_URL", () => {
     const { migrate } = await import("../src/db/migrate.js");
     await assert.rejects(
       () => migrate({}),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /DATABASE_URL/u);
-        assert.match(err.message, /\.env\.example/u);
+      (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(cause.message, /DATABASE_URL/u);
+        assert.match(cause.message, /\.env\.example/u);
         return true;
       },
     );

@@ -15,6 +15,7 @@ import {
   toHex,
 } from "viem";
 import { sepolia } from "viem/chains";
+import * as v from "valibot";
 
 import { requiredEnv } from "@horror-tube/betting";
 
@@ -93,6 +94,8 @@ function dnsEncodeName(name: string): Hex {
   return toHex(Uint8Array.from(bytes));
 }
 
+const Injuries = v.array(v.pipe(v.string(), v.trim(), v.minLength(1)));
+
 function parseInjuriesJson(subname: string, raw: string): string[] {
   if (raw.trim() === "") {
     return [];
@@ -106,19 +109,13 @@ function parseInjuriesJson(subname: string, raw: string): string[] {
       { cause },
     );
   }
-  if (!Array.isArray(parsed)) {
+  const injuries = v.safeParse(Injuries, parsed);
+  if (!injuries.success) {
     throw new Error(
-      `${subname}: injuries must be a JSON array of strings. Got ${JSON.stringify(raw)}.`,
+      `${subname}: injuries must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}. ${v.summarize(injuries.issues)}`,
     );
   }
-  return parsed.map((item, index) => {
-    if (typeof item !== "string" || item.trim() === "") {
-      throw new Error(
-        `${subname}: injuries[${String(index)}] must be a non-empty string.`,
-      );
-    }
-    return item.trim();
-  });
+  return injuries.output;
 }
 
 async function readText(
@@ -158,11 +155,6 @@ async function readText(
   }
 }
 
-/**
- * Read look/brief/injuries/status for each subname from Sepolia ENS.
- * Fail closed on missing ENS_LABEL / SEPOLIA_RPC_URL, a blank look/brief, or a
- * status that is `dead` or not a known value.
- */
 export async function loadLivingCardsFromEns(
   subnames: readonly string[],
   env: NodeJS.ProcessEnv = process.env,
@@ -222,7 +214,6 @@ export async function loadLivingCardsFromEns(
         `${trimmed}: brief text record is blank. Refusing to narrate without a brief.`,
       );
     }
-    // Blank status means never fought; the ENS roster scripts treat it as living too.
     const status = statusRaw.trim();
     if (status === "dead") {
       throw new Error(

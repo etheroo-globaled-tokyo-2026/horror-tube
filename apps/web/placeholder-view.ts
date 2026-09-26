@@ -1,5 +1,3 @@
-/** What the vote and bet placeholder screens show, derived only from server RoundState. */
-
 export type PlaceholderInput = {
   phase: string;
   champion: number | null;
