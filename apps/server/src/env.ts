@@ -48,24 +48,3 @@ export function readStaticDir(
   }
   return dir;
 }
-
-export function readSkipBattleSettlement(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const raw = env.SKIP_BATTLE_SETTLEMENT;
-  if (raw === undefined || raw.trim() === "") {
-    throw new Error(
-      "SKIP_BATTLE_SETTLEMENT is required. Set it in .env. See .env.example.",
-    );
-  }
-  const value = raw.trim();
-  if (value === "1") {
-    return true;
-  }
-  if (value === "0") {
-    return false;
-  }
-  throw new Error(
-    `SKIP_BATTLE_SETTLEMENT must be "0" or "1". Got: ${JSON.stringify(raw)}. Set it in .env. See .env.example.`,
-  );
-}

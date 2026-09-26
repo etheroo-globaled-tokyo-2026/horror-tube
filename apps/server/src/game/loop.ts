@@ -56,7 +56,6 @@ export type GameLoopOptions = {
    * failVideo on failure. Tests inject a mock; production uses createFightJobRunner.
    */
   fightJob: FightJobRunner;
-  skipSettlement: boolean;
 };
 
 type Listener = (state: RoundState) => void;
@@ -126,7 +125,6 @@ export class GameLoop {
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
-  private readonly skipSettlement: boolean;
   private readonly listeners = new Set<Listener>();
 
   private chars: CharRuntime[];
@@ -198,7 +196,6 @@ export class GameLoop {
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
     this.fightJob = options.fightJob;
-    this.skipSettlement = options.skipSettlement;
     this.chars = buildChars(options.ensLabels, options.ensStatuses);
     this.initialAlive = this.chars.map((c) => c.alive);
     this.resetVoteTallies();
@@ -935,13 +932,12 @@ export class GameLoop {
     await this.battleQueueStore.save(record);
     try {
       console.log(
-        `ENS settle start queueId=${record.id} battleId=${record.battleId} skipSettlement=${String(this.skipSettlement)}`,
+        `ENS settle start queueId=${record.id} battleId=${record.battleId}`,
       );
       record = await settleQueuedBattle(
         record,
         this.chainWritePorts,
         this.battleQueueStore,
-        { skipSettlement: this.skipSettlement },
       );
       this.error = null;
       console.log(

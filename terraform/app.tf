@@ -292,13 +292,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "SKIP_BATTLE_SETTLEMENT"
-        value = var.skip_battle_settlement
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "ROSTER_ENS_LABELS"
         value = var.roster_ens_labels
         scope = "RUN_TIME"

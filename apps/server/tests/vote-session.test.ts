@@ -71,7 +71,6 @@ function testLoop(roundStore = new MemoryRoundStore()): GameLoop {
     fightJob: async () => {
       throw new Error("vote tests must not start a fight job.");
     },
-    skipSettlement: true,
   });
 }
 
