@@ -1,17 +1,21 @@
 import { IDKit, proofOfHuman, type IDKitRequestConfig } from "@worldcoin/idkit-core";
 
+export type GateSlot = 1 | 2 | 3 | 4 | 5 | "judge";
+
 export type EnterRoomIdkitContext = IDKitRequestConfig & {
   action: string;
   allow_legacy_proofs: false;
 };
 
-export async function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
-  const res = await fetch("/world-id/request", { method: "POST" });
+export async function fetchEnterRoomRequest(slot: GateSlot): Promise<EnterRoomIdkitContext> {
+  const res = await fetch("/world-id/request", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slot }),
+  });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(
-      `POST /world-id/request failed: HTTP ${String(res.status)} body=${text}`,
-    );
+    throw new Error(`POST /world-id/request failed: HTTP ${String(res.status)} body=${text}`);
   }
   let parsed: unknown;
   try {
@@ -27,13 +31,12 @@ export async function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
     typeof body !== "object" ||
     body === null ||
     body.allow_legacy_proofs !== false ||
-    body.action !== "enter-room" ||
+    typeof body.action !== "string" ||
+    body.action.trim() === "" ||
     typeof body.app_id !== "string" ||
     typeof body.rp_context?.signature !== "string"
   ) {
-    throw new Error(
-      `POST /world-id/request returned an invalid IDKit context. body=${text}`,
-    );
+    throw new Error(`POST /world-id/request returned an invalid IDKit context. body=${text}`);
   }
   return body;
 }
@@ -57,9 +60,7 @@ export async function startEnterRoomProof(
         timeout: 300_000,
       });
       if (!completion.success) {
-        throw new Error(
-          `World ID scan did not complete: ${String(completion.error)}`,
-        );
+        throw new Error(`World ID scan did not complete: ${String(completion.error)}`);
       }
       return completion.result;
     },
@@ -74,9 +75,7 @@ export async function verifyEnterRoomProof(idkitResult: unknown): Promise<void> 
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(
-      `POST /world-id/verify failed: HTTP ${String(res.status)} body=${text}`,
-    );
+    throw new Error(`POST /world-id/verify failed: HTTP ${String(res.status)} body=${text}`);
   }
   let parsed: unknown;
   try {

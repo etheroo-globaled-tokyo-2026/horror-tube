@@ -8,6 +8,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "ens:check": "pnpm --filter @horror-tube/ens check",
+    "ens:roles": "pnpm --filter @horror-tube/ens roles",
     "ens:register": "pnpm --filter @horror-tube/ens register",
     "ens:subnames": "pnpm --filter @horror-tube/ens subnames",
     "dashboard": "pnpm --filter @horror-tube/ens dashboard",

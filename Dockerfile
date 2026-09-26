@@ -10,6 +10,7 @@ COPY packages/ens/package.json packages/ens/
 COPY packages/roster/package.json packages/roster/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/world-id/package.json packages/world-id/
+COPY packages/fight-media/package.json packages/fight-media/
 COPY packages/fight/package.json packages/fight/
 RUN pnpm install --frozen-lockfile
 COPY . .
@@ -24,6 +25,7 @@ RUN if [ -z "${ENS_LABEL}" ] || [ -z "${VITE_SEPOLIA_RPC_URL}" ]; then \
       exit 1; \
     fi
 RUN pnpm --filter @horror-tube/world-id build
+RUN pnpm --filter @horror-tube/fight-media build
 RUN pnpm --filter @horror-tube/fight build
 RUN pnpm --filter @horror-tube/web build
 RUN pnpm --filter @horror-tube/server build
@@ -39,6 +41,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/world-id/package.json ./packages/world-id/
 COPY --from=build /app/packages/world-id/dist ./packages/world-id/dist
 COPY --from=build /app/packages/world-id/node_modules ./packages/world-id/node_modules
+COPY --from=build /app/packages/fight-media/package.json ./packages/fight-media/
+COPY --from=build /app/packages/fight-media/dist ./packages/fight-media/dist
+COPY --from=build /app/packages/fight-media/node_modules ./packages/fight-media/node_modules
 COPY --from=build /app/packages/fight/package.json ./packages/fight/
 COPY --from=build /app/packages/fight/dist ./packages/fight/dist
 COPY --from=build /app/packages/fight/node_modules ./packages/fight/node_modules

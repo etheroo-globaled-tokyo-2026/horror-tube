@@ -10,14 +10,9 @@ Fight videos are generated with **fal MiniMax H3 Max text-to-video**:
 - Model id: `minimax/h3-max/text-to-video` (operator value for `FAL_MODEL`; no default in source)
 - Result: an mp4 at `video.url` on a `fal.media` host
 
-Those fal URLs expire. The game node (issue #54) must download the mp4 bytes, then call `uploadFightVideo` so Spaces holds a durable copy. **Do not store the fal URL as `RoundState.videoUrl`.**
+Those fal URLs expire. `@horror-tube/fight` `runFightTurn` downloads the mp4 bytes, then calls `uploadFightVideo` so Spaces holds a durable copy. **Do not store the fal URL as `RoundState.videoUrl`.**
 
-This package does not call fal, download from fal, or run the game loop. Env names for the future node:
-
-| Variable | Role |
-| --- | --- |
-| `FAL_KEY` | fal API key |
-| `FAL_MODEL` | model id (operator: `minimax/h3-max/text-to-video`) |
+This package does not call fal or run the game loop. It only PUTs bytes and returns the CDN URL.
 
 ## Spaces upload
 
