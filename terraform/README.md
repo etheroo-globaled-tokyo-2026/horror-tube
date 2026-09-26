@@ -200,6 +200,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `production`) |
 | `WORLD_ID_PRACTICE_ACTIONS` | `TF_VAR_world_id_practice_actions` | from `.env`. Five comma-separated actions |
 | `WORLD_ID_JUDGE_ACTION` | `TF_VAR_world_id_judge_action` | from `.env`. Reserved for the judge scan |
+| `WORLD_ID_PROOF` | `TF_VAR_world_id_proof` | optional; default `"1"` (Orb on). Set `"0"` to skip Orb after waiver |
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |

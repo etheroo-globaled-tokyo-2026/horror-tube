@@ -112,6 +112,15 @@ export async function openGameWallet(
   return walletFromSession(login.session, fetchImpl);
 }
 
+export async function openWaiverSession(
+  store: SessionStore = localStorage,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GameWallet> {
+  const login = await postSchema(fetchImpl, "/auth/waiver", null, null, SessionResponse);
+  store.setItem(WALLET_SESSION_KEY, login.session);
+  return walletFromSession(login.session, fetchImpl);
+}
+
 export async function getGameWallet(
   store: SessionStore = localStorage,
   fetchImpl: typeof fetch = fetch,

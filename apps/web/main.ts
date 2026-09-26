@@ -8,6 +8,7 @@ import {
   createCoinBox,
 } from "./coinbox.ts";
 import { getGameWallet, hasWalletSession } from "./wallet.ts";
+import { bootGateDecision, fetchWorldIdProof } from "./waiver-gate.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
@@ -23,6 +24,7 @@ import {
   paper,
   paperFlag,
   practiceSlot,
+  proofFlag,
   sign,
   store,
   waiverHooks,
@@ -209,12 +211,6 @@ async function mountCoinBox(): Promise<void> {
   shade(coinBox.group);
   scene.add(coinBox.group);
 }
-if (hasWalletSession()) {
-  void mountCoinBox().catch((err: Error) => {
-    coinBoxError = err instanceof Error ? err.message : String(err);
-    console.error(`Shinami wallet failed: ${coinBoxError}`);
-  });
-}
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
     new THREE.CatmullRomCurve3(
@@ -328,7 +324,10 @@ $("#hint").addEventListener("click", (e) => {
 $("#judge-scan").addEventListener("click", () => armSlot("judge"));
 $("#no-orb").addEventListener("click", noOrb);
 $("#forget").addEventListener("click", () => {
-  store((s) => s.removeItem("ht.verified"));
+  store((s) => {
+    s.removeItem("ht.verified");
+    s.removeItem("ht.waiver");
+  });
   location.reload();
 });
 const look = new THREE.Vector2();
@@ -594,5 +593,31 @@ void document.fonts.ready.then(() => {
   TAPE.key = "";
   drawTV();
 });
-if (store((s) => s.getItem("ht.verified")) === "1") enterRoom();
+
+void (async () => {
+  try {
+    const worldIdProof = await fetchWorldIdProof();
+    proofFlag.worldIdProof = worldIdProof;
+    const decision = bootGateDecision({
+      worldIdProof,
+      verified: store((s) => s.getItem("ht.verified")) === "1",
+      waiver: store((s) => s.getItem("ht.waiver")) === "1",
+      hasWalletSession: hasWalletSession(),
+    });
+    if (decision.mountCoinBox) {
+      void mountCoinBox().catch((err: Error) => {
+        coinBoxError = err instanceof Error ? err.message : String(err);
+        console.error(`Shinami wallet failed: ${coinBoxError}`);
+      });
+    }
+    if (decision.kind === "enter-room") enterRoom();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`WORLD_ID_PROOF config failed: ${message}`);
+    proofFlag.worldIdProof = null;
+    W8.fail = message;
+    say(message);
+  }
+  hintText();
+})();
 hintText();

@@ -111,6 +111,8 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
+  With `WORLD_ID_PROOF=0` the Orb scan is skipped: after the signature the room opens the same way a successful
+  scan does (stamp, enter, walkthrough) and the server issues a waiver session for vote and the coin box.
 - **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the room.
 - **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
   says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.

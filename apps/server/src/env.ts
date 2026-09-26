@@ -1,15 +1,10 @@
 import { config as loadDotenv } from "dotenv";
 import { existsSync, statSync } from "node:fs";
 
-export function requiredEnv(
-  name: string,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+export function requiredEnv(name: string, env: NodeJS.ProcessEnv = process.env): string {
   const value = env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(
-      `${name} is required. Set it in .env. See .env.example.`,
-    );
+    throw new Error(`${name} is required. Set it in .env. See .env.example.`);
   }
   return value;
 }
@@ -45,9 +40,7 @@ export function readGamePort(env: NodeJS.ProcessEnv = process.env): number {
  * When STATIC_DIR is unset, the process serves only /health (local Vite serves the UI).
  * When set, it must be an existing directory.
  */
-export function readStaticDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string | undefined {
+export function readStaticDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const raw = env.STATIC_DIR;
   if (raw === undefined || raw.trim() === "") {
     return undefined;
@@ -61,14 +54,10 @@ export function readStaticDir(
   return dir;
 }
 
-export function readSkipBattleSettlement(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
+export function readSkipBattleSettlement(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env.SKIP_BATTLE_SETTLEMENT;
   if (raw === undefined || raw.trim() === "") {
-    throw new Error(
-      "SKIP_BATTLE_SETTLEMENT is required. Set it in .env. See .env.example.",
-    );
+    throw new Error("SKIP_BATTLE_SETTLEMENT is required. Set it in .env. See .env.example.");
   }
   const value = raw.trim();
   if (value === "1") {
@@ -79,5 +68,22 @@ export function readSkipBattleSettlement(
   }
   throw new Error(
     `SKIP_BATTLE_SETTLEMENT must be "0" or "1". Got: ${JSON.stringify(raw)}. Set it in .env. See .env.example.`,
+  );
+}
+
+export function readWorldIdProof(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.WORLD_ID_PROOF;
+  if (raw === undefined || raw.trim() === "") {
+    return true;
+  }
+  const value = raw.trim();
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  throw new Error(
+    `WORLD_ID_PROOF must be unset, blank, "0", or "1". Got: ${JSON.stringify(raw)}. Set it in .env. See .env.example.`,
   );
 }

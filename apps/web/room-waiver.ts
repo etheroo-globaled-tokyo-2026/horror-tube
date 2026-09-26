@@ -7,7 +7,8 @@ import {
   verifyEnterRoomProof,
   type GateSlot,
 } from "./world-id.ts";
-import { openGameWallet } from "./wallet.ts";
+import { openGameWallet, openWaiverSession } from "./wallet.ts";
+import { continueAfterSignature } from "./waiver-gate.ts";
 import { sfx } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { lambert, seed, speckle } from "./room-materials.ts";
@@ -180,16 +181,46 @@ export function armSlot(slot: GateSlot): void {
   paperFlag.drawn = false;
   step("read");
 }
+
+export type ProofFlagState = { worldIdProof: boolean | null };
+export const proofFlag: ProofFlagState = { worldIdProof: null };
+
 export function sign(): void {
   if (W8.step !== "read" || W8.slot === null) return;
+  if (proofFlag.worldIdProof === null) {
+    console.error("WORLD_ID_PROOF config has not loaded yet; refusing to sign.");
+    return;
+  }
   step("ink");
   const t0 = performance.now();
   const inkTimer = setInterval(() => {
     W8.ink = Math.min(1, (performance.now() - t0) / 700);
     if (W8.ink < 1) return;
     clearInterval(inkTimer);
-    void beginWorldIdScan();
+    void continueAfterSignature({
+      worldIdProof: proofFlag.worldIdProof === true,
+      beginWorldIdScan,
+      enterWithWaiverSession,
+    });
   }, 30);
+}
+
+export async function enterWithWaiverSession(): Promise<void> {
+  if ((W8.step !== "ink" && W8.step !== "scan") || W8.slot === null) return;
+  try {
+    await openWaiverSession();
+    await waiverHooks.mountCoinBox();
+    step("signed");
+    store((s) => s.setItem("ht.waiver", "1"));
+    window.setTimeout(() => {
+      if (W8.step !== "signed") return;
+      nextGateStep();
+    }, 1400);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Waiver session failed: ${message}`);
+    scanFailed(message);
+  }
 }
 export async function beginWorldIdScan(): Promise<void> {
   if ((W8.step !== "ink" && W8.step !== "scan") || W8.slot === null) return;

@@ -12,12 +12,10 @@ import {
   readGamePort,
   readSkipBattleSettlement,
   readStaticDir,
+  readWorldIdProof,
   requiredEnv,
 } from "./env.js";
-import {
-  readGameLoopConfig,
-  readRosterEnsLabels,
-} from "./game/config.js";
+import { readGameLoopConfig, readRosterEnsLabels } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
@@ -33,6 +31,12 @@ const port = readGamePort();
 const staticDir = readStaticDir();
 const host = "0.0.0.0";
 const skipSettlement = readSkipBattleSettlement();
+const worldIdProof = readWorldIdProof();
+console.log(
+  worldIdProof
+    ? "WORLD_ID_PROOF: on (Orb proof required after waiver)"
+    : "WORLD_ID_PROOF: off (waiver signature enters the room without Orb)",
+);
 
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
@@ -60,6 +64,7 @@ const server = createGameServer({
   wallet,
   game,
   sessionPepper,
+  worldIdProof,
 });
 await listenGameServer(server, {
   port,
@@ -68,6 +73,7 @@ await listenGameServer(server, {
   wallet,
   game,
   sessionPepper,
+  worldIdProof,
 });
 
 const tickMs = 250;

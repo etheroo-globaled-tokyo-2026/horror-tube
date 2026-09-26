@@ -1,10 +1,11 @@
+import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import type { VerifyFetch } from "@horror-tube/world-id";
 import * as v from "valibot";
 
-import { requiredEnv } from "./env.js";
+import { readWorldIdProof, requiredEnv } from "./env.js";
 import { HttpError } from "./http-error.js";
 import { issueSession, readSession, walletSecret } from "./human-session.js";
 import { sendJson } from "./server.js";
@@ -19,7 +20,7 @@ import { verifyEnterRoomProof } from "./world-id-handler.js";
 
 const BODY_LIMIT = 1_000_000;
 
-const ROUTES = new Set(["/auth/world-id", "/wallet", "/tx"]);
+const ROUTES = new Set(["/auth/world-id", "/auth/waiver", "/wallet", "/tx"]);
 
 const TxBody = v.object({
   txKind: v.pipe(v.string(), v.minLength(1)),
@@ -29,9 +30,14 @@ export type WalletHandlerDeps = {
   pepper: string;
   usdcType: string;
   bettingPackageId: string | undefined;
+  worldIdProof: boolean;
   verifyProof: (rawBody: string) => Promise<string>;
   shinami: ShinamiPort;
 };
+
+export function freshWaiverNullifier(): string {
+  return BigInt(`0x${randomBytes(16).toString("hex")}`).toString(10);
+}
 
 export type WalletHandler = {
   matches(method: string, urlPath: string): boolean;
@@ -131,6 +137,17 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
       }
       let secret = "";
       try {
+        if (urlPath === "/auth/waiver") {
+          if (deps.worldIdProof) {
+            throw new HttpError(
+              400,
+              "POST /auth/waiver is disabled while WORLD_ID_PROOF requires Orb proof. Finish the World ID scan instead.",
+            );
+          }
+          const nullifier = freshWaiverNullifier();
+          sendJson(res, 200, { session: issueSession(nullifier, deps.pepper) });
+          return;
+        }
         if (urlPath === "/auth/world-id") {
           const raw = await readBody(req);
           let parsedProof;
@@ -142,7 +159,8 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
               `Request body is not JSON. Underlying: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
-          if (!parsedProof.success) throw new HttpError(400, "World ID proof must be a JSON object.");
+          if (!parsedProof.success)
+            throw new HttpError(400, "World ID proof must be a JSON object.");
           const nullifier = await deps.verifyProof(raw);
           sendJson(res, 200, { session: issueSession(nullifier, deps.pepper) });
           return;
@@ -215,10 +233,12 @@ export function createWalletHandlerFromEnv(
     throw new Error(`SUI_USDC_TYPE or BETTING_PACKAGE_ID is invalid. Underlying: ${detail}`);
   }
   const fetchAdapter: VerifyFetch = (input, init) => fetchImpl(input, init);
+  const worldIdProof = readWorldIdProof(env);
   return createWalletHandler({
     pepper,
     usdcType,
     bettingPackageId,
+    worldIdProof,
     verifyProof: async (rawBody: string) => {
       try {
         const verified = await verifyEnterRoomProof(JSON.parse(rawBody), {

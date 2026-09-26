@@ -15,8 +15,7 @@ import { createWalletHandler, createWalletHandlerFromEnv } from "../src/wallet-h
 
 const PEPPER = "test-pepper";
 const NULLIFIER = "11256099";
-const USDC =
-  "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
+const USDC = "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
 const COIN_BOX = `0x${"11".repeat(32)}`;
 const OTHER = `0x${"22".repeat(32)}`;
 const PACKAGE_ID = `0x${"33".repeat(32)}`;
@@ -82,10 +81,7 @@ describe("transaction allowlist", () => {
 
   it("allows a USDC payout when the change returns to the coin box", async () => {
     const txKind = await kind(COIN_BOX, (tx) => {
-      tx.transferObjects(
-        [coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })],
-        OTHER,
-      );
+      tx.transferObjects([coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })], OTHER);
     });
     assert.doesNotThrow(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID));
   });
@@ -173,6 +169,7 @@ describe("wallet HTTP", () => {
         pepper: PEPPER,
         usdcType: USDC,
         bettingPackageId: PACKAGE_ID,
+        worldIdProof: true,
         verifyProof: () => Promise.resolve(NULLIFIER),
         shinami,
       }),
@@ -188,7 +185,7 @@ describe("wallet HTTP", () => {
     const login = await fetch(`${base}/auth/world-id`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{\"ok\":true}",
+      body: '{"ok":true}',
     });
     assert.equal(login.status, 200);
     const session = v.parse(SessionJson, await login.json()).session;
@@ -249,7 +246,8 @@ describe("wallet HTTP", () => {
 
   it("tells the operator to create a Node Service key on a gasless auth error", async () => {
     const shinami = fakeShinami();
-    shinami.executeGaslessTransaction = () => Promise.reject(new Error("Unauthorized invalid access key"));
+    shinami.executeGaslessTransaction = () =>
+      Promise.reject(new Error("Unauthorized invalid access key"));
     const base = await start(shinami);
     const session = issueSession(NULLIFIER, PEPPER);
     const txKind = await kind(undefined, (tx) => {

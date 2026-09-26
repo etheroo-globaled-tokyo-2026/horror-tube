@@ -18,6 +18,7 @@ export type GameServerOptions = {
   game?: GameLoop;
   /** HMAC pepper for the waiver session. Required for POST /vote. */
   sessionPepper?: string;
+  worldIdProof?: boolean;
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -39,7 +40,8 @@ export type JsonBody =
   | { error: string }
   | { session: string }
   | { address: string }
-  | { digest: string };
+  | { digest: string }
+  | { worldIdProof: boolean };
 
 export function sendJson(res: ServerResponse, status: number, body: JsonBody): void {
   const payload = JSON.stringify(body);
@@ -175,10 +177,17 @@ function readBearerToken(req: IncomingMessage): string {
 }
 
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir, wallet, worldId, game, sessionPepper } = options;
+  const { staticDir, wallet, worldId, game, sessionPepper, worldIdProof } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void handleRequest(req, res, { staticDir, wallet, worldId, game, sessionPepper });
+    void handleRequest(req, res, {
+      staticDir,
+      wallet,
+      worldId,
+      game,
+      sessionPepper,
+      worldIdProof,
+    });
   });
 
   return server;
@@ -193,6 +202,7 @@ async function handleRequest(
     worldId?: WorldIdHandlerDeps;
     game?: GameLoop;
     sessionPepper?: string;
+    worldIdProof?: boolean;
   },
 ): Promise<void> {
   const method = req.method ?? "GET";
@@ -202,6 +212,18 @@ async function handleRequest(
   try {
     if (method === "GET" && (path === "/health" || url.startsWith("/health?"))) {
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (method === "GET" && path === "/config") {
+      if (opts.worldIdProof === undefined) {
+        sendJson(res, 500, {
+          error:
+            "worldIdProof was not passed to createGameServer. Pass readWorldIdProof() from env.",
+        });
+        return;
+      }
+      sendJson(res, 200, { worldIdProof: opts.worldIdProof });
       return;
     }
 
@@ -234,8 +256,7 @@ async function handleRequest(
         if (pepper === undefined || pepper.trim() === "") {
           sendJson(res, 500, {
             ok: false,
-            error:
-              "WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
+            error: "WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
           });
           return;
         }
@@ -347,9 +368,7 @@ async function handleRequest(
 
     sendNotFound(res);
   } catch (err) {
-    console.error(
-      `request handler failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    console.error(`request handler failed: ${err instanceof Error ? err.message : String(err)}`);
     sendInternalError(res);
   }
 }

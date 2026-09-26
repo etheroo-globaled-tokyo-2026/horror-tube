@@ -259,6 +259,13 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "WORLD_ID_PROOF"
+        value = var.world_id_proof
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "ROSTER_ENS_LABELS"
         value = var.roster_ens_labels
         scope = "RUN_TIME"

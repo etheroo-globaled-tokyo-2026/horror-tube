@@ -223,6 +223,12 @@ variable "skip_battle_settlement" {
   type        = string
 }
 
+variable "world_id_proof" {
+  description = "WORLD_ID_PROOF: 1 (default) requires Orb proof after the waiver; 0 skips it. Not a secret."
+  type        = string
+  default     = "1"
+}
+
 variable "roster_ens_labels" {
   description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
   type        = string
