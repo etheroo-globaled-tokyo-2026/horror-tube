@@ -115,35 +115,6 @@ canvas {
   }
 }
 
-.gate {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: grid;
-  place-content: center;
-  gap: 18px;
-  padding: 24px;
-  text-align: center;
-  background: var(--ground);
-}
-.gate h1 {
-  font: 700 clamp(32px, 6vw, 64px)/1 var(--f-osd);
-  color: var(--blood);
-}
-.gate p {
-  max-width: 46ch;
-  justify-self: center;
-}
-.gate .row {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.gate .row .btn {
-  min-width: 200px;
-}
-
 mysten-dapp-kit-connect-modal {
   --background: var(--char);
   --foreground: var(--bone);
