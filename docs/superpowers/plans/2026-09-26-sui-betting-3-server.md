@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The game server opens, closes, settles and cancels a Sui pool for every battle, and pushes the pool's totals in `RoundState`.
+**Goal:** The game server opens, closes, settles and cancels a Sui pool for every battle, serves the betting IDs, and pushes the pool in `RoundState`.
 
-**Architecture:** `apps/server` depends on `@horror-tube/betting` (built package). A `BettingSync` watches `GameLoop` state each tick and calls the operator; the battle queue's settle port calls `operator.settle`. Bets and claims keep using main's `/tx` + Shinami path. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
+**Architecture:** `apps/server` depends on `@horror-tube/betting` (built package). A `BettingSync` watches `GameLoop` state each tick and calls the operator. The battle queue's existing settle port calls `operator.settle`. Bets and claims keep using the `/tx` + Shinami path. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
 
 **Tech Stack:** Node 22, `node:http`, valibot (server convention), `@horror-tube/betting`, `tsx --test`.
+
+**Where things are on main:** `/bet` route `apps/server/src/server.ts` (`POST /bet` → `opts.game.bet`); `GameLoop.bet` in `src/game/loop.ts`; battle queue via `GameLoop.attachAgentResult(insert)` (the agent supplies `insert.battleId`) and `writeQueuedEns` → `settleQueuedBattle`; the settle port `settleBattle(battleId)` in `src/ens-chain-write.ts` throws "not implemented… Set SKIP_BATTLE_SETTLEMENT=1".
 
 ---
 
@@ -15,52 +17,61 @@
 **Files:** Modify `apps/server/package.json`, `apps/server/src/index.ts`, `.env.example`, CI `docker` job, `terraform/app.tf`, `terraform/variables.tf`, `terraform/README.md`
 
 - [ ] `"@horror-tube/betting": "workspace:*"`; `pnpm install`.
-- [ ] `index.ts`: `const betting = readBettingConfig();` next to the other env reads, plus `readKeypair("SUI_OPERATOR_PRIVATE_KEY")` and `requiredEnv("SUI_OPERATOR_CAP_ID")`; build `createOperator(createChain(client, signer), betting, cap)`. Missing values fail at startup, naming the variable.
-- [ ] CI `docker` job: pass `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID` (public, from the deploy) and a throwaway `SUI_OPERATOR_PRIVATE_KEY` generated in the job:
+- [ ] `index.ts`: `readBettingConfig()`, `readKeypair("SUI_OPERATOR_PRIVATE_KEY")`, `requiredEnv("SUI_OPERATOR_CAP_ID")` next to the other env reads; `createOperator(createChain(client, signer), config, cap)`. Missing values fail at startup, naming the variable.
+- [ ] CI `docker` job: pass `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID` (public, from the deploy) and a throwaway operator key generated in the job:
 
 ```bash
 SUI_OPERATOR_PRIVATE_KEY="$(docker run --rm --entrypoint node -w /app/apps/server horror-tube:ci -e 'import("@mysten/sui/keypairs/ed25519").then((m) => console.log(m.Ed25519Keypair.generate().getSecretKey()))')"
 ```
 
-- [ ] Terraform: one `env` block per variable, `RUN_TIME`; `SECRET` for the operator key, `GENERAL` for the rest; a `variable` each (no default); README table rows and `export TF_VAR_…` lines.
+- [ ] Terraform: one `env` block per variable, `RUN_TIME`; `SECRET` for the operator key, `GENERAL` for the rest; a `variable` each (no default); README rows and `export TF_VAR_…` lines.
 - [ ] Commit: `feat: server reads the Sui betting config`.
 
-### Task 2: Battle ID and pool in `RoundState`
+### Task 2: Battle ID, pool and fee in `RoundState`; delete off-chain bets
 
-**Files:** Modify `apps/server/src/types.ts`, `apps/server/src/game/loop.ts`, `apps/server/tests/game-loop.test.ts`, `docs/game-loop.md`
+**Files:** Modify `apps/server/src/types.ts`, `src/game/loop.ts`, `src/server.ts`, `tests/game-loop.test.ts`, `tests/server.test.ts`, `docs/game-loop.md`
 
-- [ ] Failing tests in `game-loop.test.ts`: entering `bet` sets a fresh non-empty `battleId` (different for the next bout) and `poolId: null`; `setPool(battleId, poolId, totals)` updates `poolId` and `pool` only while that battle is live; after `settle` → `vote`, both reset to `null`.
-- [ ] `RoundState`: add `battleId: string | null` and `poolId: string | null`; `pool` holds totals in USDC base units.
-- [ ] `GameLoop`: set `battleId = randomUUID()` wherever the phase becomes `bet` (`closeVoting` and the rotation path); add `setPool`. Delete `bet(side, amount)`, its route in `server.ts` and its tests: bets are on chain.
-- [ ] `docs/game-loop.md` "Server contract": the new fields; `bet(side, amount)` action replaced by "bets go to Sui through `/tx`"; the operator table from the spec.
-- [ ] Tests pass. Commit: `feat: battle and pool IDs in the round state`.
+- [ ] Failing tests: entering `bet` sets a fresh non-empty `battleId` (different next bout) and `poolId: null`; `setPool(battleId, poolId, totals)` updates `poolId` and `pool` only for the live battle; `attachAgentResult` with another `battleId` throws; after settle → vote both reset to `null`.
+- [ ] `RoundState`: `battleId: string | null`, `poolId: string | null`; `pool` = totals in USDC base units.
+- [ ] `GameLoop`: `battleId = randomUUID()` wherever the phase becomes `bet` (`closeVoting` and the rotation path); `setPool`; `attachAgentResult` requires `insert.battleId === this.battleId` (the fight pipeline gets the ID from `RoundState`).
+- [ ] Delete `GameLoop.bet`, the `POST /bet` route and their tests.
+- [ ] `docs/game-loop.md` "Server contract": the new fields; `bet(side, amount)` → "bets go to Sui through `/tx`"; the operator table from the spec.
+- [ ] Commit: `feat: battle and pool IDs in the round state`.
 
-### Task 3: `BettingSync`
+### Task 3: `GET /betting`
 
-**Files:** Create `apps/server/src/betting-sync.ts`, `apps/server/tests/betting-sync.test.ts`; modify `apps/server/src/index.ts`
+**Files:** Modify `apps/server/src/server.ts`, `tests/server.test.ts`, `apps/web/vite.config.ts` (proxy `/betting` like `/round`)
 
-- [ ] Failing tests with a fake operator (records calls; can be told to fail once) and plain `RoundState` objects:
+- [ ] Failing test: `GET /betting` → `200 { packageId, houseId, coinType, feeBps }`.
+- [ ] Route returns the config (`feeBps` read once from the house at startup with `getObject`; fail startup if the house is missing).
+- [ ] Commit: `feat: serve the betting IDs`.
+
+### Task 4: `BettingSync`
+
+**Files:** Create `apps/server/src/betting-sync.ts`, `tests/betting-sync.test.ts`; modify `src/index.ts`
+
+- [ ] Failing tests with a fake operator (records calls; can fail once) and plain `RoundState` objects:
   - phase `bet` with a new `battleId` → one `openPool(battleId, now + videoTimeout)`; then `setPool` gets the pool ID and totals.
   - `bet` → `fight` → one `closeBetting`.
   - `bet` with `error` set → one `cancel`.
   - an operator failure is logged with the battle ID and retried after the backoff, not every tick.
-- [ ] `betting-sync.ts`: `createBettingSync({ operator, game, videoTimeoutMs, now, log })` returning `observe(state: RoundState)`. It keeps per-battle `{ opened, closed, cancelled, inFlight, retryAt }`, starts at most one operator call per battle at a time, and during `bet` reads `operator.read(battleId)` every 2 s and calls `game.setPool(battleId, poolId, [Number(a), Number(b)])`.
-- [ ] `index.ts`: call `sync.observe(game.state())` in the existing tick.
-- [ ] Tests pass. Commit: `feat: drive Sui pools from the game loop`.
+- [ ] `createBettingSync({ operator, game, videoTimeoutMs, now, log })` → `observe(state)`. Per battle `{ opened, closed, cancelled, inFlight, retryAt }`; at most one operator call per battle at a time; during `bet`, `operator.read(battleId)` every 2 s → `game.setPool(battleId, poolId, [Number(a), Number(b)])`.
+- [ ] `index.ts`: `sync.observe(game.getState())` in the existing tick.
+- [ ] Commit: `feat: drive Sui pools from the game loop`.
 
-### Task 4: Settle through the battle queue
+### Task 5: Settle through the battle queue
 
-**Files:** Modify `packages/fight/src/battle-queue.ts`, its tests, and the server's `ChainWritePorts` implementation
+**Files:** Modify `packages/fight/src/battle-queue.ts` and tests, `apps/server/src/ens-chain-write.ts`, `apps/server/src/env.ts`, `.env.example`
 
-- [ ] `ChainWritePorts.settleBattle(battleId)` → `settleBattle(battleId: string, winningSide: 0 | 1)`. `settleQueuedBattle` passes `record.winnerSubname === record.fighterASubname ? 0 : 1` and throws when the winner is neither fighter. Update the fight package tests.
-- [ ] Server port: `settleBattle: async (battleId, side) => { await operator.settle(battleId, side); return <settle digest> }`. Have `operator.settle` return the digest (the Sepolia hash's replacement in `settlement_tx_hash`).
-- [ ] The queue's `battleId` must be `RoundState.battleId` for that bout. Wherever the server enqueues the battle result, pass it.
-- [ ] Tests pass. Commit: `feat: settle Sui pools from the battle queue`.
+- [ ] `ChainWritePorts.settleBattle(battleId)` → `settleBattle(battleId: string, winningSide: 0 | 1)`. `settleQueuedBattle` passes `record.winnerSubname === record.fighterASubname ? 0 : 1` and throws when the winner is neither fighter. Update fight tests.
+- [ ] `ens-chain-write.ts` `settleBattle`: replace the "not implemented" throw with `operator.settle(battleId, side)`, returning the settle digest (stored in `settlement_tx_hash`). `operator.settle` returns the digest.
+- [ ] Delete `SKIP_BATTLE_SETTLEMENT` (`readSkipBattleSettlement`, the loop option, `.env.example`, logs).
+- [ ] Commit: `feat: settle Sui pools from the battle queue`.
 
-### Task 5: Policy accepts real bet and claim kinds
+### Task 6: Policy accepts real bet and claim kinds
 
-**Files:** Modify `apps/server/tests/tx-policy.test.ts` (create it if missing)
+**Files:** Create or modify `apps/server/tests/tx-policy.test.ts`
 
-- [ ] Build kinds offline with `betTx`/`claimTx` from `@horror-tube/betting`, the house, pool and ticket given as `Inputs.SharedObjectRef` / `Inputs.ObjectRef`, sender set, `tx.build({ onlyTransactionKind: true, assumeSufficientAddressBalances: true })`. Assert `assertSponsorableKind(toBase64(kind), sender, usdcType, packageId)` doesn't throw for both, and throws 403 for the same bet against another package ID.
-- [ ] If a bet kind is rejected, change `tx-policy.ts` so that the USDC coin from `redeem_funds` may be an argument of a betting-package call, and add that case.
+- [ ] Build kinds offline with `betTx`/`claimTx` (house and pool as `Inputs.SharedObjectRef`, ticket as `Inputs.ObjectRef`, sender set, `tx.build({ onlyTransactionKind: true, assumeSufficientAddressBalances: true })`). `assertSponsorableKind(toBase64(kind), sender, usdcType, packageId)` passes for both and throws 403 for the bet against another package ID.
+- [ ] If the bet is rejected, allow the `redeem_funds` USDC coin as an argument of a betting-package call in `tx-policy.ts`, with that test case.
 - [ ] Commit: `test: tx policy accepts betting kinds`.
