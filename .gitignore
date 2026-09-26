@@ -156,6 +156,8 @@ packages/ens/scripts/.ens-commit-state/
 *.tfvars
 !terraform/terraform.tfvars.example
 
+.serena
+.claude/.headroom*
 # Python
 .venv/
 __pycache__/
