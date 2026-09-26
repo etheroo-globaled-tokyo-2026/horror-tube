@@ -19,16 +19,26 @@
 ```yaml
   betting-move:
     runs-on: ubuntu-latest
+    env:
+      SUI_RELEASE: testnet-v1.80.1
     steps:
       - uses: actions/checkout@v4
-      - name: Install Sui CLI testnet-v1.80.1
+      - id: sui-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/sui
+          key: sui-${{ env.SUI_RELEASE }}-ubuntu-x86_64
+      - name: Install Sui CLI
+        if: steps.sui-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$HOME/.local/bin"
-          curl -sSfL https://github.com/MystenLabs/sui/releases/download/testnet-v1.80.1/sui-testnet-v1.80.1-ubuntu-x86_64.tgz \
+          curl -sSfL "https://github.com/MystenLabs/sui/releases/download/${SUI_RELEASE}/sui-${SUI_RELEASE}-ubuntu-x86_64.tgz" \
             | tar -xz -C "$HOME/.local/bin" ./sui
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: sui move test --path packages/betting/move
 ```
+
+The release archive is about 1.1 GB, so the extracted `sui` binary is cached under the release key.
 
 - [ ] The job passes on the PR.
 - [x] Commit: `ci: run Move betting tests`.
