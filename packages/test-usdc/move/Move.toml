@@ -1,0 +1,3 @@
+[package]
+name = "test_usdc"
+edition = "2024"
