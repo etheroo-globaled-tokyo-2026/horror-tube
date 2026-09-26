@@ -37,7 +37,6 @@ export function readGameLoopConfig(
   };
 }
 
-/** Comma-separated ENS labels, sorted for stable numeric ids (docs/game-loop.md). */
 export function readRosterEnsLabels(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {

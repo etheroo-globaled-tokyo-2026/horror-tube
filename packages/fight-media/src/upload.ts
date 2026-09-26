@@ -18,18 +18,13 @@ export type PutFightVideoInput = PutFightMediaInput;
 export type PutFightVideo = (input: PutFightMediaInput) => Promise<void>;
 
 export type UploadFightVideoOptions = {
-  /** Mp4 bytes. Required; empty body is rejected. */
   body: Uint8Array;
-  /** Env for Spaces config. Defaults to process.env. */
   env?: NodeJS.ProcessEnv;
-  /** Override config instead of reading env. */
   config?: FightMediaConfig;
-  /** Injectable PUT. Defaults to an S3 client against the Spaces endpoint. */
   putObject?: PutFightVideo;
 };
 
 export type UploadFightFrameOptions = {
-  /** JPEG bytes from the last video frame. Required; empty body is rejected. */
   body: Uint8Array;
   env?: NodeJS.ProcessEnv;
   config?: FightMediaConfig;
@@ -107,11 +102,7 @@ async function putAndCdnUrl(
   return fightMediaCdnUrl(config.cdnHost, putInput.Key);
 }
 
-/**
- * Upload fight mp4 bytes to Spaces under videos/<uuid>.mp4 and return the public CDN URL.
- * That URL is what RoundState.videoUrl uses. Fails closed — no placeholder URL.
- * Do not pass a fal.media URL here; download those bytes first, then upload.
- */
+// WARNING: body must be raw mp4 bytes, not a fal.media URL. Download the bytes first.
 export async function uploadFightVideo(options: UploadFightVideoOptions): Promise<string> {
   if (options.body.byteLength === 0) {
     throw new Error("fight video body is empty. Refusing to upload.");
@@ -123,10 +114,6 @@ export async function uploadFightVideo(options: UploadFightVideoOptions): Promis
   return putAndCdnUrl(config, putInput, putObject);
 }
 
-/**
- * Upload a last-frame JPEG under frames/<uuid>.jpg for the next fight's image-to-video seed.
- * Same fight-media bucket as videos. Fails closed — no placeholder URL.
- */
 export async function uploadFightFrame(options: UploadFightFrameOptions): Promise<string> {
   if (options.body.byteLength === 0) {
     throw new Error("fight frame body is empty. Refusing to upload.");

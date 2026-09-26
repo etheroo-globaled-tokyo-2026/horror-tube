@@ -13,13 +13,11 @@ function roster(
   return rows.map(([subname, status]) => ({ subname, status }));
 }
 
-/** Always picks index 0 among the living non-winner pool. */
 const pickFirst: RandomInt = (maxExclusive) => {
   assert.ok(maxExclusive > 0);
   return 0;
 };
 
-/** Always picks the last index among the living non-winner pool. */
 const pickLast: RandomInt = (maxExclusive) => {
   assert.ok(maxExclusive > 0);
   return maxExclusive - 1;
@@ -47,7 +45,6 @@ describe("nextRotationPair", () => {
       ["leatherface", "alive"],
       ["chucky", "alive"],
     );
-    // Living non-winners in roster order: freddy, leatherface, chucky
     assert.deepEqual(nextRotationPair(rows, "jason", pickFirst), {
       championSubname: "jason",
       challengerSubname: "freddy",
@@ -70,7 +67,6 @@ describe("nextRotationPair", () => {
       ["chucky", "alive"],
       ["pinhead", "alive"],
     );
-    // Living non-winners: chucky, pinhead
     assert.deepEqual(nextRotationPair(rows, "jason", pickFirst), {
       championSubname: "jason",
       challengerSubname: "chucky",

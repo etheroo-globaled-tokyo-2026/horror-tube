@@ -85,6 +85,11 @@ fills the challenger slot from rotation after settle.
   after it succeeds does the round set the betting-closed signal and enter
   `fight`. A failed close stays on `RoundState.error`, keeps betting-closed
   unset, and retries every 2s.
+- Entering `bet` assigns the bout's `battleId` and starts the fight job. `openPool`
+  for that ID retries from the tick with backoff until it lands; bets are refused
+  while `poolId` is null, and betting does not close until the pool exists.
+- During `bet` the server reads the Sui pool totals every 2s into `RoundState.pool`.
+  Tabs never poll Sui.
 - The Sui pool's `closes_at_ms` from `openPool` is only an upper bound the chain
   requires, not a guess of when the video starts.
 - Winners share the pool in proportion to their bets.
@@ -92,7 +97,7 @@ fills the challenger slot from rotation after settle.
 
 ### Errors
 
-- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the Sui pool (ticket refunds), and leave `bet` for `over` so `resetFromOver` can start a new season.
+- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the Sui pool (ticket refunds; a failed cancel retries from the tick with backoff until it lands), and leave `bet` for `over` so `resetFromOver` can start a new season.
 - Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`). The fight plays `RoundState.videoUrl` only.
 
 ### Settle
@@ -179,7 +184,7 @@ pays out. Stakes are not defined here (no stake columns).
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
-- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight.
+- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
 
 ## Client
 
@@ -194,5 +199,4 @@ submission stays on the screen that sent it until dismissed. The final UI delete
 ## Out of scope
 
 - How the server is hosted.
-- Web bet/claim UI kinds (plan 4). Pool open/close/settle is the server operator.
 - Season end beyond today's `OVER` screen and reset.

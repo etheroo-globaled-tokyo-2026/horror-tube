@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
-import type { AddressInfo } from "node:net";
 
 import {
   loadRepoDotenv,
@@ -12,6 +11,7 @@ import {
   readStaticDir,
 } from "../src/env.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
+import { baseUrl } from "./base-url.js";
 
 describe("loadRepoDotenv", () => {
   it("does not require a .env file to exist", () => {
@@ -43,10 +43,10 @@ describe("GAME_PORT", () => {
   it("throws and names GAME_PORT when missing", () => {
     assert.throws(
       () => readGamePort({}),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /GAME_PORT/u);
-        assert.match(err.message, /\.env\.example/u);
+      (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(cause.message, /GAME_PORT/u);
+        assert.match(cause.message, /\.env\.example/u);
         return true;
       },
     );
@@ -55,10 +55,10 @@ describe("GAME_PORT", () => {
   it("throws and names GAME_PORT when blank", () => {
     assert.throws(
       () => readGamePort({ GAME_PORT: "   " }),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /GAME_PORT/u);
-        assert.match(err.message, /\.env\.example/u);
+      (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(cause.message, /GAME_PORT/u);
+        assert.match(cause.message, /\.env\.example/u);
         return true;
       },
     );
@@ -100,8 +100,7 @@ describe("HTTP server", () => {
     const server = createGameServer({ port: 0, host: "127.0.0.1" });
     servers.push(server);
     await listenGameServer(server, { port: 0, host: "127.0.0.1" });
-    const addr = server.address() as AddressInfo;
-    const res = await fetch(`http://127.0.0.1:${String(addr.port)}/health`);
+    const res = await fetch(`${baseUrl(server)}/health`);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true });
   });
@@ -120,8 +119,7 @@ describe("HTTP server", () => {
       });
       servers.push(server);
       await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
-      const addr = server.address() as AddressInfo;
-      const res = await fetch(`http://127.0.0.1:${String(addr.port)}/hello.txt`);
+      const res = await fetch(`${baseUrl(server)}/hello.txt`);
       assert.equal(res.status, 200);
       assert.equal(await res.text(), "from-static\n");
     } finally {
@@ -141,8 +139,7 @@ describe("HTTP server", () => {
       });
       servers.push(server);
       await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
-      const addr = server.address() as AddressInfo;
-      const res = await fetch(`http://127.0.0.1:${String(addr.port)}/%E0%A4%A`);
+      const res = await fetch(`${baseUrl(server)}/%E0%A4%A`);
       assert.equal(res.status, 400);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -164,8 +161,7 @@ describe("HTTP server", () => {
       });
       servers.push(server);
       await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
-      const addr = server.address() as AddressInfo;
-      const res = await fetch(`http://127.0.0.1:${String(addr.port)}/rel.txt`);
+      const res = await fetch(`${baseUrl(server)}/rel.txt`);
       assert.equal(res.status, 200);
       assert.equal(await res.text(), "relative\n");
     } finally {
@@ -188,8 +184,7 @@ describe("HTTP server", () => {
       });
       servers.push(server);
       await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
-      const addr = server.address() as AddressInfo;
-      const base = `http://127.0.0.1:${String(addr.port)}`;
+      const base = baseUrl(server);
       const deniedRes = await fetch(`${base}/denied.txt`);
       assert.equal(deniedRes.status, 500);
       assert.equal(await deniedRes.text(), "Internal Server Error");

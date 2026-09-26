@@ -45,14 +45,26 @@ function encodeText(value: string): Hex {
   return encodeAbiParameters([{ type: "string" }], [value]);
 }
 
+type GetStateResult = {
+  status: number;
+  expiry: bigint;
+  latestOwner: Address;
+  tokenId: bigint;
+  resource: bigint;
+};
+
+type ReadContractCall =
+  | { functionName: "getSubregistry"; args?: readonly unknown[] }
+  | { functionName: "getResolver"; args?: readonly unknown[] }
+  | { functionName: "getState"; args: readonly [bigint] }
+  | { functionName: "resolve"; args: readonly [Hex, Hex] };
+
 type FakeClient = {
-  readContract: (args: {
-    address: Address;
-    functionName: string;
-    args?: readonly unknown[];
-  }) => Promise<unknown>;
-  getLogs: () => Promise<unknown>;
-  getTransaction: () => Promise<unknown>;
+  readContract: (
+    call: { address: Address } & ReadContractCall,
+  ) => Promise<Address | Hex | GetStateResult>;
+  getLogs: () => Promise<never>;
+  getTransaction: () => Promise<never>;
   getBlockNumber: () => Promise<bigint>;
 };
 
@@ -64,7 +76,7 @@ function makeSheetFake(options: {
   trackDiscovery?: { getLogs: number; getTransaction: number; getBlockNumber: number };
   failGetState?: ReadonlySet<string>;
   statusByLabel?: ReadonlyMap<string, number>;
-}): { client: FakeClient; maxInFlight: () => number } {
+}) {
   let inFlight = 0;
   let maxInFlight = 0;
   const discovery = options.trackDiscovery ?? {
@@ -80,23 +92,24 @@ function makeSheetFake(options: {
     ]),
   );
 
-  const client: FakeClient = {
-    async readContract(args) {
+  const fakeClient: FakeClient = {
+    async readContract(call) {
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
       await Promise.resolve();
+      const functionName = call.functionName;
       try {
-        if (args.functionName === "getSubregistry") {
+        if (call.functionName === "getSubregistry") {
           return SUBREGISTRY;
         }
-        if (args.functionName === "getResolver") {
+        if (call.functionName === "getResolver") {
           return RESOLVER;
         }
-        if (args.functionName === "getState") {
-          const id = args.args?.[0] as bigint;
+        if (call.functionName === "getState") {
+          const [id] = call.args;
           const label = idToLabel.get(id);
           if (label === undefined) {
-            throw new Error(`unexpected getState id ${String(id)}`);
+            throw new Error(`unexpected getState id ${id}`);
           }
           if (options.failGetState?.has(label)) {
             throw new Error(`stub getState failed for ${label}`);
@@ -113,25 +126,25 @@ function makeSheetFake(options: {
             resource: 0n,
           };
         }
-        if (args.functionName === "resolve") {
-          const dnsName = String(args.args?.[0]).toLowerCase() as Hex;
-          const data = args.args?.[1] as Hex;
-          const label = dnsToLabel.get(dnsName);
-          if (label === undefined) {
-            throw new Error(`unexpected resolve dnsName ${dnsName}`);
-          }
-          const decoded = decodeFunctionData({ abi: textResolverAbi, data });
-          if (decoded.functionName !== "text") {
-            throw new Error(`unexpected resolve selector ${decoded.functionName}`);
-          }
-          const key = decoded.args[1] as string;
-          const value = options.texts.get(label)?.get(key);
-          if (value === undefined) {
-            throw new Error(`no text stub for ${label}.${key}`);
-          }
-          return encodeText(value);
+        if (call.functionName !== "resolve") {
+          throw new Error(`unexpected readContract ${functionName}`);
         }
-        throw new Error(`unexpected readContract ${args.functionName}`);
+        const [dnsNameHex, data] = call.args;
+        const dnsName = dnsNameHex.toLowerCase();
+        const label = dnsToLabel.get(dnsName);
+        if (label === undefined) {
+          throw new Error(`unexpected resolve dnsName ${dnsName}`);
+        }
+        const decoded = decodeFunctionData({ abi: textResolverAbi, data });
+        if (decoded.functionName !== "text") {
+          throw new Error(`unexpected resolve selector ${decoded.functionName}`);
+        }
+        const key = decoded.args[1];
+        const value = options.texts.get(label)?.get(key);
+        if (value === undefined) {
+          throw new Error(`no text stub for ${label}.${key}`);
+        }
+        return encodeText(value);
       } finally {
         inFlight -= 1;
       }
@@ -150,6 +163,8 @@ function makeSheetFake(options: {
     },
   };
 
+  // SAFETY: tests only exercise readContract; loadCharacterSheets and readRosterFromChain never call PublicClient's other members here.
+  const client = fakeClient as never;
   return { client, maxInFlight: () => maxInFlight };
 }
 
@@ -206,13 +221,7 @@ describe("loadCharacterSheets concurrency (unit, no network)", () => {
       ]),
     });
 
-    const sheets = await loadCharacterSheets(
-      client as never,
-      ensLabel,
-      SUBREGISTRY,
-      RESOLVER,
-      labels,
-    );
+    const sheets = await loadCharacterSheets(client, ensLabel, SUBREGISTRY, RESOLVER, labels);
 
     assert.equal(maxInFlight(), 16);
     assert.equal(sheets.length, 2);
@@ -242,7 +251,7 @@ describe("loadCharacterSheets concurrency (unit, no network)", () => {
     });
 
     await assert.rejects(
-      () => loadCharacterSheets(client as never, ensLabel, SUBREGISTRY, RESOLVER, labels),
+      () => loadCharacterSheets(client, ensLabel, SUBREGISTRY, RESOLVER, labels),
       /UserRegistry\.getState\(alpha\) status 0 is not registered under horrortube\.eth/,
     );
   });
@@ -251,8 +260,8 @@ describe("loadCharacterSheets concurrency (unit, no network)", () => {
     const labels = ["alpha", "beta"] as const;
     const ensLabel = "horrortube";
     const rejections: unknown[] = [];
-    const onRejection = (reason: unknown): void => {
-      rejections.push(reason);
+    const onRejection = (cause: unknown): void => {
+      rejections.push(cause);
     };
     process.on("unhandledRejection", onRejection);
     try {
@@ -271,7 +280,7 @@ describe("loadCharacterSheets concurrency (unit, no network)", () => {
       });
 
       await assert.rejects(
-        () => loadCharacterSheets(client as never, ensLabel, SUBREGISTRY, RESOLVER, labels),
+        () => loadCharacterSheets(client, ensLabel, SUBREGISTRY, RESOLVER, labels),
         /UserRegistry\.getState\((alpha|beta)\) failed/,
       );
       await new Promise<void>((resolve) => {
@@ -299,12 +308,7 @@ describe("readRosterFromChain (unit, no network)", () => {
       trackDiscovery: discovery,
     });
 
-    const roster = await readRosterFromChain(
-      ensLabel,
-      "http://rpc.invalid",
-      ETH_REGISTRY,
-      client as never,
-    );
+    const roster = await readRosterFromChain(ensLabel, "http://rpc.invalid", ETH_REGISTRY, client);
 
     assert.equal(discovery.getLogs, 0);
     assert.equal(discovery.getTransaction, 0);

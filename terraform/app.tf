@@ -160,8 +160,8 @@ resource "digitalocean_app" "game" {
         type  = "GENERAL"
       }
 
-      # Only on staging: the portal staging-verify header. Production must not
-      # set this app env var (empty TF_VAR is not a token and must not appear).
+      # Only on staging: the portal staging-verify header. Other environments must
+      # not set this app env var (empty TF_VAR is not a token and must not appear).
       dynamic "env" {
         for_each = var.world_id_environment == "staging" ? [1] : []
         content {

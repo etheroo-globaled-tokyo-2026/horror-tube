@@ -11,12 +11,10 @@ function singleSegmentId(kind: "video" | "frame", id: string): string {
   return trimmed;
 }
 
-/** Object key under videos/ for one fight mp4. */
 export function videoObjectKey(id: string): string {
   return `videos/${singleSegmentId("video", id)}.mp4`;
 }
 
-/** Object key under frames/ for one last-frame jpeg (next-fight seed). */
 export function frameObjectKey(id: string): string {
   return `frames/${singleSegmentId("frame", id)}.jpg`;
 }

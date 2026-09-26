@@ -69,7 +69,13 @@ describe("livingCardFromJson", () => {
     assert.throws(
       () =>
         livingCardFromJson(
-          { ...card, subname: undefined, label: "freddy" },
+          {
+            look: card.look,
+            brief: card.brief,
+            injuries: card.injuries,
+            status: card.status,
+            label: "freddy",
+          },
           "fighter A",
         ),
       /fighter A subname must be a non-empty string.*label="freddy"/s,

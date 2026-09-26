@@ -15,6 +15,13 @@ const PlaybackStartBody = v.object({
   battleId: v.pipe(v.string(), v.trim(), v.minLength(1)),
 });
 
+const VoteBody = v.object({
+  picks: v.pipe(
+    v.array(v.unknown()),
+    v.transform((picks) => picks.map(Number)),
+  ),
+});
+
 export type GameServerOptions = {
   port: number;
   host: string;
@@ -22,9 +29,7 @@ export type GameServerOptions = {
   wallet?: WalletHandler;
   worldId?: WorldIdHandlerDeps;
   game?: GameLoop;
-  /** HMAC pepper for the waiver session. Required for POST /vote. */
   sessionPepper?: string;
-  /** Public Sui betting IDs for GET /betting. */
   betting?: {
     packageId: string;
     houseId: string;
@@ -34,18 +39,18 @@ export type GameServerOptions = {
   };
 };
 
-const CONTENT_TYPES: Record<string, string> = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".mp4": "video/mp4",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-};
+const CONTENT_TYPES = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".mp4", "video/mp4"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".webp", "image/webp"],
+  [".woff2", "font/woff2"],
+]);
 
 export type JsonBody =
   | { ok: true }
@@ -121,8 +126,7 @@ function serveStatic(res: ServerResponse, staticDir: string, urlPath: string): v
     sendNotFound(res);
     return;
   }
-  const type = CONTENT_TYPES[extname(resolved.path).toLowerCase()] ?? "application/octet-stream";
-  // Open first; only send 200 after the fd is open so open/read errors can be 500.
+  const type = CONTENT_TYPES.get(extname(resolved.path).toLowerCase()) ?? "application/octet-stream";
   const stream = createReadStream(resolved.path);
   stream.once("open", () => {
     if (res.headersSent || res.writableEnded) {
@@ -188,7 +192,6 @@ function readBearerToken(req: IncomingMessage): string {
   return token;
 }
 
-/** Resolve the waiver session to a nullifier, or answer the request and return null. */
 function sessionNullifier(
   req: IncomingMessage,
   res: ServerResponse,
@@ -317,21 +320,21 @@ async function handleRequest(
         const nullifier = sessionNullifier(req, res, opts.sessionPepper);
         if (nullifier === null) return;
         const raw = await readBody(req);
-        let body: { picks?: unknown };
+        let body;
         try {
-          body = JSON.parse(raw) as { picks?: unknown };
+          body = v.safeParse(VoteBody, JSON.parse(raw));
         } catch {
           sendJson(res, 400, { ok: false, error: "vote body must be JSON." });
           return;
         }
-        if (!Array.isArray(body.picks)) {
+        if (!body.success) {
           sendJson(res, 400, {
             ok: false,
             error: "vote.picks must be an array of character ids.",
           });
           return;
         }
-        const picks = body.picks.map((p) => Number(p));
+        const picks = body.output.picks;
         if (picks.some((p) => !Number.isInteger(p))) {
           sendJson(res, 400, { ok: false, error: "vote.picks must be integers." });
           return;

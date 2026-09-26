@@ -5,10 +5,7 @@ import { readDatabaseUrl } from "./database-url.js";
 
 const { Client, Pool } = pg;
 
-/**
- * Drop libpq sslmode from the URI so node-pg does not replace our `ssl` object
- * with a bare enable flag (which drops the CA and fails DO's chain).
- */
+// WARNING: node-pg lets a URI sslmode replace the `ssl` object, dropping the CA; strip it.
 export function connectionStringForVerifiedTls(databaseUrl: string): string {
   let url: URL;
   try {
@@ -25,14 +22,7 @@ export function connectionStringForVerifiedTls(databaseUrl: string): string {
   return url.toString();
 }
 
-/**
- * Postgres client that verifies TLS with the DigitalOcean project CA.
- * Rejects missing DATABASE_URL / DATABASE_CA_CERT. Never disables verification.
- */
-function verifiedTlsConfig(env: NodeJS.ProcessEnv): {
-  connectionString: string;
-  ssl: { ca: string; rejectUnauthorized: true };
-} {
+function verifiedTlsConfig(env: NodeJS.ProcessEnv) {
   return {
     connectionString: connectionStringForVerifiedTls(readDatabaseUrl(env)),
     ssl: {
@@ -48,10 +38,6 @@ export function createPgClient(
   return new Client(verifiedTlsConfig(env));
 }
 
-/**
- * Long-lived pool for the game process. An idle connection drop is logged
- * on the pool; a single Client with no listener would take the process down.
- */
 export function createPgPool(
   env: NodeJS.ProcessEnv = process.env,
 ): pg.Pool {

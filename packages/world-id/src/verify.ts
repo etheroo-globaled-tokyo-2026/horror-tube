@@ -1,7 +1,7 @@
 import { hashSignal } from "@worldcoin/idkit-core/hashing";
 import { z } from "zod";
 
-import type { WorldIdEnvironment } from "./env.js";
+import { worldIdEnvironmentSchema, type WorldIdEnvironment } from "./env.js";
 
 export const WORLD_ID_VERIFY_URL_BASE = "https://developer.world.org/api/v4/verify";
 export const PROOF_OF_HUMAN_IDENTIFIER = "proof_of_human";
@@ -15,6 +15,8 @@ export type VerifyFetch = (
     body: string;
   },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+
+export type IdkitResultJson = z.core.util.JSONType;
 
 export type VerifiedHuman = {
   action: string;
@@ -49,7 +51,7 @@ const proofOfHumanResultSchema = z.object({
     .optional(),
   nonce: z.string().min(1),
   action: z.string().min(1),
-  environment: z.enum(["production", "staging"]).optional(),
+  environment: worldIdEnvironmentSchema.optional(),
   responses: z.tuple([proofOfHumanResponseSchema], {
     error: `responses must hold exactly one ${PROOF_OF_HUMAN_IDENTIFIER} response`,
   }),
@@ -61,7 +63,7 @@ const verifySuccessSchema = z.object({
   success: z.literal(true),
   action: z.string().optional(),
   nullifier: uint256Hex.optional(),
-  environment: z.enum(["production", "staging", "sandbox"]),
+  environment: worldIdEnvironmentSchema,
   results: z.array(
     z.object({
       identifier: z.string(),
@@ -71,7 +73,7 @@ const verifySuccessSchema = z.object({
   ),
 });
 
-export function parseProofOfHumanResult(input: unknown): ProofOfHumanResult {
+export function parseProofOfHumanResult(input: IdkitResultJson): ProofOfHumanResult {
   const parsed = proofOfHumanResultSchema.safeParse(input);
   if (!parsed.success) {
     throw new Error(`World ID result rejected:\n${z.prettifyError(parsed.error)}`);
@@ -84,7 +86,7 @@ export async function verifyProofOfHuman(args: {
   environment: WorldIdEnvironment;
   action: string;
   signal: string | null;
-  idkitResult: unknown;
+  idkitResult: IdkitResultJson;
   fetch: VerifyFetch;
   stagingToken?: string;
 }): Promise<VerifiedHuman> {

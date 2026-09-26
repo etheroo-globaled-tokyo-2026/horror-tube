@@ -19,6 +19,7 @@ Fill `.env` first. The comment above each variable says how. `ENS_LABEL` and `VI
 | ------------------------------- | -------------------------------------------------------------------- |
 | `docs/PLAN.md`                  | The product plan, the prize targets, and the status of each part.    |
 | `docs/game-loop.md`             | The vote and bet loop, and the contract for the game server.         |
+| `docs/sui-betting.md`           | Betting on Sui: the Move package, keys, env, deploy and commands.    |
 | `apps/web/DESIGN.md`            | The room, the art direction, the wallet, and how the game reads ENS. |
 | `docs/character-card-fields.md` | The ENS text records on each character.                              |
 | `docs/roster-json.md`           | Roster JSON and the CLIs that write characters to ENS.               |

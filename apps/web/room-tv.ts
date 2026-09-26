@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
 import {
+  DUR,
   S,
   applyRoundState,
   char,
@@ -421,7 +422,7 @@ small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" = "";
 let reportedBattleId: string | null = null;
-// The server's betting deadline starts from this report, so only a real `playing` event sends it.
+// WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
   if (vidMode !== "live" || S.phase !== "bet" || battleId === null) return;
@@ -429,10 +430,10 @@ video.addEventListener("playing", () => {
   reportedBattleId = battleId;
   postPlaybackStart(battleId)
     .then(applyRoundState)
-    .catch((error: unknown) => {
+    .catch((cause: unknown) => {
       reportedBattleId = null;
       note(
-        `PLAYBACK START NOT RECORDED. ${error instanceof Error ? error.message : String(error)}`,
+        `PLAYBACK START NOT RECORDED. ${cause instanceof Error ? cause.message : String(cause)}`,
         "bad",
       );
     });
@@ -451,7 +452,6 @@ export function syncVideo(): void {
     video.src = url;
     lastVideoUrl = url;
   }
-  // Betting stays open for the first seconds of playback, so the bout plays from bet on.
   const mode = S.phase === "fight" || S.phase === "bet" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
@@ -525,7 +525,21 @@ export function drawGuide(now: number): void {
   g.fillStyle = COL.soot;
   g.fillRect(0, 0, W, H);
   const filmCanvas = film();
-  if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
+  if (S.phase === "countdown") {
+    g.textAlign = "center";
+    g.font = "700 26px Silkscreen";
+    g.fillStyle = COL.sulfur;
+    g.fillText(S.cast ? "VOTING CLOSES IN" : "LAST CALL TO VOTE", W / 2, 76);
+    g.font = "700 84px Silkscreen";
+    g.fillStyle = COL.blood;
+    g.fillText(mmss(S.t), W / 2, 164);
+    g.font = "24px DotGothic16";
+    g.fillStyle = COL.bone;
+    g.fillText(`${S.voters} ${S.voters === 1 ? "human has" : "humans have"} voted`, W / 2, 206);
+    const bar = W * Math.min(1, S.t / DUR.countdown);
+    g.fillStyle = COL.blood;
+    g.fillRect((W - bar) / 2, top - 8, bar, 8);
+  } else if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
   else if (S.last && filmCanvas.width) {
     g.imageSmoothingEnabled = false;
     g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
@@ -555,7 +569,7 @@ export function drawGuide(now: number): void {
       g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
     }
   }
-  if (S.last) {
+  if (S.last && S.phase !== "countdown") {
     g.textAlign = "left";
     if ((now / 500) % 2 < 1) {
       g.fillStyle = COL.blood;
@@ -701,6 +715,7 @@ export function drawTV(): void {
     const width = g.measureText(t).width,
       max = W - 64;
     if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
+    g.textAlign = "center";
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -730,19 +745,17 @@ export function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
-        text(
-          "Orb only. We check it on our side.",
-          oy + side + 68,
-          22,
-          COL.bone,
-          "DotGothic16",
-          400,
-        );
+        text("PROVE YOU'RE STILL HUMAN", oy + side + 36, 28, COL.sulfur);
+        text("The dead have enough channels.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
       } else {
-        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
-        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+        text("IS ANYBODY ALIVE?", 210, 36, COL.sulfur);
+        text("Hold still. Finding your signal.", 270, 24, COL.bone, "DotGothic16", 400);
       }
+    } else if (W8.step === "wallet") {
+      noise = 0.1;
+      fill(COL.soot);
+      text("VERIFIED", 210, 48, COL.blood);
+      text(`OPENING YOUR WALLET${".".repeat(1 + (((now / 400) | 0) % 3))}`, 270, 26, COL.bone);
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
@@ -772,9 +785,11 @@ export function drawTV(): void {
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
-      text("SCAN FAILED", 190, 48, COL.blood);
-      text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
-      text("YOU ARE NOT IN.", 340, 24, COL.rust);
+      text("YOU ARE NOT IN", 110, 48, COL.blood);
+      g.font = "400 22px DotGothic16";
+      g.fillStyle = COL.bone;
+      const end = wrap(g, W8.fail, W / 2, 170, W - 64, 28);
+      text("ENTER TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.rust);
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
@@ -826,19 +841,7 @@ export function drawTV(): void {
     else if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "countdown") {
-      fill(COL.soot);
-      text("VOTING CLOSES", 120, 36, COL.sulfur);
-      text(mmss(S.t), 220, 64, COL.blood);
-      text(
-        `${String(S.voters)} / ${String(S.quorum)} humans in`,
-        300,
-        26,
-        COL.bone,
-        "DotGothic16",
-        400,
-      );
-    } else if (S.phase === "bet" && vidMode === "live") {
+    if (S.phase === "bet" && vidMode === "live") {
       band(H - 150, 100);
       text(
         S.bettingClosesAt === null
@@ -911,10 +914,15 @@ export function drawTV(): void {
       else if (S.bet && S.result < 0) text(`YOU LOST ${usd(S.bet.amt)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
-      const l = living();
-      text("END OF PROGRAMMING", 200, 34);
+      const l = living(),
+        endedByFailure = !!S.error;
+      text(endedByFailure ? "SIGNAL LOST" : "END OF PROGRAMMING", 200, 34);
       text(
-        l[0] ? `${l[0].name} is the last one left.` : "Nobody is left.",
+        endedByFailure
+          ? "The tape jammed before anyone bled."
+          : l[0]
+            ? `${l[0].name} is the last one left.`
+            : "Nobody is left.",
         250,
         28,
         COL.bone,

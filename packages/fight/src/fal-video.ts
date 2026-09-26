@@ -1,4 +1,5 @@
-import { fal } from "@fal-ai/client";
+import { ApiError, fal } from "@fal-ai/client";
+import { z } from "zod";
 
 import {
   FightError,
@@ -8,22 +9,30 @@ import {
 import { videoPromptFromTurn } from "./render.js";
 import type { NarrationTurn } from "./types.js";
 
+const falVideoOutputSchema = z.object({
+  video: z
+    .object({
+      url: z.string().optional(),
+      content_type: z.string().optional(),
+      file_name: z.string().optional(),
+      file_size: z.number().optional(),
+    })
+    .optional(),
+  expanded_prompt: z.string().nullish(),
+});
+
 export type FalSubscribeResult = {
-  data: {
-    video?: { url?: string; content_type?: string; file_name?: string; file_size?: number };
-    expanded_prompt?: string | null;
-  };
+  data: z.infer<typeof falVideoOutputSchema>;
   requestId: string;
 };
 
 export type FalClient = {
   subscribe: (
     model: string,
-    opts: { input: Record<string, unknown> },
+    opts: { input: FalVideoInput },
   ) => Promise<FalSubscribeResult>;
 };
 
-/** Shared fal fields for both text-to-video and image-to-video H3 Max. */
 export type FalVideoInputBase = {
   prompt: string;
   duration: number;
@@ -66,7 +75,6 @@ export function buildFalInput(
   };
 
   if (prior !== undefined) {
-    // Image-to-video OpenAPI: image_url seeds the first frame; no aspect_ratio field.
     return { ...base, image_url: prior };
   }
   return { ...base, aspect_ratio: config.aspectRatio };
@@ -77,7 +85,6 @@ export type FightVideoResult = {
   videoUrl: string;
   expandedPrompt: string | null;
   requestId: string;
-  /** fal endpoint id actually subscribed (text-to-video or image-to-video). */
   model: string;
 };
 
@@ -97,17 +104,16 @@ export async function generateFightVideo(
       cause: err,
     });
   }
-  const url = result.data?.video?.url;
-  if (typeof url !== "string" || url.trim() === "") {
+  const url = result.data.video?.url;
+  if (url === undefined || url.trim() === "") {
     throw new FightError(
       `fal response missing video.url. requestId=${result.requestId} data=${JSON.stringify(result.data)}`,
     );
   }
-  const expanded = result.data.expanded_prompt;
   return {
     prompt: input.prompt,
     videoUrl: url,
-    expandedPrompt: typeof expanded === "string" ? expanded : null,
+    expandedPrompt: result.data.expanded_prompt ?? null,
     requestId: result.requestId,
     model,
   };
@@ -121,37 +127,30 @@ function defaultFalClient(apiKey: string): FalClient {
         input: opts.input,
         logs: true,
       });
-      return {
-        data: result.data as FalSubscribeResult["data"],
-        requestId: result.requestId,
-      };
+      const data = falVideoOutputSchema.safeParse(result.data);
+      if (!data.success) {
+        throw new FightError(
+          `fal response does not match the video output shape. requestId=${result.requestId}: ${z.prettifyError(data.error)}`,
+        );
+      }
+      return { data: data.data, requestId: result.requestId };
     },
   };
 }
 
-function formatFalError(err: unknown): string {
-  if (err !== null && typeof err === "object") {
-    const anyErr = err as {
-      message?: string;
-      status?: number;
-      body?: unknown;
-    };
-    const parts: string[] = [];
-    if (typeof anyErr.status === "number") {
-      parts.push(`status=${anyErr.status}`);
+function formatFalError(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    const parts = [`status=${cause.status}`];
+    if (cause.message.trim() !== "") {
+      parts.push(cause.message);
     }
-    if (typeof anyErr.message === "string" && anyErr.message.trim() !== "") {
-      parts.push(anyErr.message);
+    if (cause.body !== undefined) {
+      parts.push(`body=${JSON.stringify(cause.body)}`);
     }
-    if (anyErr.body !== undefined) {
-      parts.push(`body=${JSON.stringify(anyErr.body)}`);
-    }
-    if (parts.length > 0) {
-      return parts.join(" ");
-    }
+    return parts.join(" ");
   }
-  if (err instanceof Error && err.message.trim() !== "") {
-    return err.message;
+  if (cause instanceof Error && cause.message.trim() !== "") {
+    return cause.message;
   }
-  return String(err);
+  return String(cause);
 }
