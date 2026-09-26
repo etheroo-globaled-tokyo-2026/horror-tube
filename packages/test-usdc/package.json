@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "sui move test --path move",
+    "test": "sui move test --path move --build-env testnet",
     "typecheck": "tsc --noEmit",
     "deploy": "tsx --env-file=../../.env src/deploy.ts",
     "mint": "tsx --env-file=../../.env src/mint.ts",
