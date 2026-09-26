@@ -301,6 +301,7 @@ export function createCoinBox(
   }
 
   draw();
+  void document.fonts.ready.then(draw);
   void refresh();
   setInterval(() => void refresh().catch(() => undefined), 4000);
 
