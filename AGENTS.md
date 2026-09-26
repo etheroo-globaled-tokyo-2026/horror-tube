@@ -162,6 +162,7 @@ pnpm workspace; Turborepo runs the tasks defined in `turbo.json`.
 - `packages/world-id` — IDKit env and verification helpers
 - `packages/roster` — Fandom → character sheet propose/register
 - `packages/contracts` — `BattleBetting` (Foundry)
+- `packages/rotoscope` — Python (uv, outside the pnpm workspace): HTTP service that redraws fight videos as FAITH line art on the Mac GPU (SAM 3.1, Apple Vision)
 
 ### Toolchain
 
