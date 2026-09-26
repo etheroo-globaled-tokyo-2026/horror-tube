@@ -161,35 +161,35 @@ resource "digitalocean_app" "game" {
 
       env {
         key   = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
-        value = var.fight_media_spaces_access_key_id
+        value = digitalocean_spaces_key.fight_media.access_key
         scope = "RUN_TIME"
         type  = "SECRET"
       }
 
       env {
         key   = "FIGHT_MEDIA_SPACES_SECRET"
-        value = var.fight_media_spaces_secret
+        value = digitalocean_spaces_key.fight_media.secret_key
         scope = "RUN_TIME"
         type  = "SECRET"
       }
 
       env {
         key   = "FIGHT_MEDIA_SPACES_BUCKET"
-        value = var.fight_media_spaces_bucket
+        value = digitalocean_spaces_bucket.fight_media.name
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
 
       env {
         key   = "FIGHT_MEDIA_SPACES_CDN_HOST"
-        value = var.fight_media_spaces_cdn_host
+        value = digitalocean_cdn.fight_media.endpoint
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
 
       env {
         key   = "FIGHT_MEDIA_SPACES_ENDPOINT"
-        value = var.fight_media_spaces_endpoint
+        value = "https://${var.region}.digitaloceanspaces.com"
         scope = "RUN_TIME"
         type  = "GENERAL"
       }

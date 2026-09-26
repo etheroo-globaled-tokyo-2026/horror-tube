@@ -165,36 +165,6 @@ variable "sui_usdc_type" {
   type        = string
 }
 
-variable "fight_media_spaces_access_key_id" {
-  description = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID for the app. Set via TF_VAR_fight_media_spaces_access_key_id from .env. Required; no default. Never commit."
-  type        = string
-  sensitive   = true
-}
-
-variable "fight_media_spaces_secret" {
-  description = "FIGHT_MEDIA_SPACES_SECRET for the app. Set via TF_VAR_fight_media_spaces_secret from .env. Required; no default. Never commit."
-  type        = string
-  sensitive   = true
-}
-
-variable "fight_media_spaces_bucket" {
-  description = "FIGHT_MEDIA_SPACES_BUCKET for the app. Set via TF_VAR_fight_media_spaces_bucket from .env. Required; no default. Never commit."
-  type        = string
-  sensitive   = true
-}
-
-variable "fight_media_spaces_cdn_host" {
-  description = "FIGHT_MEDIA_SPACES_CDN_HOST for the app. Set via TF_VAR_fight_media_spaces_cdn_host from .env. Required; no default. Never commit."
-  type        = string
-  sensitive   = true
-}
-
-variable "fight_media_spaces_endpoint" {
-  description = "FIGHT_MEDIA_SPACES_ENDPOINT for the app. Set via TF_VAR_fight_media_spaces_endpoint from .env. Required; no default. Never commit."
-  type        = string
-  sensitive   = true
-}
-
 variable "quorum_votes" {
   description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
   type        = number

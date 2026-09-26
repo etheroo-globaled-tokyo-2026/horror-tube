@@ -110,7 +110,7 @@ After `terraform apply`, copy the sensitive outputs into `.env` (and into 1Passw
 
 Also set `FIGHT_MEDIA_SPACES_ENDPOINT` to `https://<region>.digitaloceanspaces.com` for the same `region` tfvar (operator value `sgp1` → `https://sgp1.digitaloceanspaces.com`). If any of those variables is missing or blank, the upload package stops and names `.env.example`. Do not commit the secret.
 
-Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, app uploads use only `FIGHT_MEDIA_SPACES_*`.
+Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, App Platform gets `FIGHT_MEDIA_SPACES_*` from the fight-media resources; laptops copy the sensitive outputs into `.env` for local uploads (no 1Password path).
 
 ## Required tfvars (no defaults)
 
@@ -176,11 +176,13 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
-| `FIGHT_MEDIA_SPACES_ACCESS_KEY_ID` | `TF_VAR_fight_media_spaces_access_key_id` | from `.env` |
-| `FIGHT_MEDIA_SPACES_SECRET` | `TF_VAR_fight_media_spaces_secret` | from `.env` |
-| `FIGHT_MEDIA_SPACES_BUCKET` | `TF_VAR_fight_media_spaces_bucket` | from `.env` |
-| `FIGHT_MEDIA_SPACES_CDN_HOST` | `TF_VAR_fight_media_spaces_cdn_host` | from `.env` |
-| `FIGHT_MEDIA_SPACES_ENDPOINT` | `TF_VAR_fight_media_spaces_endpoint` | from `.env` |
+| `FIGHT_MEDIA_SPACES_ACCESS_KEY_ID` | *(none)* | from `digitalocean_spaces_key.fight_media.access_key` |
+| `FIGHT_MEDIA_SPACES_SECRET` | *(none)* | from `digitalocean_spaces_key.fight_media.secret_key` |
+| `FIGHT_MEDIA_SPACES_BUCKET` | *(none)* | from `digitalocean_spaces_bucket.fight_media.name` |
+| `FIGHT_MEDIA_SPACES_CDN_HOST` | *(none)* | from `digitalocean_cdn.fight_media.endpoint` |
+| `FIGHT_MEDIA_SPACES_ENDPOINT` | *(none)* | `https://${var.region}.digitaloceanspaces.com` |
+
+The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops still copy the sensitive Terraform outputs into `.env` after apply for local uploads; there is still no 1Password path for those values.
 
 `FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet). Laptop-only and one-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `SEPOLIA_RPC_URL`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them.
 
@@ -211,11 +213,6 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
   : "${SUI_USDC_TYPE:?SUI_USDC_TYPE is required. See .env.example.}"
-  : "${FIGHT_MEDIA_SPACES_ACCESS_KEY_ID:?FIGHT_MEDIA_SPACES_ACCESS_KEY_ID is required. See .env.example.}"
-  : "${FIGHT_MEDIA_SPACES_SECRET:?FIGHT_MEDIA_SPACES_SECRET is required. See .env.example.}"
-  : "${FIGHT_MEDIA_SPACES_BUCKET:?FIGHT_MEDIA_SPACES_BUCKET is required. See .env.example.}"
-  : "${FIGHT_MEDIA_SPACES_CDN_HOST:?FIGHT_MEDIA_SPACES_CDN_HOST is required. See .env.example.}"
-  : "${FIGHT_MEDIA_SPACES_ENDPOINT:?FIGHT_MEDIA_SPACES_ENDPOINT is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
@@ -235,11 +232,6 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
-  export TF_VAR_fight_media_spaces_access_key_id="$FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
-  export TF_VAR_fight_media_spaces_secret="$FIGHT_MEDIA_SPACES_SECRET"
-  export TF_VAR_fight_media_spaces_bucket="$FIGHT_MEDIA_SPACES_BUCKET"
-  export TF_VAR_fight_media_spaces_cdn_host="$FIGHT_MEDIA_SPACES_CDN_HOST"
-  export TF_VAR_fight_media_spaces_endpoint="$FIGHT_MEDIA_SPACES_ENDPOINT"
   export SPACES_ACCESS_KEY_ID
   export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
   cd "$root/terraform"
