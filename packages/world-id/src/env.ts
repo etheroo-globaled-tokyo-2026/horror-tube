@@ -5,6 +5,8 @@ export type WorldIdEnv = {
   rpId: string;
   signingKeyHex: string;
   environment: WorldIdEnvironment;
+  /** Set only when environment is staging. Sent as x-staging-verification-token. */
+  stagingVerificationToken?: string;
 };
 
 export function requireEnv(name: string, value: string | undefined): string {
@@ -38,6 +40,18 @@ export function loadWorldIdEnv(env: NodeJS.ProcessEnv = process.env): WorldIdEnv
     throw new Error(
       `WORLD_ID_ENVIRONMENT must be production or staging. Got ${environment}. See .env.example.`,
     );
+  }
+  if (environment === "staging") {
+    return {
+      appId,
+      rpId,
+      signingKeyHex,
+      environment,
+      stagingVerificationToken: requireEnv(
+        "WORLD_ID_STAGING_VERIFICATION_TOKEN",
+        env.WORLD_ID_STAGING_VERIFICATION_TOKEN,
+      ),
+    };
   }
   return { appId, rpId, signingKeyHex, environment };
 }

@@ -37,6 +37,7 @@ test(
         action,
         signal,
         idkitResult: forged,
+        stagingVerificationToken: worldId.stagingVerificationToken,
         fetch: (url, init) => globalThis.fetch(url, init),
       }),
       (error: Error) => {

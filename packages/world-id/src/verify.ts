@@ -7,9 +7,14 @@ export const WORLD_ID_VERIFY_URL_BASE = "https://developer.world.org/api/v4/veri
 export const PROOF_OF_HUMAN_IDENTIFIER = "proof_of_human";
 export const PROOF_OF_HUMAN_ISSUER_SCHEMA_ID = 1;
 
+export type VerifyHeaders = {
+  "content-type": "application/json";
+  "x-staging-verification-token"?: string;
+};
+
 export type VerifyFetch = (
   input: string,
-  init: { method: "POST"; headers: { "content-type": "application/json" }; body: string },
+  init: { method: "POST"; headers: VerifyHeaders; body: string },
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export type VerifiedHuman = {
@@ -82,6 +87,7 @@ export async function verifyProofOfHuman(args: {
   signal: string | null;
   idkitResult: unknown;
   fetch: VerifyFetch;
+  stagingVerificationToken?: string;
 }): Promise<VerifiedHuman> {
   const rpId = args.rpId.trim();
   if (rpId === "") {
@@ -106,9 +112,19 @@ export async function verifyProofOfHuman(args: {
   }
 
   const url = `${WORLD_ID_VERIFY_URL_BASE}/${encodeURIComponent(rpId)}`;
+  const headers: VerifyHeaders = { "content-type": "application/json" };
+  if (args.environment === "staging") {
+    const token = args.stagingVerificationToken?.trim() ?? "";
+    if (token === "") {
+      throw new Error(
+        "WORLD_ID_STAGING_VERIFICATION_TOKEN is required. Set it in .env. See .env.example.",
+      );
+    }
+    headers["x-staging-verification-token"] = token;
+  }
   const response = await args.fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(args.idkitResult),
   });
   const text = await response.text();
