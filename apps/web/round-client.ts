@@ -12,7 +12,7 @@ const NumberPair = v.tuple([v.number(), v.number()]);
 
 const RoundStateSchema = v.object({
   round: v.number(),
-  phase: v.picklist(["waiting", "vote", "countdown", "bet", "fight", "settle", "over"]),
+  phase: v.picklist(["waiting", "pick", "vote", "countdown", "bet", "fight", "settle", "over"]),
   endsAt: v.nullable(v.number()),
   champion: v.nullable(v.number()),
   voters: v.number(),
@@ -20,6 +20,7 @@ const RoundStateSchema = v.object({
   votes: NumberPair,
   tally: v.nullable(NumberPair),
   fighters: v.nullable(NumberPair),
+  selectable: v.array(v.number()),
   battleId: v.nullable(v.string()),
   poolId: v.nullable(v.string()),
   pool: NumberPair,
@@ -162,8 +163,8 @@ function storedSession(store: SessionStore): string {
 }
 
 async function postWithSession(
-  path: "/start" | "/vote" | "/playback-start",
-  payload: Record<string, never> | { battleId: string } | { pick: number },
+  path: "/start" | "/next-fighter" | "/vote" | "/playback-start",
+  payload: Record<string, never> | { battleId: string } | { pick: number } | { fighter: number },
   store: SessionStore,
 ): Promise<ServerRoundState> {
   const session = storedSession(store);
@@ -196,8 +197,18 @@ async function postWithSession(
   return body.state;
 }
 
-export function postStart(store: SessionStore = localStorage): Promise<ServerRoundState> {
-  return postWithSession("/start", {}, store);
+export function postStart(
+  fighter: number,
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
+  return postWithSession("/start", { fighter }, store);
+}
+
+export function postNextFighter(
+  fighter: number,
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
+  return postWithSession("/next-fighter", { fighter }, store);
 }
 
 export function postVote(pick: number, store: SessionStore = localStorage): Promise<ServerRoundState> {

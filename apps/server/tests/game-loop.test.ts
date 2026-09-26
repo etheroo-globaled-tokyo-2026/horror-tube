@@ -200,7 +200,7 @@ function makeLoop(
 
 async function votingLoop(overrides: Parameters<typeof makeLoop>[0] = {}) {
   const harness = makeLoop(overrides);
-  await harness.loop.start();
+  await harness.loop.start(0);
   assert.equal(harness.loop.getState().phase, "vote");
   return harness;
 }
@@ -341,8 +341,9 @@ describe("start", () => {
     assert.equal(voted.phase, "vote");
     assert.deepEqual(voted.fighters, [0, 1]);
     assert.equal(voted.battleId, null);
-    assert.equal(harness.deps.pairings[0]?.championSubname, null);
-    assert.deepEqual(harness.deps.pairings[0]?.candidateSubnames, labels);
+    assert.equal(harness.deps.pairings[0]?.championSubname, "alpha");
+    assert.equal(harness.deps.pairings[0]?.opening, true);
+    assert.deepEqual(harness.deps.pairings[0]?.candidateSubnames, ["bravo", "charlie", "delta"]);
     assert.deepEqual(harness.deps.betCalls, []);
     await closeVoteByTimeout(harness);
     await flushFightJob();
@@ -360,7 +361,7 @@ describe("start", () => {
     const { loop, deps } = await votingLoop({
       ensStatuses: ["alive", "dead", "alive", "alive"],
     });
-    assert.deepEqual(deps.pairings[0]?.candidateSubnames, ["alpha", "charlie", "delta"]);
+    assert.deepEqual(deps.pairings[0]?.candidateSubnames, ["charlie", "delta"]);
     assert.deepEqual(loop.getState().fighters, [0, 2]);
   });
 
@@ -374,7 +375,7 @@ describe("start", () => {
         }),
       },
     });
-    await assert.rejects(() => loop.start(), /not a living eligible pair/u);
+    await assert.rejects(() => loop.start(0), /not a living eligible pair/u);
     assert.equal(loop.getState().phase, "waiting");
     assert.equal(deps.roundStore.seasons.length, 0);
     assert.deepEqual(deps.betCalls, []);
@@ -382,16 +383,16 @@ describe("start", () => {
 
   it("refuses a second start while a bout is open, and while one is starting", async () => {
     const { loop, deps } = makeLoop();
-    const first = loop.start();
+    const first = loop.start(0);
     await assert.rejects(
-      () => loop.start(),
+      () => loop.start(0),
       (cause: unknown) =>
         cause instanceof StartRefusedError &&
         /a fresh bout is already starting/u.test(cause.message),
     );
     await first;
     await assert.rejects(
-      () => loop.start(),
+      () => loop.start(0),
       (cause: unknown) =>
         cause instanceof StartRefusedError &&
         /a bout is already open \(phase=vote, round=1/u.test(cause.message),
@@ -405,7 +406,7 @@ describe("start", () => {
       ensLabels: ["alpha", "bravo"],
       ensStatuses: ["alive", "dead"],
     });
-    await assert.rejects(() => loop.start(), /fewer than 2 living/u);
+    await assert.rejects(() => loop.start(0), /fewer than 2 living/u);
     assert.equal(loop.getState().phase, "waiting");
     assert.equal(deps.roundStore.seasons.length, 0);
     assert.deepEqual(deps.betCalls, []);
@@ -453,7 +454,7 @@ describe("start", () => {
         stakeUnits: 1n,
       },
     });
-    await loop.start();
+    await loop.start(0);
     await loop.voteWithNullifier("human-1", 0);
     await loop.tick(0);
     await flushFightJob();
@@ -474,7 +475,7 @@ describe("start", () => {
     assert.equal(loop.getState().phase, "over");
     assert.deepEqual(deps.roundStore.ended.get("season-1"), { championLabel: "alpha" });
 
-    await loop.start();
+    await loop.start(0);
     const state = loop.getState();
     assert.equal(state.phase, "vote");
     assert.equal(state.champion, null);
@@ -522,13 +523,17 @@ describe("GameLoop phases", () => {
 
     await step(3_000);
     const next = loop.getState();
-    assert.equal(next.phase, "vote");
+    assert.equal(next.phase, "pick");
     assert.equal(next.round, 2);
     assert.equal(next.champion, 0);
-    assert.deepEqual(next.fighters, [0, 2]);
-    assert.equal(next.battleId, null);
-    assert.equal(next.frameUrl, "https://cdn.example/frames/fight1.jpg");
-    assert.equal(deps.pairings.at(-1)?.championSubname, "alpha");
+    assert.equal(next.fighters, null);
+    assert.deepEqual(next.selectable, [2, 3]);
+    assert.equal(deps.pairings.length, 1);
+    await assert.rejects(() => loop.chooseNextFighter(0), /champion and stays on/u);
+    await assert.rejects(() => loop.chooseNextFighter(1), /dead and cannot fight/u);
+    await loop.chooseNextFighter(2);
+    assert.deepEqual(loop.getState().fighters, [0, 2]);
+    assert.equal(loop.getState().phase, "vote");
     await step(baseConfig.voteTimeoutSeconds * 1_000);
     assert.equal(loop.getState().phase, "bet");
     assert.notEqual(loop.getState().battleId, battleId);
@@ -616,7 +621,7 @@ describe("GameLoop phases", () => {
     assert.equal((await deps.battleQueueStore.get("fail-status"))?.statusTxHash, "0xstatus");
     assert.deepEqual(deps.calls, ["injuries", "status", "settle:99"]);
     await step(1_000);
-    assert.equal(loop.getState().phase, "vote");
+    assert.equal(loop.getState().phase, "pick");
     assert.equal(loop.getState().round, 2);
   });
 
@@ -694,7 +699,7 @@ describe("GameLoop phases", () => {
         errors.join("\n"),
         /season season-1 end write failed: connection reset by peer/u,
       );
-      await loop.start();
+      await loop.start(0);
     } finally {
       console.error = error;
     }
@@ -769,7 +774,7 @@ describe("GameLoop phases", () => {
     await step(baseConfig.videoTimeoutSeconds * 1_000);
     assert.equal(loop.getState().phase, "over");
 
-    await loop.start();
+    await loop.start(0);
     await step(baseConfig.voteTimeoutSeconds * 1_000);
     await flushFightJob();
     assert.deepEqual(
@@ -822,8 +827,9 @@ describe("GameLoop phases", () => {
     await step(1_000);
     assert.equal(loop.getState().phase, "settle");
     await step(1_000);
-    assert.equal(loop.getState().phase, "vote");
+    assert.equal(loop.getState().phase, "pick");
     assert.equal(loop.getState().round, 2);
+    await loop.chooseNextFighter(2);
     await step(baseConfig.voteTimeoutSeconds * 1_000);
     await flushFightJob();
     assert.deepEqual(
@@ -851,7 +857,7 @@ describe("GameLoop phases", () => {
     await step(60_000);
     assert.equal(loop.getState().phase, "over");
     assert.equal(loop.getState().error, "fal render failed: timeout");
-    await loop.start();
+    await loop.start(0);
     assert.equal(loop.getState().phase, "vote");
     assert.equal(loop.getState().error, null);
   });
@@ -1167,7 +1173,7 @@ describe("prediction vote", () => {
         stakeUnits: 1n,
       },
     });
-    await harness.loop.start();
+    await harness.loop.start(0);
     await harness.loop.tick(0);
     await flushFightJob();
     assert.equal(harness.loop.getState().bots[0]?.pick, null);
@@ -1219,7 +1225,7 @@ describe("house bot", () => {
     };
     await step(60_000);
     assert.deepEqual(botCalls, [], "a bot never acts before a human starts the bout");
-    await harness.loop.start();
+    await harness.loop.start(0);
     await closeVoteByTimeout(harness);
     assert.ok(harness.loop.getState().poolId, "pool opens after the vote closes");
     return { ...harness, totals, botCalls, step };

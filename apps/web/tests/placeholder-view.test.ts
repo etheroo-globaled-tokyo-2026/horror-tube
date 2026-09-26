@@ -7,6 +7,7 @@ function state(overrides: Partial<PlaceholderInput>): PlaceholderInput {
   return {
     phase: "bet",
     fighters: null,
+    selectable: [],
     pool: [0, 0],
     bettingClosesAt: null,
     chars: [
@@ -39,6 +40,24 @@ describe("placeholderView", () => {
     ]);
     const waiting = placeholderView(state({ phase: "bet", fighters: [2, 0] }));
     assert.equal(waiting?.screen === "bet" ? waiting.closesAt : "", CLOSES_AT_UNSET);
+  });
+
+  it("lists the server's selectable fighters for the opening booking and the next fighter", () => {
+    const opening = placeholderView(
+      state({ phase: "waiting", selectable: [0, 2], fighters: null }),
+    );
+    assert.equal(opening?.screen, "pick");
+    if (opening?.screen !== "pick") return;
+    assert.equal(opening.title, "BOOK THE FIRST FIGHTER");
+    assert.equal(opening.act, "book");
+    assert.deepEqual(opening.choices, [
+      { id: 0, name: "Jason" },
+      { id: 2, name: "Chucky" },
+    ]);
+    const next = placeholderView(state({ phase: "pick", selectable: [1], fighters: null }));
+    if (next?.screen !== "pick") return;
+    assert.equal(next.act, "next-fighter");
+    assert.deepEqual(next.choices, [{ id: 1, name: "Freddy" }]);
   });
 
   it("shows the bet screen only in bet", () => {

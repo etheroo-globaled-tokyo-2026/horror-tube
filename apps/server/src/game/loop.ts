@@ -73,6 +73,13 @@ export class StartRefusedError extends Error {
   }
 }
 
+export class FighterRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FighterRejectedError";
+  }
+}
+
 function nextChainRetry(now: number, previous: ChainRetry | null): ChainRetry {
   const delayMs =
     previous === null ? CHAIN_RETRY_FIRST_MS : Math.min(previous.delayMs * 2, CHAIN_RETRY_MAX_MS);
@@ -234,6 +241,7 @@ export class GameLoop {
       votes: [this.votes[0], this.votes[1]],
       tally: this.tally === null ? null : [this.tally[0], this.tally[1]],
       fighters: this.fighters,
+      selectable: this.selectableIds(),
       battleId: this.onChainBattleId,
       poolId: this.poolObjectId,
       pool: [this.pool[0], this.pool[1]],
@@ -619,7 +627,7 @@ export class GameLoop {
     }
   }
 
-  async start(): Promise<void> {
+  async start(bookedId: number): Promise<void> {
     if (this.startInFlight) {
       throw new StartRefusedError("a fresh bout is already starting");
     }
@@ -630,13 +638,31 @@ export class GameLoop {
     }
     this.startInFlight = true;
     try {
-      await this.startFreshBout();
+      await this.startFreshBout(bookedId);
     } finally {
       this.startInFlight = false;
     }
   }
 
-  private async startFreshBout(): Promise<void> {
+  async chooseNextFighter(fighterId: number): Promise<void> {
+    if (this.phase !== "pick") {
+      throw new StartRefusedError(
+        `the next fighter is chosen only while picking (phase=${this.phase})`,
+      );
+    }
+    if (this.champion === null) {
+      throw new Error("chooseNextFighter: the champion is missing.");
+    }
+    const challenger = this.requireLiving(this.chars, fighterId);
+    if (fighterId === this.champion) {
+      throw new FighterRejectedError(
+        `fighter rejected: ${challenger.ensLabel} (character ${String(fighterId)}) is the champion and stays on. Pick the next fighter.`,
+      );
+    }
+    await this.enterVote([this.champion, fighterId], this.now());
+  }
+
+  private async startFreshBout(bookedId: number): Promise<void> {
     const leftover = await this.roundStore.endOpenSeasons();
     if (leftover.length > 0) {
       console.warn(`start: ended leftover open season(s) ${leftover.join(",")}`);
@@ -650,7 +676,8 @@ export class GameLoop {
       }
       return { id, ensLabel, alive, kills: 0, damage: 0 };
     });
-    const fighters = await this.pairFighters(chars, null, 1);
+    this.requireLiving(chars, bookedId);
+    const fighters = await this.pairFighters(chars, bookedId, 1);
     const seasonId = await this.roundStore.startSeason(
       chars.map((c) => ({
         ensLabel: c.ensLabel,
@@ -698,6 +725,7 @@ export class GameLoop {
       championSubname: championLabel,
       candidateSubnames: candidates,
       round,
+      opening: round === 1,
     });
     const eligibleA = championLabel === null ? candidates : [championLabel];
     if (
@@ -993,7 +1021,7 @@ export class GameLoop {
     }
     if (this.champion === null) {
       throw new Error(
-        "afterSettle: champion is required before starting the next bout via rotation.",
+        "afterSettle: champion is required before the next fighter can be picked.",
       );
     }
     this.round += 1;
@@ -1002,12 +1030,36 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.queuedAgentResultId = null;
-    try {
-      const fighters = await this.pairFighters(this.chars, this.champion, this.round);
-      await this.enterVote(fighters, this.now());
-    } catch (cause) {
-      await this.failRound(`Round ${String(this.round)} could not open: ${errorText(cause)}`);
+    this.fighters = null;
+    this.phase = "pick";
+    this.endsAt = null;
+    this.error = null;
+    this.emit();
+  }
+
+  private requireLiving(chars: CharRuntime[], id: number): CharRuntime {
+    const char = chars[id];
+    if (char === undefined) {
+      throw new FighterRejectedError(
+        `fighter rejected: character id ${String(id)} is not on the roster.`,
+      );
     }
+    if (!char.alive) {
+      throw new FighterRejectedError(
+        `fighter rejected: ${char.ensLabel} (character ${String(id)}) is dead and cannot fight.`,
+      );
+    }
+    return char;
+  }
+
+  private selectableIds(): number[] {
+    if (this.phase === "waiting" || this.phase === "over") {
+      return this.initialAlive.flatMap((alive, id) => (alive ? [id] : []));
+    }
+    if (this.phase === "pick" && this.champion !== null) {
+      return this.chars.filter((c) => c.alive && c.id !== this.champion).map((c) => c.id);
+    }
+    return [];
   }
 
   private async enterBet(now: number): Promise<void> {

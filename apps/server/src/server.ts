@@ -4,7 +4,12 @@ import { extname, resolve, sep } from "node:path";
 
 import * as v from "valibot";
 
-import { StartRefusedError, StoreWriteError, type GameLoop } from "./game/loop.js";
+import {
+  FighterRejectedError,
+  StartRefusedError,
+  StoreWriteError,
+  type GameLoop,
+} from "./game/loop.js";
 import { HttpError, type HttpErrorBody } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import { isApiPath } from "./routes.js";
@@ -17,6 +22,7 @@ const PlaybackStartBody = v.object({
 });
 
 const VoteBody = v.object({ pick: v.pipe(v.number(), v.integer()) });
+const FighterBody = v.object({ fighter: v.pipe(v.number(), v.integer(), v.minValue(0)) });
 
 export type GameServerOptions = {
   port: number;
@@ -154,6 +160,28 @@ function readBody(req: IncomingMessage): Promise<string> {
     });
     req.on("error", reject);
   });
+}
+
+async function readFighterId(
+  req: IncomingMessage,
+  res: ServerResponse,
+  path: string,
+): Promise<number | null> {
+  let parsed;
+  try {
+    parsed = v.safeParse(FighterBody, JSON.parse(await readBody(req)));
+  } catch {
+    sendJson(res, 400, { ok: false, error: `${path} body must be JSON.` });
+    return null;
+  }
+  if (!parsed.success) {
+    sendJson(res, 400, {
+      ok: false,
+      error: `${path} body must be { fighter: characterId }.`,
+    });
+    return null;
+  }
+  return parsed.output.fighter;
 }
 
 function serveRoundStateSse(res: ServerResponse, game: GameLoop): void {
@@ -348,18 +376,26 @@ async function handleRequest(
         }
         return;
       }
-      if (method === "POST" && path === "/start") {
+      if (method === "POST" && (path === "/start" || path === "/next-fighter")) {
         if (sessionNullifier(req, res, opts.sessionPepper) === null) return;
+        const fighter = await readFighterId(req, res, path);
+        if (fighter === null) return;
         try {
-          await opts.game.start();
+          if (path === "/start") await opts.game.start(fighter);
+          else await opts.game.chooseNextFighter(fighter);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (err instanceof StartRefusedError) {
-            console.warn(`POST /start refused: ${message}`);
+            console.warn(`POST ${path} refused: ${message}`);
             sendJson(res, 409, { ok: false, error: message, code: "bout_open" });
             return;
           }
-          console.error(`POST /start failed: ${message}`);
+          if (err instanceof FighterRejectedError) {
+            console.warn(`POST ${path} rejected: ${message}`);
+            sendJson(res, 400, { ok: false, error: message });
+            return;
+          }
+          console.error(`POST ${path} failed: ${message}`);
           sendJson(res, 500, { ok: false, error: message, code: "start_failed" });
           return;
         }
