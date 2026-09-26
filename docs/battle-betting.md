@@ -8,7 +8,7 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 
 | Network     | Contract                                                                                                                        | Deploy transaction                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Eth Sepolia | [`0x1941F407F8698562a0aB4e5Df892f5509F5f5f57`](https://sepolia.etherscan.io/address/0x1941F407F8698562a0aB4e5Df892f5509F5f5f57) | [`0x3ccc…eb6e`](https://sepolia.etherscan.io/tx/0x3ccc5ce6da3061eb3b465aec04cd20467499b9502c7afc471b2ff22c5e36eb6e) |
+| Eth Sepolia | [`0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C`](https://sepolia.etherscan.io/address/0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C) | [`0xe3b2…d111`](https://sepolia.etherscan.io/tx/0xe3b2cdeddeeffac1dbaf4be6dd4e5c77b25bb5f94dd3ef34c33dd82a1b10d111) |
 
 - Source verified on Sourcify. Deploy records are in `packages/contracts/broadcast/`.
 - Parent name `horrortube.eth`; fighters are read at `<fighter>.horrortube.eth`.
