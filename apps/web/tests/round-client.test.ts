@@ -176,6 +176,7 @@ describe("fetchTapes", () => {
       rationale: "jason wins",
       videoUrl: "https://cdn.example/videos/bout-1.mp4",
       recordedAt: 1,
+      statusTx: "0xstat",
     };
     respond(t, 200, JSON.stringify({ tapes: [tape] }));
     assert.deepEqual(await fetchTapes(), [tape]);

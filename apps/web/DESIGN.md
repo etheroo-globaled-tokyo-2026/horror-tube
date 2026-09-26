@@ -170,8 +170,10 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - **Bout tapes:** the shelf holds only bout tapes. Every finished bout with a video is one VHS case (6 × 25 cm
     spine, black plastic), lying flat in piles, spine out. The newest tape is always on top
     of the eye-level left pile; when the piles are full, only the newest show. The spine is worn like the room: scratched plastic, a faded `--sulfur` bout number sticker, and a yellowed, stained, slightly crooked paper label with two typed lines: the winner, then V and the loser in `--blood-deep`. The spines glow only a little. The cover in your hand has a `--blood` header, both faces
-    (the loser crossed out, the winner framed), who walked out, the winner's injuries, the narration, and the REC
-    date. The server hides the live bout's tape until betting is over, because its cover names the winner.
+    (the loser crossed out, the winner framed) with each one's ENS name under it, who walked out, ON RECORD (the
+    ENS records the bout wrote: the loser's `status = dead`, the winner's `injuries`, and the short hash of the
+    status transaction, from `Tape.statusTx`), the narration, and the REC date. The server hides the live bout's
+    tape until betting is over, because its cover names the winner.
   - **The VCR** sits on the TV's left shoulder: a black deck with a cassette door, a red LED, and a `--cold`
     display that blinks 12:00 when empty and counts when it plays. While you hold a tape, the hint says to click the VCR. Click it with a bout tape in your hand to play
     it; click again to eject the tape into your hand. Click the tape in your hand to put it back. Bet and fight phases take

@@ -445,6 +445,7 @@ const env = (name: string): string => {
     throw new Error(`${name} is required. Set it in the repo-root .env. See .env.example.`);
   return value;
 };
+export const ENS_PARENT = `${env("ENS_LABEL")}.eth`;
 async function loadIcon(name: string, url: string): Promise<HTMLImageElement> {
   if (!url.startsWith("https://"))
     throw new Error(
