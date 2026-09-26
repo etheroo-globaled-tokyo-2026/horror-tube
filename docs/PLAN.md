@@ -18,7 +18,7 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Betting contract             | Built on Sepolia: `BattleBetting` (`docs/battle-betting.md`). The game does not call it yet. `POST /bet` only adds to the in-memory pool. A Sui port is being scoped. |
 | Game server                  | Built (`apps/server`). Vote→bet→fight→settle holding loop; battle-result queue schema and settle state machine land with #60. |
 | Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                  |
-| ENS writes after a fight     | Not sent yet. `GameLoop` settle updates in-memory `RoundState` only. Postgres has a `battle_results` queue schema; live resolver writes are still open (issue 111). |
+| ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`. `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`. A failed write stays on the round error. `POST /retry-settle` runs the pending steps again. |
 
 ## Art direction
 
@@ -49,9 +49,7 @@ See `apps/web/DESIGN.md`.
 8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Today `POST /bet` adds the amount to the in-memory pool. The app does not call `BattleBetting`, and USDC is not debited on-chain.
    The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
 9. **Show video**: the fight video plays from `RoundState.videoUrl`. There is no local demo clip.
-10. **Update ENS** (not sent yet; issue 111):
-    - Server settle marks the loser dead and adds damage on the in-memory `RoundState` / `chars`. That is what the room shows today.
-    - Planned: loser's subname moves to the dead pool (open: see question 2); winner `injuries` and loser `status=dead` go to ENS; then `settleBattle` on `BattleBetting`. None of those chain writes run from the game loop yet.
+10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. With `SKIP_BATTLE_SETTLEMENT=1` the server skips `settleBattle`; with `0` it calls `settleBattle` after the ENS writes. A failed ENS write stays on the round error and does not start the next bout. `POST /retry-settle` runs the pending ENS steps again. Moving the loser to a dead-pool name is still open (question 2).
 11. Go back to the vote (step 3), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.

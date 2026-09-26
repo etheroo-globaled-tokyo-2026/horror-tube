@@ -157,6 +157,10 @@ export function parseInjuriesTextRecord(raw: string): string[] {
   return parsed as string[];
 }
 
+export type SettleQueuedBattleOptions = {
+  skipSettlement: boolean;
+};
+
 /**
  * Apply injuries → status=dead → settleBattle in that order.
  * Resumes at the first step without a confirmed tx hash.
@@ -166,6 +170,7 @@ export async function settleQueuedBattle(
   record: BattleQueueRecord,
   ports: ChainWritePorts,
   store: BattleQueueStore,
+  options: SettleQueuedBattleOptions,
 ): Promise<BattleQueueRecord> {
   assertSettleGates(record);
   let current = { ...record };
@@ -200,6 +205,9 @@ export async function settleQueuedBattle(
   }
 
   if (current.settlementTxHash === null) {
+    if (options.skipSettlement) {
+      return current;
+    }
     try {
       const hash = await ports.settleBattle(current.battleId);
       assertTxHash(hash, "settlement");
