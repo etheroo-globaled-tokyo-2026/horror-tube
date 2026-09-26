@@ -12,7 +12,13 @@
     />
     <link rel="stylesheet" href="ht.css" />
     <script type="importmap">
-      { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+          "viem": "https://esm.sh/viem@2.56.8",
+          "viem/": "https://esm.sh/viem@2.56.8/"
+        }
+      }
     </script>
     <style>
       html,
@@ -106,6 +112,9 @@
     <script src="game.js"></script>
     <script type="module">
       import * as THREE from "three";
+      import { getWalletClient } from "./wallet.js";
+
+      HT.wallet = getWalletClient;
 
       const V = (n) => HT.css("--" + n);
       const COL = {

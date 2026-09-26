@@ -9,6 +9,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------------- | -------------------------------------------------------------------- |
 | `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote. |
 | `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                   |
+| `wallet.js`             | The burner wallet: `getWalletClient()` (viem from esm.sh).           |
 | `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).      |
 | `ht.css`                | Tokens, plus the World ID and wallet gate styles.                    |
 | `system.html`           | The specimen page for the tokens.                                    |
@@ -18,12 +19,45 @@ Run `python3 -m http.server 8766` in `design/` and open `http://localhost:8766/`
 
 ## The flow (game.js)
 
-World ID (Orb, 18+) → connect wallet (`check_funds`, with an empty-wallet path: vote only) → **vote** (free, top two living
+World ID (Orb, 18+) → wallet (a real burner wallet on Sepolia, `check_funds`, with an empty-wallet path: vote only) → **vote** (free, top two living
 fight) → **story** (the LLM writes the fight; the winner and damage are known from here) → **bet** (while the video
 renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage and may lose a capability,
 winners **claim**) → vote again, until one is left.
 
 Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, Frankenstein wins, to match the video.
+
+## The wallet
+
+Bets must not open a wallet popup. `wallet.js` makes a burner wallet: a viem private key in `localStorage`
+(`horror-tube.burner-key`), on Sepolia. It signs with no prompt. The rest of the game only calls
+`getWalletClient()`, which returns a viem wallet client (with public actions). Only that function changes when we move
+to Privy. Bets and claims in `game.js` are still simulated; there is no contract yet.
+
+**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. OK for test ETH only.
+Option for later: send winnings to a payout address that the user owns.
+
+**Later: Privy** (researched 2026-09-26, about one day of work):
+
+- Keep World ID as the only login with Privy **JWT-based auth**: after the World ID check, our server signs a JWT
+  (`sub` = nullifier hash) and serves a JWKS URL. **Blocker:** custom auth must be requested in the Privy Dashboard, and
+  the wait is unknown.
+- Use `@privy-io/js-sdk-core` (no React, no UI, the same engine as `@privy-io/react-auth`):
+  `privy.auth.customProvider.syncWithToken(jwt)` → `embeddedWallet.create()` → `embeddedWallet.getEthereumProvider()` →
+  `createWalletClient({ account, chain: sepolia, transport: custom(provider) })`. Turn off confirmation modals in the
+  Dashboard. The Privy docs call the vanilla SDK "low-level", and it pins `viem` 2.56.0.
+- Move funds by sending the burner ETH to the new address, or with `embeddedWallet.importWallet({ privateKey })`.
+- No smart wallet and no gas sponsorship: users bet with ETH, so they already have gas.
+- Free up to 499 MAU (monthly active users). Stripe owns Privy since 2025.
+
+**Options we did not pick:**
+
+| Option                                   | Why not                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| World App mini-app wallet (MiniKit)      | A confirm screen for every transaction; World Chain, not Sepolia.      |
+| blink.cash                               | A deposit tool on top of a wallet; it does not sign bets. No testnets. |
+| MetaMask Advanced Permissions (ERC-7715) | No popups after one grant, but the user needs the MetaMask extension.  |
+| Base Account sub-accounts                | No popups within a spend limit, Sepolia listed. A second new service.  |
+| Dynamic, Turnkey, thirdweb, Coinbase CDP | They also work with no popups. Privy fits our World ID login best.     |
 
 ## The room
 

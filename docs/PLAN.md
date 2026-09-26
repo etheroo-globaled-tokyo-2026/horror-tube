@@ -14,12 +14,14 @@ See `design/DESIGN.md`.
 - **ENS name**: character state (subnames and text records) on Sepolia.
 - **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
 - **Smart contract**: the betting pool.
+- **Wallet**: a burner wallet in the browser now (`design/wallet.js`), a Privy embedded wallet later. No wallet popups. See "The wallet" in `design/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
 
-1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+. The user can use a browser wallet.
-2. **Connect wallet**: `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
+1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
+2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
+   Default until we decide: if the wallet is empty, the backend sends it test ETH, one time per World ID nullifier.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)

@@ -5,7 +5,7 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/ens-register.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "ens:check": "tsx scripts/register-eth-label.ts check",
     "ens:register": "tsx scripts/register-eth-label.ts",
     "ens:subnames": "tsx scripts/character-subnames.ts"
