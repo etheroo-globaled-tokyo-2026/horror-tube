@@ -1,11 +1,13 @@
 import { config as loadDotenv } from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   FightError,
   loadFalVideoConfig,
   loadNarrationConfig,
+  type FalVideoConfig,
   type NarrationConfig,
 } from "./env.js";
 import { generateFightVideo } from "./fal-video.js";
@@ -97,15 +99,67 @@ function readJsonFile(path: string): unknown {
   }
 }
 
-function asLivingCard(value: unknown, label: string): LivingCard {
-  if (typeof value !== "object" || value === null) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): string {
+  const value = record[field];
+  if (typeof value !== "string" || value.trim() === "") {
+    const labelHint =
+      field === "subname" && typeof record.label === "string"
+        ? ` This file has label=${JSON.stringify(record.label)}. The demo card needs subname.`
+        : "";
+    throw new FightError(
+      `${label} ${field} must be a non-empty string. Got: ${JSON.stringify(value)}.${labelHint}`,
+    );
+  }
+  return value;
+}
+
+export function livingCardFromJson(value: unknown, label: string): LivingCard {
+  if (!isRecord(value)) {
     throw new FightError(`${label} must be a JSON object.`);
   }
-  return value as LivingCard;
+  const injuriesRaw = value.injuries;
+  if (!Array.isArray(injuriesRaw)) {
+    throw new FightError(
+      `${label} injuries must be a JSON array of strings. Got: ${JSON.stringify(injuriesRaw)}`,
+    );
+  }
+  const injuries = injuriesRaw.map((item, index) => {
+    if (typeof item !== "string" || item.trim() === "") {
+      throw new FightError(
+        `${label} injuries[${String(index)}] must be a non-empty string. Got: ${JSON.stringify(item)}`,
+      );
+    }
+    return item;
+  });
+  const status = value.status;
+  if (status !== "alive") {
+    throw new FightError(
+      `${label} status must be "alive". Got: ${JSON.stringify(status)}`,
+    );
+  }
+  const card: LivingCard = {
+    subname: requiredString(value, "subname", label),
+    look: requiredString(value, "look", label),
+    brief: requiredString(value, "brief", label),
+    injuries,
+    status: "alive",
+  };
+  if (value.display_name !== undefined) {
+    card.display_name = requiredString(value, "display_name", label);
+  }
+  return card;
 }
 
 function loadLivingCard(path: string, label: string): LivingCard {
-  return asLivingCard(readJsonFile(path), label);
+  return livingCardFromJson(readJsonFile(path), label);
 }
 
 function loadOpponents(path: string): LivingCard[] {
@@ -116,7 +170,7 @@ function loadOpponents(path: string): LivingCard[] {
     );
   }
   return value.map((entry, index) =>
-    asLivingCard(entry, `opponents[${index}]`),
+    livingCardFromJson(entry, `opponents[${index}]`),
   );
 }
 
@@ -138,8 +192,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   validateFightInput(input);
 
   loadRepoEnv();
-  const narrationConfig = loadNarrationConfig(process.env);
-  assertProductionNarration(narrationConfig);
+  const { narrationConfig, falConfig } = loadDemoConfigs(process.env);
 
   const narrated = await narrateFight(
     input,
@@ -147,10 +200,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     undefined,
     cryptoRandomInt,
   );
-  const video = await generateFightVideo(
-    narrated.turn,
-    loadFalVideoConfig(process.env),
-  );
+  const video = await generateFightVideo(narrated.turn, falConfig);
   process.stdout.write(
     [
       `narration_model=${narrationConfig.model}`,
@@ -162,8 +212,21 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   );
 }
 
+export function loadDemoConfigs(env: Record<string, string | undefined>): {
+  narrationConfig: NarrationConfig;
+  falConfig: FalVideoConfig;
+} {
+  const narrationConfig = loadNarrationConfig(env);
+  assertProductionNarration(narrationConfig);
+  const falConfig = loadFalVideoConfig(env);
+  return { narrationConfig, falConfig };
+}
+
 const entry = process.argv[1];
-if (entry !== undefined && /(?:^|[/\\])demo\.[cm]?[jt]s$/.test(entry)) {
+if (
+  entry !== undefined &&
+  import.meta.url === pathToFileURL(resolve(entry)).href
+) {
   main().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`${message}\n`);
