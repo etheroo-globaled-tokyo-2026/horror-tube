@@ -27,7 +27,8 @@ how write permission is validated locally. Parent-name registration is
 `grantSetterRoles` encodes `setText` calldata for one key
 (`grant-text-roles.ts` `buildSetTextSetter`). The resolver decodes that
 calldata and grants `ROLE_SET_TEXT` for that key only. A `false` return
-throws in `assertWritePermissionGranted` before `writeContract`.
+throws in `assertWritePermissionGranted` before `writeContract`, unless
+`hasRoles` already shows that key. Then the grant transaction is skipped.
 
 ## Flow
 
@@ -36,6 +37,8 @@ flowchart TD
   admin["Bootstrap key holds ALL_ROLES"]
   sim["simulateContract grantSetterRoles for one text key"]
   gate{"result is true"}
+  already{"hasRoles already true"}
+  skipGrant["Skip. Role already held."]
   denyGrant["Throw. No transaction."]
   send["writeContract the simulated request"]
   mined{"Receipt success"}
@@ -47,7 +50,9 @@ flowchart TD
   revert["Call reverts. Stored string stays as it was."]
 
   admin --> sim --> gate
-  gate -->|false| denyGrant
+  gate -->|false| already
+  already -->|yes| skipGrant
+  already -->|no| denyGrant
   gate -->|true| send --> mined
   mined -->|reverted| failTx
   mined -->|success| roster --> read
@@ -72,7 +77,7 @@ return a stale value immediately after a fresh anvil deploy.
 Run `pnpm --filter @horror-tube/ens test` (and `typecheck` when you change
 types). The suite covers:
 
-- A `true` grant continues; a `false` grant throws with the key and account.
+- A `true` grant continues; a `false` grant throws with the key and account unless that account already holds the key.
 - The pinned ABI exposes `grantSetterRoles`.
 - Agent can overwrite `status` and `injuries`; roster can overwrite `look`,
   `brief`, and `icon`; bootstrap can set all five card keys.
