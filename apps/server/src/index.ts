@@ -6,6 +6,7 @@ import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { readGamePort, readStaticDir } from "./env.js";
 import { createGameServer, listenGameServer } from "./server.js";
+import { createWalletHandlerFromEnv, failingWalletHandler } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 loadDotenv({ path: join(repoRoot, ".env") });
@@ -20,7 +21,16 @@ const host = "0.0.0.0";
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
 
-const server = createGameServer({ port, host, staticDir });
+let wallet;
+try {
+  wallet = createWalletHandlerFromEnv(process.env);
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`Wallet API is off. ${message}`);
+  wallet = failingWalletHandler(message);
+}
+
+const server = createGameServer({ port, host, staticDir, wallet });
 await listenGameServer(server, { port, host, staticDir });
 
 console.log(
