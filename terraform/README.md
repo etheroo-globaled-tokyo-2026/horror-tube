@@ -24,13 +24,17 @@ The secret stays in the child process environment for that invocation; it is not
 
 Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** from the environment. There are **no defaults** — if either is missing or blank, stop. Do not put real values in `.env` committed to git; `.env.example` lists only empty names.
 
-Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`):
+`terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Do not treat those names as interchangeable.
+
+Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command:
 
 ```bash
 env SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')" \
   SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')" \
-  aws s3 cp ./icon.png "s3://${BUCKET}/${KEY}" \
-  --endpoint-url "https://${REGION}.digitaloceanspaces.com" \
+  AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+  AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
+  aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
+  --endpoint-url "https://sgp1.digitaloceanspaces.com" \
   --acl public-read
 ```
 
