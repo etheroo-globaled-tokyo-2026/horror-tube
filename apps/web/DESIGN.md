@@ -8,14 +8,14 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | File                    | What it is                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------ |
 | `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.                      |
-| `game.ts`               | The simulated game from `docs/PLAN.md`. No layout. Characters come from ENS (below). |
+| `game.ts`               | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
+| `round-client.ts`       | Same-origin `GET /round`, SSE `/events`, `POST /vote`, `POST /bet`.                  |
 | `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                |
 | `coinbox.ts`            | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.    |
 | `sfx.ts`                | Every sound, made live with Web Audio. No sound files.                               |
 | `sprites.ts`            | `paint` (pixel art) and the line helpers.                                            |
 | `ht.css`                | Tokens, plus the World ID gate and the cursors.                                      |
 | `system.html`           | The specimen page for the tokens.                                                    |
-| `assets/demo-fight.mp4` | Placeholder clip. It plays for every fight until the video pipeline exists.          |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
@@ -31,16 +31,13 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 - `status=dead` shows the character crossed off and in black and white. It cannot get votes.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
-- A new season starts from chain state. Deaths in the game stay local until the server writes them.
+- A new season starts from chain state. During a season, deaths and damage live on the server `RoundState` (`chars`). ENS text is not written after a fight yet (issue 111).
 - **Limit:** the shelf has 10 slots and the guide has 10 rows. Characters after the tenth do not show. The layout must
   change before the roster batches (issues 11–13) go on chain.
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free, top two living
-fight) → **story** (the LLM writes the fight; the winner and damage are known from here) → **bet** (while the video
-renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage,
-winners **claim**) → vote again, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; `POST /bet` grows the in-memory pool only) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage in memory; ENS writes and `BattleBetting` are not called yet) → next bout, until one is left.
 
 ## The wallet
 
@@ -52,7 +49,7 @@ reads the meter:
 - `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
-- Bets and claims (**not built**: no Move contract yet, bets are simulated in `game.ts`): the plan is
+- Bets and claims (**not built**: no Move contract yet; `POST /bet` only adds to the in-memory pool, no USDC debit): the plan is
   `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`. No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
   coin).
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.

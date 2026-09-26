@@ -1905,7 +1905,8 @@ function drawTV(): void {
         g.font = "700 26px Silkscreen";
         g.fillText(ch.short, x, 228);
         g.font = "24px DotGothic16";
-        g.fillText(`pays ×${odds(i)}`, x, 264);
+        const pays = odds(i);
+        g.fillText(pays === "no stake" ? "no stake" : `pays ×${pays}`, x, 264);
       });
       if (S.bet)
         text(

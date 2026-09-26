@@ -154,29 +154,23 @@ Avoid hyperspecific tests or writing tests as a knee jerk reaction. Think about 
 
 pnpm workspace; Turborepo runs the tasks defined in `turbo.json`.
 
-- `apps/frontend` — Vite + React + TypeScript
-  - `src/app` — app shell: tab bar and screen switching
-  - `src/sticker-creation` — the drawing screen: canvas engine (`canvas/`), tools and drawers (`tools/`), sealing (`sealing/`)
-  - `src/sticker-board` — the sticker board, its stat board, sticker detail and placement
-  - `src/giving` — Giving: the give sheet and gift bag, the gift message, and sending it through LINE's friend picker
-  - `src/line` — LIFF: starts before the app renders and holds it until LINE has logged the person in; on the dev server LIFF Mock stands in for LINE (`apps/frontend/.env.example` switches it off)
-  - `src/identity` — who the person is: the LINE profile, and the Privy sign-in, which trades LINE's ID token at the auth server for a Privy JWT (Privy's SDK loads only after the board)
-  - `src/tickets`, `src/stickers` (local sticker storage, display formatting, and the sticker's material: the figure, its live resin and the shared light), `src/payments`
-  - `src/icons` — one icon per file; `src/styles` — CSS shared across features
-- `packages/db` — Drizzle schema and typed database client (`@drawing-app/db`)
-- `packages/*` — shared workspace packages
-- `deploy/` — `./deploy/deploy.sh` builds the frontend and the LINE → Privy auth server (`packages/sticker-chain`), publishes both behind the LIFF app's endpoint, then checks the box and the public URL serve them; the box's login goes in the gitignored `deploy/.env`, and the auth server's signing key stays on the box
+- `apps/web` — Vite room: `main.ts` (3D room, TV, remote), `game.ts` (RoundState client + ENS roster), wallet/coin box, World ID waiver
+- `apps/server` — game loop, World ID verify, wallet API (Shinami), Postgres
+- `packages/ens` — Sepolia ENSv2 roster read/write CLIs and dashboard
+- `packages/fight` — fight narration and fal video
+- `packages/fight-media` — Spaces upload for fight clips
+- `packages/world-id` — IDKit env and verification helpers
+- `packages/roster` — Fandom → character sheet propose/register
+- `packages/contracts` — `BattleBetting` (Foundry)
 
 ### Toolchain
 
 - Node runtime is **pnpm**
-- Tests are **vitest**
+- Tests are **node:test** via `tsx --test` (`pnpm --filter <pkg> test`)
 - Monorepo tech is turborepo
-- Frontend is **Vite** + **React**
-- Lint is **oxlint**, type-aware (`pnpm lint`); format is **oxfmt** (`pnpm format`). A pre-commit hook runs both on staged files. Don't downgrade a rule for a file in `.oxlintrc.json` to get a commit through; fix the code
-- Drizzle for typed database clients, on SQLite via better-sqlite3
-- `pnpm check` runs lint, typecheck, tests and the format check; `pnpm check:full` adds the production build and a knip report of unused code
-- `pnpm db:push` syncs the local database (`data/drawing-app.db`) to the schema; drizzle-kit exits 0 even when it fails, so read its output
+- Web room is **Vite** + TypeScript (no React)
+- Lint is **oxlint** (`pnpm lint`); format is **oxfmt** (`pnpm format`)
+- Root scripts: `dev`, `test`, `typecheck`, `lint`, `format`, `ens:*`, `dashboard`, `contracts:*`
 
 ### Git
 

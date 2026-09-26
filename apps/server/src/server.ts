@@ -3,6 +3,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, resolve, sep } from "node:path";
 
 import type { GameLoop } from "./game/loop.js";
+import { HttpError } from "./http-error.js";
+import { readSession } from "./human-session.js";
 import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
 import { handleWorldIdRequest, type WorldIdHandlerDeps } from "./world-id-handler.js";
@@ -14,6 +16,8 @@ export type GameServerOptions = {
   wallet?: WalletHandler;
   worldId?: WorldIdHandlerDeps;
   game?: GameLoop;
+  /** HMAC pepper for the waiver session. Required for POST /vote. */
+  sessionPepper?: string;
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -154,11 +158,27 @@ function serveRoundStateSse(res: ServerResponse, game: GameLoop): void {
   });
 }
 
+function readBearerToken(req: IncomingMessage): string {
+  const header = req.headers.authorization;
+  if (header === undefined) {
+    throw new HttpError(401, "Authorization Bearer session is required. Call POST /auth/world-id.");
+  }
+  const value = Array.isArray(header) ? header[0] : header;
+  if (value === undefined || !value.startsWith("Bearer ")) {
+    throw new HttpError(401, "Authorization Bearer session is required. Call POST /auth/world-id.");
+  }
+  const token = value.slice("Bearer ".length).trim();
+  if (token === "") {
+    throw new HttpError(401, "Authorization Bearer session is required. Call POST /auth/world-id.");
+  }
+  return token;
+}
+
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir, wallet, worldId, game } = options;
+  const { staticDir, wallet, worldId, game, sessionPepper } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void handleRequest(req, res, { staticDir, wallet, worldId, game });
+    void handleRequest(req, res, { staticDir, wallet, worldId, game, sessionPepper });
   });
 
   return server;
@@ -172,6 +192,7 @@ async function handleRequest(
     wallet?: WalletHandler;
     worldId?: WorldIdHandlerDeps;
     game?: GameLoop;
+    sessionPepper?: string;
   },
 ): Promise<void> {
   const method = req.method ?? "GET";
@@ -209,10 +230,28 @@ async function handleRequest(
         return;
       }
       if (method === "POST" && path === "/vote") {
-        const raw = await readBody(req);
-        let body: { proof?: unknown; picks?: unknown };
+        const pepper = opts.sessionPepper;
+        if (pepper === undefined || pepper.trim() === "") {
+          sendJson(res, 500, {
+            ok: false,
+            error:
+              "WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
+          });
+          return;
+        }
+        let nullifier: string;
         try {
-          body = JSON.parse(raw) as { proof?: unknown; picks?: unknown };
+          nullifier = readSession(readBearerToken(req), pepper);
+        } catch (err) {
+          const status = err instanceof HttpError ? err.status : 401;
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, status, { ok: false, error: message });
+          return;
+        }
+        const raw = await readBody(req);
+        let body: { picks?: unknown };
+        try {
+          body = JSON.parse(raw) as { picks?: unknown };
         } catch {
           sendBadRequest(res, "vote body must be JSON.");
           return;
@@ -227,7 +266,7 @@ async function handleRequest(
           return;
         }
         try {
-          await opts.game.vote(body.proof, picks);
+          opts.game.voteWithNullifier(nullifier, picks);
           const payload = JSON.stringify({
             ok: true,
             state: opts.game.getState(),
