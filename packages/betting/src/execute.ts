@@ -5,22 +5,30 @@ import type { Transaction } from "@mysten/sui/transactions";
 
 export type Executed = SuiClientTypes.Transaction<{ effects: true; objectTypes: true }>;
 
+export function succeeded<Include extends SuiClientTypes.TransactionInclude>(
+  result: SuiClientTypes.TransactionResult<Include>,
+): SuiClientTypes.Transaction<Include> {
+  if (result.$kind === "FailedTransaction")
+    throw new Error(
+      `Transaction ${result.FailedTransaction.digest} aborted: ${result.FailedTransaction.status.error?.message ?? "no error message"}`,
+    );
+  return result.Transaction;
+}
+
 export async function execute(
   client: SuiGrpcClient,
   signer: Signer,
   transaction: Transaction,
 ): Promise<Executed> {
-  const result = await client.signAndExecuteTransaction({
-    transaction,
-    signer,
-    include: { effects: true, objectTypes: true },
-  });
-  if (result.$kind === "FailedTransaction")
-    throw new Error(
-      `Transaction ${result.FailedTransaction.digest} aborted: ${result.FailedTransaction.status.error?.message ?? "no error message"}`,
-    );
-  await client.waitForTransaction({ digest: result.Transaction.digest });
-  return result.Transaction;
+  const executed = succeeded(
+    await client.signAndExecuteTransaction({
+      transaction,
+      signer,
+      include: { effects: true, objectTypes: true },
+    }),
+  );
+  await client.waitForTransaction({ digest: executed.digest });
+  return executed;
 }
 
 export function createdId(result: Executed, typeFragment: string): string {
