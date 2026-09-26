@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import boto3
 from botocore.client import BaseClient, Config
 from botocore.exceptions import BotoCoreError, ClientError
+from botocore.session import Session as BotocoreSession
 from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger("roster.icons")
@@ -269,7 +270,15 @@ class SpacesIconStore:
         bucket = required_env("SPACES_BUCKET", env)
         endpoint = required_env("SPACES_ENDPOINT", env)
         region = spaces_region_from_endpoint(endpoint)
-        client = boto3.client(
+        # Ignore AWS_PROFILE / AWS_DEFAULT_PROFILE. An ambient profile
+        # (e.g. PowerUserAccess-*) makes boto3.client() raise ProfileNotFound
+        # or sign with the wrong account even when Spaces keys are passed.
+        # Auth is only SPACES_ACCESS_KEY_ID + SPACES_SECRET; no session token.
+        bc_session = BotocoreSession(
+            session_vars={"profile": (None, [], None, None)},
+        )
+        session = boto3.session.Session(botocore_session=bc_session)
+        client = session.client(
             "s3",
             region_name=region,
             endpoint_url=endpoint,

@@ -145,7 +145,11 @@ def _find_section(parse: dict[str, Any], pattern: re.Pattern[str], *, name: str,
         if pattern.match(_plain(section["line"])):
             return section["index"]
     lines = ", ".join(_plain(s["line"]) for s in parse["sections"]) or "(none)"
-    raise FandomError(f"{ref}: no {name} section. Sections: {lines}")
+    raise FandomError(
+        f"{ref}: no {name} section. Sections: {lines}. "
+        "List headings with: python -m roster sections --source <url>. "
+        "Only Appearance (or Physical Appearance) and Powers and abilities are used."
+    )
 
 
 def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
@@ -183,7 +187,9 @@ def _parse_page(ref: PageRef) -> dict[str, Any]:
 def _reject_disambiguation(ref: PageRef, parse: dict[str, Any]) -> None:
     if is_disambiguation(parse):
         raise FandomError(
-            f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page."
+            f"{ref}: {parse['title']!r} is a disambiguation page. "
+            "Pass a specific character page to --source, "
+            "or to --look-source / --brief-source."
         )
 
 

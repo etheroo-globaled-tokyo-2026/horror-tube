@@ -5,6 +5,7 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 
 | Command        | Chain?  | Role                                                                 |
 | -------------- | ------- | -------------------------------------------------------------------- |
+| `sections`     | no      | Print Fandom `api.php` section headings as JSON                      |
 | `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
 | `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
 | `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
@@ -18,11 +19,14 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
-`PRIVATE_KEY` fails with an error that names the variable. The CLI loads `.env`
-via `python-dotenv` when present. `propose` does not require ENS env vars.
+`PRIVATE_KEY` fails with an error that names the variable. The CLI loads the
+**repo-root** `.env` (the checkout or worktree root next to `.env.example`),
+not whatever `.env` sits in the current directory. Missing file is fine for
+`sections` / `propose`; other commands fail when their vars are blank.
 `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
+Spaces uploads use those two Spaces keys only and ignore `AWS_PROFILE`.
 `icons-chain` requires both the ENS write vars and the Together/Spaces vars.
 
 ## Schemas
