@@ -14,7 +14,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `system.html`           | The specimen page for the tokens.                                    |
 | `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.          |
 
-Run `python3 -m http.server 8766` in `design/` and open `http://localhost:8766/`.
+Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
 ## The flow (game.js)
 
