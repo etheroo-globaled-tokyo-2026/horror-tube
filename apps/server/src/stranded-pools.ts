@@ -1,6 +1,6 @@
 import { PoolStatus, type Pool } from "@horror-tube/betting";
 
-import type { BattleBettingPorts } from "./battle-betting.js";
+import { POOL_CANCELLED, type BattleBettingPorts } from "./battle-betting.js";
 import type { PoolLedger, PoolResolution } from "./db/sui-pools.js";
 import type { RoundState } from "./types.js";
 
@@ -151,7 +151,7 @@ export function recordPools(ports: BattleBettingPorts, ledger: PoolLedger): Batt
     },
     async settle(battleId, side) {
       const digest = await ports.settle(battleId, side);
-      await recordResolution(ledger, battleId, "settled");
+      await recordResolution(ledger, battleId, digest === POOL_CANCELLED ? "cancelled" : "settled");
       return digest;
     },
   };

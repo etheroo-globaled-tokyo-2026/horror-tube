@@ -90,8 +90,11 @@ describe("operator", () => {
     const chain = fakeChain(openPool());
     await chain.operator.closeBetting(battleId);
     await chain.operator.closeBetting(battleId);
-    assert.equal(await chain.operator.settle(battleId, 1), "digest-settle");
-    assert.equal(await chain.operator.settle(battleId, 1), null);
+    assert.deepEqual(await chain.operator.settle(battleId, 1), {
+      kind: "settled",
+      digest: "digest-settle",
+    });
+    assert.deepEqual(await chain.operator.settle(battleId, 1), { kind: "already settled" });
     assert.deepEqual(chain.calls, ["close_betting", "settle"]);
     assert.equal(chain.pool()?.winningSide, 1n);
   });
@@ -100,6 +103,13 @@ describe("operator", () => {
     const chain = fakeChain(settledPool(1n));
     await assert.rejects(chain.operator.settle(battleId, 0), /cannot settle for side 0/u);
     assert.deepEqual(chain.calls, []);
+  });
+
+  it("reports a pool cancelled mid-bout instead of refusing to settle it", async () => {
+    const chain = fakeChain(openPool());
+    await chain.operator.cancel(battleId);
+    assert.deepEqual(await chain.operator.settle(battleId, 0), { kind: "cancelled" });
+    assert.deepEqual(chain.calls, ["cancel"]);
   });
 
   it("treats cancelling a battle whose pool never opened as done", async () => {
