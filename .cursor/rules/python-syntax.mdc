@@ -1,0 +1,12 @@
+---
+description: Roster Python is 3.9. Do not use newer syntax in inline scripts.
+alwaysApply: true
+---
+
+# Python 3.9
+
+`python3` and `packages/roster/.venv` are Python 3.9.
+
+- A backslash inside an f-string expression is a SyntaxError. Do not write one.
+- Do not use `match` statements.
+- To list Fandom section headings, run `python -m roster sections --source <wiki url>`. Do not parse `api.php` with an inline script.

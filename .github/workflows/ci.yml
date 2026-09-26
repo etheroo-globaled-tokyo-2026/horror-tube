@@ -18,10 +18,28 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @horror-tube/ens test
       - run: pnpm --filter @horror-tube/ens typecheck
       - run: python3 scripts/test_spaces_credential_process.py
+
+  fight-media:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/fight-media test
+      - run: pnpm --filter @horror-tube/fight-media typecheck
 
   server:
     runs-on: ubuntu-latest
@@ -93,3 +111,13 @@ jobs:
           version: v1.5.1
       - run: forge fmt --check
       - run: forge test
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - run: terraform -chdir=terraform init -backend=false
+      - run: terraform -chdir=terraform validate
