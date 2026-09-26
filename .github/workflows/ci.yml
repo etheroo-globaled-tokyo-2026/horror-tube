@@ -117,6 +117,8 @@ jobs:
       WORLD_ID_RP_ID: "rp_ci_docker"
       WORLD_ID_SIGNING_KEY: "0xabababababababababababababababababababababababababababababababab"
       WORLD_ID_ENVIRONMENT: "production"
+      WORLD_ID_PRACTICE_ACTIONS: "enter-room-1,enter-room-2,enter-room-3,enter-room-4,enter-room-5"
+      WORLD_ID_JUDGE_ACTION: "enter-room-judge"
       # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
       QUORUM_VOTES: "1"
       VOTE_COUNTDOWN_SECONDS: "15"
@@ -188,6 +190,8 @@ jobs:
             -e "WORLD_ID_RP_ID=${WORLD_ID_RP_ID}" \
             -e "WORLD_ID_SIGNING_KEY=${WORLD_ID_SIGNING_KEY}" \
             -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
+            -e "WORLD_ID_PRACTICE_ACTIONS=${WORLD_ID_PRACTICE_ACTIONS}" \
+            -e "WORLD_ID_JUDGE_ACTION=${WORLD_ID_JUDGE_ACTION}" \
             -e "QUORUM_VOTES=${QUORUM_VOTES}" \
             -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
             -e "BET_MIN_SECONDS=${BET_MIN_SECONDS}" \
