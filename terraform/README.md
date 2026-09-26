@@ -140,7 +140,7 @@ There is no Tokyo DO region. Pick the geographically closest **datacenter** wher
 
 `digitalocean_app.game` is one service built from the repo-root `Dockerfile`. Spec `region` is `var.app_region` (`sgp`), not `var.region` (`sgp1`). It listens on `game_port` (`GAME_PORT` / `http_port`), health-checks `GET /health`, and serves the Vite build from `STATIC_DIR` inside the image.
 
-`ENS_LABEL` and `VITE_SEPOLIA_RPC_URL` are `BUILD_TIME` env on the service (required Terraform variables, no defaults) so the Dockerfile can bake them into the Vite client. Without them the browser throws when `apps/web/game.ts` reads `import.meta.env`.
+`ENS_LABEL` is build and runtime env (required, no default) so the Dockerfile can bake it into the Vite client and the server can name characters at settle. `VITE_SEPOLIA_RPC_URL` is build-time only. Without them the browser throws when `apps/web/game.ts` reads `import.meta.env`.
 
 Push to `main` redeploys (`github.deploy_on_push = true`). The DigitalOcean team must already have the GitHub repository connected in the control panel, or apply fails when App Platform cannot clone the repo.
 
@@ -158,8 +158,10 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 
 | App env | Terraform variable | Notes |
 | --- | --- | --- |
-| `ENS_LABEL` | `TF_VAR_ens_label` | BUILD_TIME; from `.env` |
+| `ENS_LABEL` | `TF_VAR_ens_label` | build and runtime; from `.env` |
 | `VITE_SEPOLIA_RPC_URL` | `TF_VAR_vite_sepolia_rpc_url` | BUILD_TIME; from `.env` |
+| `SEPOLIA_RPC_URL` | `TF_VAR_sepolia_rpc_url` | runtime ENS writes; from `.env` |
+| `AGENT_PRIVATE_KEY` | `TF_VAR_agent_private_key` | runtime ENS status/injuries; from `.env`. Not `PRIVATE_KEY`. |
 | `DATABASE_URL` | *(none)* | set from `battle_state.uri` in Terraform |
 | `DATABASE_CA_CERT` | `TF_VAR_database_ca_cert` | from `.env` (DigitalOcean project CA PEM / API base64) |
 | `SPACES_ACCESS_KEY_ID` | `TF_VAR_spaces_access_key_id` | from `.env` |
@@ -187,9 +189,9 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 
 The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
-`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet). Laptop-only and one-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `SEPOLIA_RPC_URL`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them.
+`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; this service does not read them. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
 
-Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
+Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
 
 ```bash
 (
@@ -201,6 +203,8 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   set +a
   : "${ENS_LABEL:?ENS_LABEL is required. See .env.example.}"
   : "${VITE_SEPOLIA_RPC_URL:?VITE_SEPOLIA_RPC_URL is required. See .env.example.}"
+  : "${SEPOLIA_RPC_URL:?SEPOLIA_RPC_URL is required. See .env.example.}"
+  : "${AGENT_PRIVATE_KEY:?AGENT_PRIVATE_KEY is required. See .env.example.}"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
   : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_BUCKET:?SPACES_BUCKET is required. See .env.example.}"
@@ -223,6 +227,8 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
   export TF_VAR_vite_sepolia_rpc_url="$VITE_SEPOLIA_RPC_URL"
+  export TF_VAR_sepolia_rpc_url="$SEPOLIA_RPC_URL"
+  export TF_VAR_agent_private_key="$AGENT_PRIVATE_KEY"
   export TF_VAR_database_ca_cert="$DATABASE_CA_CERT"
   export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
   export TF_VAR_spaces_secret="$SPACES_SECRET"

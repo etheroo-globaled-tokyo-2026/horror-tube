@@ -24,11 +24,12 @@ resource "digitalocean_app" "game" {
         http_path = "/health"
       }
 
-      # Baked into the Vite client at image build (apps/web/game.ts via import.meta.env).
+      # Baked into the Vite client at image build, and present at runtime so
+      # settle can build character names (<label>.<ENS_LABEL>.eth).
       env {
         key   = "ENS_LABEL"
         value = var.ens_label
-        scope = "BUILD_TIME"
+        scope = "RUN_AND_BUILD_TIME"
         type  = "GENERAL"
       }
 
@@ -251,10 +252,31 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "SKIP_BATTLE_SETTLEMENT"
+        value = var.skip_battle_settlement
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "ROSTER_ENS_LABELS"
         value = var.roster_ens_labels
         scope = "RUN_TIME"
         type  = "GENERAL"
+      }
+
+      env {
+        key   = "SEPOLIA_RPC_URL"
+        value = var.sepolia_rpc_url
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "AGENT_PRIVATE_KEY"
+        value = var.agent_private_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
       }
     }
   }

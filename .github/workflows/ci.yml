@@ -128,6 +128,7 @@ jobs:
       BET_MIN_SECONDS: "10"
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
+      SKIP_BATTLE_SETTLEMENT: "1"
       ROSTER_ENS_LABELS: "ci-alpha,ci-bravo"
     steps:
       - uses: actions/checkout@v4
@@ -200,6 +201,7 @@ jobs:
             -e "BET_MIN_SECONDS=${BET_MIN_SECONDS}" \
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
+            -e "SKIP_BATTLE_SETTLEMENT=${SKIP_BATTLE_SETTLEMENT}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
             -p "${GAME_PORT}:${GAME_PORT}" \
             horror-tube:ci)"
