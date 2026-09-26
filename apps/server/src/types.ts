@@ -1,5 +1,15 @@
 export type Phase = "waiting" | "pick" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 
+export type Tape = {
+  battleId: string;
+  fighters: [string, string];
+  winner: string;
+  injuries: string[];
+  rationale: string;
+  videoUrl: string;
+  recordedAt: number;
+};
+
 export type RoundState = {
   round: number;
   phase: Phase;

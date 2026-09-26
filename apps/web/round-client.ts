@@ -1,6 +1,6 @@
 import * as v from "valibot";
 
-import type { RoundState } from "../server/src/types.ts";
+import type { RoundState, Tape } from "../server/src/types.ts";
 
 import { WALLET_SESSION_KEY, type SessionStore } from "./wallet.ts";
 
@@ -78,37 +78,43 @@ function parseRoundState(source: string, json: string): ServerRoundState {
   return parsed.output;
 }
 
-export async function fetchReplayVideoUrl(fetchImpl: typeof fetch = fetch): Promise<string> {
-  const res = await fetchImpl("/replay");
+const TapeSchema = v.object({
+  battleId: v.string(),
+  fighters: v.tuple([v.string(), v.string()]),
+  winner: v.string(),
+  injuries: v.array(v.string()),
+  rationale: v.string(),
+  videoUrl: v.pipe(v.string(), v.minLength(1)),
+  recordedAt: v.number(),
+}) satisfies v.GenericSchema<Tape>;
+
+export async function fetchTapes(fetchImpl: typeof fetch = fetch): Promise<Tape[]> {
+  const res = await fetchImpl("/tapes");
   let body: unknown;
   try {
     body = await res.json();
   } catch (cause) {
     throw new Error(
-      `GET /replay returned non-JSON with HTTP ${String(res.status)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `GET /tapes returned non-JSON with HTTP ${String(res.status)}: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
   }
   const parsed = v.safeParse(
     v.union([
-      v.object({ videoUrl: v.pipe(v.string(), v.minLength(1)) }),
+      v.object({ tapes: v.array(TapeSchema) }),
       v.object({ ok: v.literal(false), error: v.string() }),
     ]),
     body,
   );
   if (!parsed.success) {
     throw new Error(
-      `GET /replay sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
+      `GET /tapes sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
     );
   }
   const out = parsed.output;
-  if ("error" in out) {
-    throw new Error(out.error);
-  }
-  if (!res.ok) {
-    throw new Error(`GET /replay failed: HTTP ${String(res.status)}`);
-  }
-  return out.videoUrl;
+  if ("error" in out) throw new Error(out.error);
+  if (!res.ok) throw new Error(`GET /tapes failed: HTTP ${String(res.status)}`);
+  return out.tapes;
 }
 
 export async function fetchRoundState(): Promise<ServerRoundState> {
@@ -211,7 +217,10 @@ export function postNextFighter(
   return postWithSession("/next-fighter", { fighter }, store);
 }
 
-export function postVote(pick: number, store: SessionStore = localStorage): Promise<ServerRoundState> {
+export function postVote(
+  pick: number,
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
   return postWithSession("/vote", { pick }, store);
 }
 

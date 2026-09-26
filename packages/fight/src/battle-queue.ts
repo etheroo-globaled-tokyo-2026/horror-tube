@@ -35,13 +35,7 @@ export type BattleQueueInsert = Omit<
   | "settlementTxHash"
 >;
 
-export type SettleStep =
-  | "queued"
-  | "injuries"
-  | "status"
-  | "settlement"
-  | "next_bout"
-  | "done";
+export type SettleStep = "queued" | "injuries" | "status" | "settlement" | "next_bout" | "done";
 
 export type ChainWritePorts = {
   writeWinnerInjuries: (args: {
@@ -49,18 +43,20 @@ export type ChainWritePorts = {
     injuries: string[];
     ensLine: string;
   }) => Promise<string>;
-  writeLoserStatusDead: (args: {
-    subname: string;
-    ensLine: string;
-  }) => Promise<string>;
+  writeLoserStatusDead: (args: { subname: string; ensLine: string }) => Promise<string>;
   settleBattle: (battleId: string, winningSide: 0 | 1) => Promise<string>;
+};
+
+export type RecordedBattle = BattleQueueRecord & {
+  videoUrl: string;
+  recordedAt: number;
 };
 
 export type BattleQueueStore = {
   get(id: string): Promise<BattleQueueRecord | null>;
   save(record: BattleQueueRecord): Promise<void>;
   setVideoUrl(id: string, videoUrl: string): Promise<void>;
-  getLatestVideoUrl(): Promise<string | null>;
+  listRecorded(): Promise<RecordedBattle[]>;
 };
 
 export function assertPlayableFightVideoUrl(url: string): string {
@@ -74,10 +70,9 @@ export function assertPlayableFightVideoUrl(url: string): string {
   try {
     parsed = new URL(trimmed);
   } catch (cause) {
-    throw new BattleQueueError(
-      `fight video URL is not a valid URL: ${JSON.stringify(trimmed)}`,
-      { cause },
-    );
+    throw new BattleQueueError(`fight video URL is not a valid URL: ${JSON.stringify(trimmed)}`, {
+      cause,
+    });
   }
   const host = parsed.hostname.toLowerCase();
   if (host === "fal.media" || host.endsWith(".fal.media")) {
@@ -113,9 +108,7 @@ export function markBettingClosed(record: BattleQueueRecord): BattleQueueRecord 
   return { ...record, bettingClosed: true };
 }
 
-export function markPlaybackFinished(
-  record: BattleQueueRecord,
-): BattleQueueRecord {
+export function markPlaybackFinished(record: BattleQueueRecord): BattleQueueRecord {
   return { ...record, playbackFinished: true };
 }
 
@@ -151,10 +144,9 @@ export function parseInjuriesTextRecord(raw: string): string[] {
   try {
     parsed = JSON.parse(raw);
   } catch (cause) {
-    throw new BattleQueueError(
-      `injuries text record is not JSON. Got: ${JSON.stringify(raw)}`,
-      { cause },
-    );
+    throw new BattleQueueError(`injuries text record is not JSON. Got: ${JSON.stringify(raw)}`, {
+      cause,
+    });
   }
   if (!Array.isArray(parsed)) {
     throw new BattleQueueError(
@@ -163,9 +155,7 @@ export function parseInjuriesTextRecord(raw: string): string[] {
   }
   const injuries = injuryListSchema.safeParse(parsed);
   if (!injuries.success) {
-    throw new BattleQueueError(
-      `injuries array items must be strings. Got: ${JSON.stringify(raw)}`,
-    );
+    throw new BattleQueueError(`injuries array items must be strings. Got: ${JSON.stringify(raw)}`);
   }
   return injuries.data;
 }
@@ -260,17 +250,11 @@ function assertInsert(insert: BattleQueueInsert): void {
 
 function assertTxHash(hash: string, step: string): void {
   if (hash.trim() === "") {
-    throw new BattleQueueError(
-      `${step} write returned an empty transaction hash.`,
-    );
+    throw new BattleQueueError(`${step} write returned an empty transaction hash.`);
   }
 }
 
-function wrapStepError(
-  step: string,
-  record: BattleQueueRecord,
-  cause: unknown,
-): BattleQueueError {
+function wrapStepError(step: string, record: BattleQueueRecord, cause: unknown): BattleQueueError {
   const detail = cause instanceof Error ? cause.message : String(cause);
   return new BattleQueueError(
     `battle queue ${record.id} settle step ${step} failed (battleId=${record.battleId}). ${detail}`,
@@ -281,6 +265,8 @@ function wrapStepError(
 export class MemoryBattleQueueStore implements BattleQueueStore {
   private readonly rows = new Map<string, BattleQueueRecord>();
   private readonly videoById = new Map<string, string>();
+  private readonly insertionSequence = new Map<string, number>();
+  private nextInsertionSequence = 0;
 
   async get(id: string): Promise<BattleQueueRecord | null> {
     const row = this.rows.get(id);
@@ -288,6 +274,9 @@ export class MemoryBattleQueueStore implements BattleQueueStore {
   }
 
   async save(record: BattleQueueRecord): Promise<void> {
+    if (!this.rows.has(record.id)) {
+      this.insertionSequence.set(record.id, this.nextInsertionSequence++);
+    }
     this.rows.set(record.id, structuredClone(record));
   }
 
@@ -301,11 +290,14 @@ export class MemoryBattleQueueStore implements BattleQueueStore {
     this.videoById.set(id, trimmed);
   }
 
-  async getLatestVideoUrl(): Promise<string | null> {
-    let latest: string | null = null;
-    for (const id of this.rows.keys()) {
-      latest = this.videoById.get(id) ?? latest;
-    }
-    return latest;
+  async listRecorded(): Promise<RecordedBattle[]> {
+    return [...this.rows.values()]
+      .filter((row) => this.videoById.has(row.id))
+      .sort((a, b) => this.insertionSequence.get(a.id)! - this.insertionSequence.get(b.id)!)
+      .map((row) => ({
+        ...structuredClone(row),
+        videoUrl: this.videoById.get(row.id)!,
+        recordedAt: this.insertionSequence.get(row.id)!,
+      }));
   }
 }

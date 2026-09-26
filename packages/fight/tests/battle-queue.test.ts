@@ -15,9 +15,7 @@ import {
 } from "../src/battle-queue.js";
 import { validModelTurn } from "./fixtures.js";
 
-function sampleInsert(
-  overrides: Partial<BattleQueueInsert> = {},
-): BattleQueueInsert {
+function sampleInsert(overrides: Partial<BattleQueueInsert> = {}): BattleQueueInsert {
   const turn = validModelTurn();
   return {
     id: "queue-1",
@@ -73,10 +71,10 @@ describe("settle gates", () => {
     let row = createQueuedRecord(sampleInsert());
     row = markPlaybackFinished(row);
     await store.save(row);
-    await assert.rejects(
-      () => settleQueuedBattle(row, trackingPorts(calls), store),
-      { name: "BattleQueueError", message: /betting-closed signal is missing/u },
-    );
+    await assert.rejects(() => settleQueuedBattle(row, trackingPorts(calls), store), {
+      name: "BattleQueueError",
+      message: /betting-closed signal is missing/u,
+    });
     assert.deepEqual(calls, []);
     const saved = await store.get(row.id);
     assert.equal(saved?.injuriesTxHash, null);
@@ -88,10 +86,10 @@ describe("settle gates", () => {
     let row = createQueuedRecord(sampleInsert());
     row = markBettingClosed(row);
     await store.save(row);
-    await assert.rejects(
-      () => settleQueuedBattle(row, trackingPorts(calls), store),
-      { name: "BattleQueueError", message: /playback-finished signal is missing/u },
-    );
+    await assert.rejects(() => settleQueuedBattle(row, trackingPorts(calls), store), {
+      name: "BattleQueueError",
+      message: /playback-finished signal is missing/u,
+    });
     assert.deepEqual(calls, []);
   });
 });
@@ -185,22 +183,13 @@ describe("parseInjuriesTextRecord", () => {
   it("accepts a JSON array and refuses empty or non-array encodings", () => {
     assert.deepEqual(parseInjuriesTextRecord("[]"), []);
     assert.deepEqual(parseInjuriesTextRecord('["cut"]'), ["cut"]);
-    assert.throws(
-      () => parseInjuriesTextRecord(""),
-      /injuries text record is ""/u,
-    );
-    assert.throws(
-      () => parseInjuriesTextRecord("scarred"),
-      /not JSON|must be a JSON array/u,
-    );
-    assert.throws(
-      () => parseInjuriesTextRecord('"scarred"'),
-      /must be a JSON array/u,
-    );
+    assert.throws(() => parseInjuriesTextRecord(""), /injuries text record is ""/u);
+    assert.throws(() => parseInjuriesTextRecord("scarred"), /not JSON|must be a JSON array/u);
+    assert.throws(() => parseInjuriesTextRecord('"scarred"'), /must be a JSON array/u);
   });
 });
 describe("battle video URL store", () => {
-  it("rejects blank and fal.media URLs; accepts a Spaces CDN URL and returns it later", async () => {
+  it("rejects blank and fal.media URLs; accepts a Spaces CDN URL and lists it later", async () => {
     const store = new MemoryBattleQueueStore();
     const row = createQueuedRecord(sampleInsert({ id: "vid-1" }));
     await store.save(row);
@@ -217,12 +206,14 @@ describe("battle video URL store", () => {
 
     const cdn = "https://fight-media.example/videos/abc.mp4";
     await store.setVideoUrl(row.id, cdn);
-    assert.equal(await store.getLatestVideoUrl(), cdn);
+    const recorded = await store.listRecorded();
+    assert.equal(recorded.length, 1);
+    assert.equal(recorded[0]?.videoUrl, cdn);
   });
 
-  it("returns the newest bout's URL, even after a later write to an older bout", async () => {
+  it("lists recorded bouts oldest first, unaffected by a later write to an older bout", async () => {
     const store = new MemoryBattleQueueStore();
-    assert.equal(await store.getLatestVideoUrl(), null);
+    assert.deepEqual(await store.listRecorded(), []);
 
     const older = createQueuedRecord(sampleInsert({ id: "vid-old", battleId: "1" }));
     const newer = createQueuedRecord(sampleInsert({ id: "vid-new", battleId: "2" }));
@@ -233,7 +224,30 @@ describe("battle video URL store", () => {
     await store.save(markBettingClosed(older));
     await store.setVideoUrl(older.id, "https://cdn.example/videos/old.mp4");
 
-    assert.equal(await store.getLatestVideoUrl(), "https://cdn.example/videos/new.mp4");
+    const recorded = await store.listRecorded();
+    assert.deepEqual(
+      recorded.map((r) => r.battleId),
+      ["1", "2"],
+    );
+    assert.deepEqual(
+      recorded.map((r) => r.videoUrl),
+      ["https://cdn.example/videos/old.mp4", "https://cdn.example/videos/new.mp4"],
+    );
+  });
+
+  it("excludes rows that never had a video URL set", async () => {
+    const store = new MemoryBattleQueueStore();
+    const withVideo = createQueuedRecord(sampleInsert({ id: "vid-yes", battleId: "1" }));
+    const withoutVideo = createQueuedRecord(sampleInsert({ id: "vid-no", battleId: "2" }));
+    await store.save(withVideo);
+    await store.setVideoUrl(withVideo.id, "https://cdn.example/videos/yes.mp4");
+    await store.save(withoutVideo);
+
+    const recorded = await store.listRecorded();
+    assert.deepEqual(
+      recorded.map((r) => r.battleId),
+      ["1"],
+    );
   });
 
   it("fails when the battle_results row is missing", async () => {
