@@ -1,17 +1,20 @@
 import { createEnv } from "@t3-oss/env-core";
-import { z } from "zod";
+import * as v from "valibot";
 
 export const readWebEnv = () =>
   createEnv({
     shared: {
-      ENS_LABEL: z
-        .string()
-        .regex(/^[a-z0-9-]+$/, "must be one lowercase label, not a full name")
-        .default("horrortube"),
+      ENS_LABEL: v.optional(
+        v.pipe(v.string(), v.regex(/^[a-z0-9-]+$/, "must be one lowercase label, not a full name")),
+        "horrortube",
+      ),
     },
     clientPrefix: "VITE_",
     client: {
-      VITE_SEPOLIA_RPC_URL: z.url().default("https://ethereum-sepolia-rpc.publicnode.com"),
+      VITE_SEPOLIA_RPC_URL: v.optional(
+        v.pipe(v.string(), v.url()),
+        "https://ethereum-sepolia-rpc.publicnode.com",
+      ),
     },
     runtimeEnv: import.meta.env,
     emptyStringAsUndefined: true,

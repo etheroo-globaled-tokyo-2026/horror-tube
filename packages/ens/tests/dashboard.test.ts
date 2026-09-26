@@ -113,11 +113,15 @@ describe("dashboard HTML (unit, no network)", () => {
     };
     const html = renderDashboardHtml("horrortube.eth", [sheet]);
     assert.ok(html.includes("<h2>Art the Clown</h2>"));
+    assert.equal(html.includes(`<h2>${sheet.name}</h2>`), false);
     assert.ok(
       html.includes(
-        `<a href="${ensAppUrl(sheet.name)}">${sheet.name}</a>`,
+        `<p class="name"><a href="${ensAppUrl(sheet.name)}">${sheet.name}</a></p>`,
       ),
     );
+    assert.ok(html.includes("<dt>injury places</dt>"));
+    assert.ok(html.includes("<li>bag of weapons</li>"));
+    assert.ok(html.includes("<li>healing</li>"));
     assert.ok(html.includes("<li>ripped left sleeve</li>"));
     assert.ok(html.includes("<li>slower swing</li>"));
   });
