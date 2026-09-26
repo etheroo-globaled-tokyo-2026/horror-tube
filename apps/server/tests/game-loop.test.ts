@@ -63,9 +63,6 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
     poolIdFor(battleId) {
       return `0xpool-${battleId}`;
     },
-    async minBet() {
-      return 30_000n;
-    },
     async openBattle(fighterA, fighterB, closesAtUnix) {
       const id = `battle-${String(nextId)}`;
       nextId += 1;
@@ -76,7 +73,6 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
     },
     async cancelBattle(battleId) {
       calls.push(`cancel:${battleId}`);
-      return battleId;
     },
     async closeBetting(battleId) {
       calls.push(`close:${battleId}`);
@@ -713,20 +709,6 @@ describe("GameLoop phases", () => {
   });
 
   it("rejects empty video url", async () => {
-    const settle = unusedSettleDeps();
-    const loop = new GameLoop({
-      config: baseConfig,
-      ensLabels: labels,
-      ensStatuses: allAliveStatuses(labels),
-      randomInt: pickFirst,
-      battleQueueStore: settle.battleQueueStore,
-      chainWritePorts: settle.chainWritePorts,
-      battleBetting: settle.battleBetting,
-      fightJob: settle.fightJob,
-      skipSettlement: true,
-      verifyWorldId: async () => ({ nullifier: "x" }),
-    });
-    void loop;
     let now = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({

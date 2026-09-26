@@ -208,11 +208,6 @@ variable "sui_operator_cap_id" {
   type        = string
 }
 
-variable "sui_min_bet" {
-  description = "SUI_MIN_BET in USDC base units. Set via TF_VAR_sui_min_bet from .env. Required; no default."
-  type        = string
-}
-
 variable "bet_fee_bps" {
   description = "BET_FEE_BPS fee in basis points (house lock). Set via TF_VAR_bet_fee_bps from .env. Required; no default."
   type        = string

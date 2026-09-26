@@ -203,13 +203,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "SUI_MIN_BET"
-        value = var.sui_min_bet
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "BET_FEE_BPS"
         value = var.bet_fee_bps
         scope = "RUN_TIME"

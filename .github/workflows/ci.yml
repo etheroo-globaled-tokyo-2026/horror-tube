@@ -90,6 +90,7 @@ jobs:
       - run: pnpm --filter @horror-tube/world-id build
       - run: pnpm --filter @horror-tube/fight-media build
       - run: pnpm --filter @horror-tube/fight build
+      - run: pnpm --filter @horror-tube/betting build
       - run: pnpm --filter @horror-tube/server test
       - run: pnpm --filter @horror-tube/server typecheck
 
@@ -164,7 +165,6 @@ jobs:
       BETTING_PACKAGE_ID: "0xc451dc1ad607c088b96ebc9b29cdff892a2e13c9275346838664391851213daf"
       BETTING_HOUSE_ID: "0xa116a4711f6cf51515ba5551c4c5b78b4fc85882a3941ccdc43f65a7dfc68892"
       SUI_OPERATOR_CAP_ID: "0x9719983f791ebd479c0127299aaa685a1e02e63fce330e9587e543d7d5b46847"
-      SUI_MIN_BET: "30000"
       BET_FEE_BPS: "200"
       SUI_OPERATOR_PRIVATE_KEY: "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q"
       # Startup requires these. The key and pepper are not real. The coin type is public testnet USDC so the tag check passes. CI does not send a transaction.
@@ -250,7 +250,6 @@ jobs:
             -e "BETTING_PACKAGE_ID=${BETTING_PACKAGE_ID}" \
             -e "BETTING_HOUSE_ID=${BETTING_HOUSE_ID}" \
             -e "SUI_OPERATOR_CAP_ID=${SUI_OPERATOR_CAP_ID}" \
-            -e "SUI_MIN_BET=${SUI_MIN_BET}" \
             -e "BET_FEE_BPS=${BET_FEE_BPS}" \
             -e "SUI_OPERATOR_PRIVATE_KEY=${SUI_OPERATOR_PRIVATE_KEY}" \
             -e "SHINAMI_ACCESS_KEY=${SHINAMI_ACCESS_KEY}" \
