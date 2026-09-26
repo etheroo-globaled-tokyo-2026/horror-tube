@@ -20,7 +20,9 @@ class Blood:
 def blood(finds: Sequence[Find], frame: np.ndarray, cfg: Gore) -> list[Blood]:
     """A frame's blood patches. frame: RGB uint8 at the masks' size. Only the finder's own finds count: a tracker
     fill-in has no score of its own to weigh against a light."""
-    hue = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)[..., 0]
+    hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+    # a dark or grey pixel's hue is noise: a wound on a black coat measured as green
+    coloured = (hsv[..., 1] >= cfg.hue_min_saturation) & (hsv[..., 2] >= cfg.hue_min_value)
     lights = [f for f in finds if f.kind == "light" and not f.fill and f.score >= cfg.min_score]
     lo, hi = cfg.green_hue
     out = []
@@ -32,8 +34,9 @@ def blood(finds: Sequence[Find], frame: np.ndarray, cfg: Gore) -> list[Blood]:
             continue
         if any(li.score > f.score and (f.mask & li.mask).sum() >= cfg.light_cover * area for li in lights):
             continue
-        h = float(np.median(hue[f.mask]))
-        out.append(Blood(f.mask, BLOOD_GREEN if lo <= h <= hi else BLOOD_RED))
+        seen = f.mask & coloured
+        h = float(np.median(hsv[..., 0][seen])) if seen.any() else None
+        out.append(Blood(f.mask, BLOOD_GREEN if h is not None and lo <= h <= hi else BLOOD_RED))
     return out
 
 
