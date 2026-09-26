@@ -11,6 +11,7 @@ import {
   fightInputFromRotation,
   RotoscopeError,
   runFightTurn,
+  type FightInput,
   type FightTurnDeps,
   type RotoscopeConfig,
   type RotoscopeShotList,
@@ -68,7 +69,7 @@ const DRAWN = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x
 const FRAME = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 
 /** Fakes for every outside call, effects off. Records downloads, frame extracts and uploads. */
-function fakeRun(overrides: FightTurnDeps = {}) {
+function fakeRun(overrides: FightTurnDeps = {}, input: FightInput = sampleFightInput()) {
   const downloads: string[] = [];
   const extracted: Uint8Array[] = [];
   const puts: PutFightVideoInput[] = [];
@@ -100,12 +101,22 @@ function fakeRun(overrides: FightTurnDeps = {}) {
     ...overrides,
   };
   return {
-    run: () => runFightTurn(sampleFightInput(), {}, deps),
+    run: () => runFightTurn(input, {}, deps),
     downloads,
     extracted,
     puts,
     uploaded: (contentType: string) =>
       puts.find((p) => p.ContentType === contentType),
+  };
+}
+
+/** Freddy's card under a subname SEARCH_PHRASES doesn't list; he still loses. */
+function unlistedFighter() {
+  const input = sampleFightInput();
+  input.fighterA.subname = "maskcoat";
+  return {
+    input,
+    narration: { complete: async () => validModelTurn({ loser_subname: "maskcoat" }) },
   };
 }
 
@@ -196,23 +207,31 @@ describe("runFightTurn", () => {
     assert.equal(fake.puts.length, 0);
   });
 
-  it("with ROTOSCOPE=1, fails before fal runs when a shot's time range can't be read", async () => {
+  it("with ROTOSCOPE=0, never builds the shot list, so a fighter with no search phrase still fights", async () => {
+    const { input, narration } = unlistedFighter();
+    const result = await fakeRun({ narration }, input).run();
+
+    assert.equal(result.videoStyle, "film");
+  });
+
+  it("with ROTOSCOPE=1, fails before fal runs when a fighter has no search phrase", async () => {
     let falCalls = 0;
-    const shots = validModelTurn().shots.map((shot, i) =>
-      i === 0 ? { ...shot, time_range: "the opening" } : shot,
-    );
-    const fake = fakeRun({
-      videoEffects: { demonSound: false, rotoscope: rotoscopeConfig },
-      narration: { complete: async () => validModelTurn({ shots }) },
-      fal: {
-        subscribe: async () => {
-          falCalls += 1;
-          return { data: saved, requestId: "fixture-req" };
+    const { input, narration } = unlistedFighter();
+    const fake = fakeRun(
+      {
+        videoEffects: { demonSound: false, rotoscope: rotoscopeConfig },
+        narration,
+        fal: {
+          subscribe: async () => {
+            falCalls += 1;
+            return { data: saved, requestId: "fixture-req" };
+          },
         },
       },
-    });
+      input,
+    );
 
-    await assert.rejects(fake.run, /time_range "the opening" is not seconds/);
+    await assert.rejects(fake.run, /no rotoscope search phrase for fighter "maskcoat"/);
     assert.equal(falCalls, 0);
   });
 
