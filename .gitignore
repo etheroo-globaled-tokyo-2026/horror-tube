@@ -159,3 +159,7 @@ packages/ens/scripts/.ens-commit-state/
 # Python
 .venv/
 __pycache__/
+
+# Cursor MCP config (contains API secrets)
+.cursor/mcp.json
+.new-mcp
