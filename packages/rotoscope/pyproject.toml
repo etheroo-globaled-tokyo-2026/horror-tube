@@ -1,0 +1,49 @@
+[project]
+name = "rotoscope"
+version = "0.1.0"
+description = "Fight videos as FAITH-style line drawings, served over HTTP"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy>=2.3",
+    "pillow>=12",
+    # headless, with the contrib modules: the people drawing thins lines with cv2.ximgproc
+    "opencv-contrib-python-headless>=4.12",
+    "starlette>=1.0.1",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+    "mlx==0.32.2; sys_platform == 'darwin'",
+    "mlx-vlm==0.7.2; sys_platform == 'darwin'",
+    "mediapipe==0.10.21",
+    "torch>=2.14",
+    "torchvision>=0.29",
+    # the one release both mlx-vlm 0.7.2 and SCHP run on
+    "transformers==5.17.0",
+    "pyobjc-framework-Vision>=12.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=12.2; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreML>=12.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=12.2; sys_platform == 'darwin'",
+]
+
+[project.scripts]
+rotoscope = "rotoscope.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx2>=2.9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+# mediapipe 0.10.21 declares numpy<2 but runs on numpy 2. mlx-vlm and mediapipe each ask for a different OpenCV
+# build, and every OpenCV build installs the same cv2 module, so only the one above is installed.
+override-dependencies = [
+    "numpy>=2.3",
+    "opencv-python; sys_platform == 'never'",
+    "opencv-contrib-python; sys_platform == 'never'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: runs models on the GPU"]
