@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { ARENA_VIDEO_PROMPT_PREFIX, formatShotList, renderEnsLines, videoPromptFromTurn } from "../src/render.js";
 import { validateFightInput, validateNarrationTurn } from "../src/validate.js";
-import { sampleFightInput, validTurn } from "./fixtures.js";
+import { sampleFightInput, validModelTurn, validTurn } from "./fixtures.js";
 
 describe("validateFightInput", () => {
   it("accepts two living fighters and living eligible opponents", () => {
@@ -20,7 +20,7 @@ describe("validateFightInput", () => {
 describe("validateNarrationTurn", () => {
   it("accepts a valid turn", () => {
     assert.doesNotThrow(() =>
-      validateNarrationTurn(validTurn(), sampleFightInput()),
+      validateNarrationTurn(validModelTurn(), sampleFightInput()),
     );
   });
 
@@ -28,7 +28,7 @@ describe("validateNarrationTurn", () => {
     assert.throws(
       () =>
         validateNarrationTurn(
-          validTurn({
+          validModelTurn({
             loser_subname: "freddy",
             winner_subname: "freddy",
           }),
@@ -42,7 +42,7 @@ describe("validateNarrationTurn", () => {
     assert.throws(
       () =>
         validateNarrationTurn(
-          validTurn({ loser_subname: "leatherface" }),
+          validModelTurn({ loser_subname: "leatherface" }),
           sampleFightInput(),
         ),
       /loser/i,
@@ -53,7 +53,7 @@ describe("validateNarrationTurn", () => {
     assert.throws(
       () =>
         validateNarrationTurn(
-          validTurn({
+          validModelTurn({
             loser_subname: "nobody",
             winner_subname: "jason",
           }),
@@ -67,45 +67,12 @@ describe("validateNarrationTurn", () => {
     assert.throws(
       () =>
         validateNarrationTurn(
-          validTurn({
+          validModelTurn({
             winner_injuries: ["cracked mask", "missing from shots"],
           }),
           sampleFightInput(),
         ),
       /injury|shot list/i,
-    );
-  });
-
-  it("rejects when next opponent is the winner", () => {
-    assert.throws(
-      () =>
-        validateNarrationTurn(
-          validTurn({ next_opponent_subname: "jason" }),
-          sampleFightInput(),
-        ),
-      /next opponent|winner/i,
-    );
-  });
-
-  it("rejects when next opponent is missing from eligible living subnames", () => {
-    assert.throws(
-      () =>
-        validateNarrationTurn(
-          validTurn({ next_opponent_subname: "pinhead" }),
-          sampleFightInput(),
-        ),
-      /next opponent|eligible|missing/i,
-    );
-  });
-
-  it("rejects when next opponent is the dead loser", () => {
-    assert.throws(
-      () =>
-        validateNarrationTurn(
-          validTurn({ next_opponent_subname: "freddy" }),
-          sampleFightInput(),
-        ),
-      /next opponent|dead|loser/i,
     );
   });
 });

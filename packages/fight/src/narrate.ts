@@ -9,8 +9,16 @@ import {
   renderEnsLines,
   videoPromptFromTurn,
 } from "./render.js";
-import type { FightInput, NarrationTurn } from "./types.js";
+import {
+  nextRotationPair,
+  rosterAfterFight,
+  type RandomInt,
+} from "./rotation.js";
+import type { FightInput, NarrationModelTurn, NarrationTurn } from "./types.js";
 import { validateFightInput, validateNarrationTurn } from "./validate.js";
+
+/** Model output for one fight. Next opponent is chosen by rotation, not the model. */
+export type { NarrationModelTurn };
 
 export const narrationSchema = {
   type: "object",
@@ -21,7 +29,6 @@ export const narrationSchema = {
     "winner_subname",
     "winner_injuries",
     "rationale",
-    "next_opponent_subname",
   ],
   properties: {
     shots: {
@@ -77,11 +84,6 @@ export const narrationSchema = {
       description:
         "Short why this fighter wins. Stored by the app; never sent to the video model.",
     },
-    next_opponent_subname: {
-      type: "string",
-      description:
-        "One of the supplied living eligible opponent subnames. Not the winner. Not dead.",
-    },
   },
 } as const;
 
@@ -92,7 +94,7 @@ export type NarrationProviderClient = {
     system: string;
     user: string;
     schema: NarrationJsonSchema;
-  }) => Promise<NarrationTurn>;
+  }) => Promise<NarrationModelTurn>;
 };
 
 export type NarrationResult = {
@@ -136,13 +138,14 @@ export async function narrateFight(
   input: FightInput,
   config: NarrationConfig,
   client: NarrationProviderClient = providerClient(config),
+  randomInt: RandomInt,
 ): Promise<NarrationResult> {
   validateFightInput(input);
   const system = buildSystemPrompt(config.fightVideoSeconds);
   const user = buildUserPrompt(input);
-  let turn: NarrationTurn;
+  let modelTurn: NarrationModelTurn;
   try {
-    turn = await client.complete({
+    modelTurn = await client.complete({
       system,
       user,
       schema: narrationSchema,
@@ -155,7 +158,22 @@ export async function narrateFight(
       { cause: err },
     );
   }
-  validateNarrationTurn(turn, input);
+  validateNarrationTurn(modelTurn, input);
+  const after = rosterAfterFight(
+    [input.fighterA, input.fighterB],
+    input.eligibleOpponents,
+    modelTurn.loser_subname,
+    modelTurn.winner_subname,
+  );
+  const next = nextRotationPair(
+    after,
+    modelTurn.winner_subname,
+    randomInt,
+  );
+  const turn: NarrationTurn = {
+    ...modelTurn,
+    next_opponent_subname: next.challengerSubname,
+  };
   const ensLines = renderEnsLines(turn);
   assertEnsLinesLegal(ensLines);
   assertTurnContractText(`${ensLines[0]}\n${ensLines[1]}`, turn);
@@ -194,7 +212,7 @@ function anthropicClient(config: NarrationConfig): NarrationProviderClient {
           "Anthropic returned no parsed_output for the narration schema.",
         );
       }
-      return parsed as NarrationTurn;
+      return parsed as NarrationModelTurn;
     },
   };
 }
@@ -225,7 +243,7 @@ function geminiClient(config: NarrationConfig): NarrationProviderClient {
           { cause: err },
         );
       }
-      return parsed as NarrationTurn;
+      return parsed as NarrationModelTurn;
     },
   };
 }
@@ -242,7 +260,7 @@ function buildSystemPrompt(fightVideoSeconds: number): string {
     "The winner may take visible damage. Winner injuries must be a JSON array of phrases that also appear in the shot list (carried injuries plus any new damage).",
     "Each shot needs: character looks, a timed beat (time_range), action, camera move, and style.",
     "No readable on-screen text. No extra people.",
-    "next_opponent_subname must be one of the supplied eligible living opponent subnames, not the winner, not the loser.",
+    "Do not name a next opponent. The application picks the next living challenger at random after this fight.",
     "Return only the structured fields. Application code will render ENS lines.",
   ].join(" ");
 }
@@ -268,7 +286,7 @@ function buildUserPrompt(input: FightInput): string {
     "Fighter B:",
     card(input.fighterB),
     "",
-    "Eligible living opponents for next_opponent_subname:",
+    "Other living roster characters (context only; do not pick the next opponent):",
     JSON.stringify(
       input.eligibleOpponents.map((c) => ({
         subname: c.subname,
