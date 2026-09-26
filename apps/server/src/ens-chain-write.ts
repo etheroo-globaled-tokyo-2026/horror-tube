@@ -135,26 +135,22 @@ function dnsEncodeName(name: string): Hex {
   return toHex(Uint8Array.from(bytes));
 }
 
-type EnsClients = {
+type EnsReader = {
   ensLabel: string;
-  account: ReturnType<typeof privateKeyToAccount>;
   publicClient: ReturnType<typeof createPublicClient>;
-  walletClient: ReturnType<typeof createWalletClient>;
   resolver: Address;
 };
 
-async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
+type EnsClients = EnsReader & {
+  account: ReturnType<typeof privateKeyToAccount>;
+  walletClient: ReturnType<typeof createWalletClient>;
+};
+
+async function openEnsReader(env: NodeJS.ProcessEnv): Promise<EnsReader> {
   const ensLabel = parseEnsLabel(requiredSettleEnv("ENS_LABEL", env));
   const rpcUrl = requiredSettleEnv("SEPOLIA_RPC_URL", env);
-  const agentKey = loadAgentKey(env);
   const ethRegistry = loadEthRegistryAddress();
-  const account = privateKeyToAccount(agentKey.privateKey);
   const publicClient = createPublicClient({
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
     chain: sepolia,
     transport: http(rpcUrl),
   });
@@ -180,11 +176,24 @@ async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
       `Parent ${ensLabel}.eth has no resolver on ETHRegistry. Run character-subnames ensure first.`,
     );
   }
-  return { ensLabel, account, publicClient, walletClient, resolver: resolverRaw };
+  return { ensLabel, publicClient, resolver: resolverRaw };
+}
+
+async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
+  const reader = await openEnsReader(env);
+  const agentKey = loadAgentKey(env);
+  const account = privateKeyToAccount(agentKey.privateKey);
+  const rpcUrl = requiredSettleEnv("SEPOLIA_RPC_URL", env);
+  const walletClient = createWalletClient({
+    account,
+    chain: sepolia,
+    transport: http(rpcUrl),
+  });
+  return { ...reader, account, walletClient };
 }
 
 async function readTextRecord(
-  clients: EnsClients,
+  clients: EnsReader,
   dnsName: Hex,
   key: string,
   labelForError: string,
@@ -233,7 +242,7 @@ export async function readRosterEnsStatuses(
   ensLabels: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string[]> {
-  const clients = await openEnsClients(env);
+  const clients = await openEnsReader(env);
   const statuses: string[] = [];
   for (const subname of ensLabels) {
     const name = characterName(subname, clients.ensLabel);
