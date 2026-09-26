@@ -122,7 +122,7 @@ function hintText(): void {
     return;
   }
   if (VCR.held) {
-    h.innerHTML = `CLICK THE ${b("VCR")} ON THE TV TO PLAY · CLICK THE TAPE TO PUT IT BACK`;
+    h.innerHTML = `DRAG IT TO THE ${b("VCR")} ON THE TV TO PLAY · CLICK THE TAPE TO PUT IT BACK`;
     return;
   }
   h.innerHTML =
@@ -206,6 +206,9 @@ function useVcr(): void {
     VCR.loaded = "";
     return hintText();
   }
+  loadHeld();
+}
+function loadHeld(): void {
   if (VCR.held === "") {
     sfx.deny();
     return say("Take a tape from the shelf.");
@@ -383,7 +386,10 @@ const pickAt = (e: MouseEvent): Pick | null => {
   aimAt(e);
   const hit = ray
     .intersectObject(scene, true)
-    .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
+    .find(
+      (h) =>
+        h.object instanceof THREE.Mesh && shown(h.object) && !(TAPE.dragging && h.object === tape),
+    );
   if (hit === undefined) return null;
   const o = hit.object;
   if (o === paper) return S.phase === "gate" && W8.step === "read" ? { at: "paper" } : null;
@@ -494,7 +500,7 @@ const look = new THREE.Vector2();
 let pointer: MouseEvent | null = null;
 function updateHover(): void {
   const pick = pointer ? pickAt(pointer) : null;
-  const reel = pick?.at === "reel" ? pick.id : "";
+  const reel = pick?.at === "reel" && !TAPE.dragging ? pick.id : "";
   const over = pick?.at === "vcr";
   if (reel === VCR.hover && over === VCR.over) return;
   if (reel !== "" && reel !== VCR.hover) sfx.slide();
@@ -503,8 +509,19 @@ function updateHover(): void {
   hintText();
 }
 let dragFrom: [x: number, y: number] | null = null;
+const DRAG_PX = 6;
+let tapeFrom: { x: number; y: number; hand: boolean } | null = null;
+canvas.style.touchAction = "none";
 addEventListener("pointermove", (e) => {
   if (dragFrom !== null) coinBox.drag(aimAt(e));
+  if (VCR.held === "") {
+    tapeFrom = null;
+    TAPE.dragging = false;
+  }
+  if (tapeFrom !== null && Math.hypot(e.clientX - tapeFrom.x, e.clientY - tapeFrom.y) > DRAG_PX) {
+    TAPE.pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    TAPE.dragging = true;
+  }
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
   const pick = pickAt(e);
@@ -513,7 +530,7 @@ addEventListener("pointermove", (e) => {
     Z.hover = part;
     hintText();
   }
-  canvas.dataset.cursor = cursorFor(pick);
+  canvas.dataset.cursor = TAPE.dragging ? "grab" : cursorFor(pick);
 });
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -555,30 +572,48 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pick.at === "paper") return sign();
   if (pick.at === "coin") return zoom("meter");
   if (pick.at === "hand") {
-    sfx.tape();
-    VCR.held = "";
-    return hintText();
+    tapeFrom = { x: e.clientX, y: e.clientY, hand: true };
+    return;
   }
   if (pick.at === "reel") {
     sfx.tape();
     T.buf = "";
     VCR.held = pick.id;
     VCR.hover = "";
+    tapeFrom = { x: e.clientX, y: e.clientY, hand: false };
     return hintText();
   }
   if (pick.at === "vcr") return useVcr();
   if (pick.id === "A" || pick.id === "B") sideKey(pick.id === "B" ? 1 : 0);
   else press(pick.id);
 });
+function releaseTape(e: PointerEvent): void {
+  const from = tapeFrom,
+    dropAt = TAPE.dragging ? pickAt(e) : undefined;
+  tapeFrom = null;
+  TAPE.dragging = false;
+  if (from === null || VCR.held === "") return;
+  if (dropAt !== undefined) {
+    if (dropAt?.at === "vcr") loadHeld();
+    return;
+  }
+  if (!from.hand) return;
+  sfx.tape();
+  VCR.held = "";
+  hintText();
+}
 addEventListener("pointerup", (e) => {
   holdEnd();
+  releaseTape(e);
   if (dragFrom === null) return;
-  const moved = Math.hypot(e.clientX - dragFrom[0], e.clientY - dragFrom[1]) > 6;
+  const moved = Math.hypot(e.clientX - dragFrom[0], e.clientY - dragFrom[1]) > DRAG_PX;
   dragFrom = null;
   coinBox.release(!moved);
   hintText();
 });
 const dropDrag = (): void => {
+  tapeFrom = null;
+  TAPE.dragging = false;
   if (dragFrom === null) return;
   dragFrom = null;
   coinBox.release(false);
@@ -716,7 +751,7 @@ renderer.setAnimationLoop(() => {
   remote.rotation.set(-0.3 + 0.22 * remoteUp, -0.22 + 0.2 * remoteUp, -0.1 + 0.1 * remoteUp);
   if (raise) led.material.color.set(Math.sin(t * 8) > 0 ? COL.blood : COL.bloodDeep);
   remote.visible = !waiver && Z.at === null && (walkRef.n < 0 || raise === 1);
-  updateTape(performance.now(), updateVcr(performance.now()));
+  updateTape(performance.now(), updateVcr(performance.now()), vcr);
   coinBox.tick(performance.now());
   updateHover();
   coinBox.group.visible = !waiver;
