@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  ens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/ens test
+      - run: pnpm --filter @horror-tube/ens typecheck
+      - run: python3 scripts/test_spaces_credential_process.py
+
+  fight-media:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/fight-media test
+      - run: pnpm --filter @horror-tube/fight-media typecheck
+
+  world-id:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/world-id test
+      - run: pnpm --filter @horror-tube/world-id typecheck
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/server test
+      - run: pnpm --filter @horror-tube/server typecheck
+
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      GAME_PORT: "8080"
+      # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
+      ENS_LABEL: "ci"
+      VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: >
+          docker build
+          --build-arg "ENS_LABEL=${ENS_LABEL}"
+          --build-arg "VITE_SEPOLIA_RPC_URL=${VITE_SEPOLIA_RPC_URL}"
+          -t horror-tube:ci .
+      - name: Run container and check health + ffmpeg + index
+        run: |
+          set -euo pipefail
+          cid="$(docker run -d -e "GAME_PORT=${GAME_PORT}" -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
+          cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${GAME_PORT}/health" | grep -q '"ok":true'; then
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "health check failed after 30 attempts" >&2
+              docker logs "$cid" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:${GAME_PORT}/health"
+          index_code="$(curl -sS -o /tmp/horror-tube-index.html -w "%{http_code}" "http://127.0.0.1:${GAME_PORT}/")"
+          if [ "${index_code}" != "200" ]; then
+            echo "GET / expected 200, got ${index_code}" >&2
+            docker logs "$cid" >&2
+            exit 1
+          fi
+          docker exec "$cid" ffmpeg -version
+
+  contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/contracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - run: forge fmt --check
+      - run: forge test
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - run: terraform -chdir=terraform init -backend=false
+      - run: terraform -chdir=terraform validate

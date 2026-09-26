@@ -2,26 +2,25 @@
   "name": "horror-tube",
   "private": true,
   "scripts": {
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "lint": "oxlint",
     "format": "oxfmt",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/ens-register.test.ts scripts/**/*.test.ts",
-    "ens:check": "tsx scripts/register-eth-label.ts check",
-    "ens:register": "tsx scripts/register-eth-label.ts",
-    "ens:subnames": "tsx scripts/character-subnames.ts"
-  },
-  "dependencies": {
-    "@worldcoin/idkit-core": "^4.3.0",
-    "viem": "^2.56.8"
+    "ens:check": "pnpm --filter @horror-tube/ens check",
+    "ens:register": "pnpm --filter @horror-tube/ens register",
+    "ens:subnames": "pnpm --filter @horror-tube/ens subnames",
+    "dashboard": "pnpm --filter @horror-tube/ens dashboard",
+    "contracts:test": "pnpm --filter @horror-tube/contracts run test",
+    "contracts:test:fork": "pnpm --filter @horror-tube/contracts run test:fork",
+    "contracts:deploy": "pnpm --filter @horror-tube/contracts run deploy",
+    "contracts:e2e": "pnpm --filter @horror-tube/contracts run e2e"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
-    "@types/node": "^26.6.2",
-    "dotenv": "^18.0.3",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
-    "tsx": "^4.23.15",
-    "typescript": "7.0.2"
+    "turbo": "^2.11.4"
   },
   "engines": {
     "node": ">=22"

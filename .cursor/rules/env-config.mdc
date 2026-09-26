@@ -22,7 +22,16 @@ if (label === undefined || label.trim() === "") {
 ```
 
 - Add every variable to `.env.example` with an empty value. Do not put secrets or real defaults there.
-- If a variable is missing or blank, fail with an error that names the variable.
+- If a variable is missing or blank, fail with an error that names the variable and points at `.env.example`.
 - `.env` stays gitignored. Never commit it.
 
-Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `scripts/pin/` and `scripts/abis/` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
+# Workspace reset
+
+`.env` is not in git. A fresh checkout does not have it. Create `.env` from `.env.example`. The comment directly above each variable tells you how to fill it:
+
+- `# 1password: op://...` — run `op read` on that path once and write the value into `.env`.
+- A comment that no 1Password item was found — leave the value empty until the task needs it. If the task needs it, stop and say which variable has no path.
+
+Later commands read `.env`. They do not call 1Password again for variables already written there.
+
+Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `packages/ens/scripts/pin/` and `packages/ens/scripts/abis.ts` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
