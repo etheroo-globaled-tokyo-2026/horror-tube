@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port ${PORT:-8123} --strictPort",
+    "build": "vite build",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@horror-tube/ens": "workspace:*",
     "@mysten/dapp-kit-core": "^1.6.32",
     "@mysten/sui": "^2.33.0",
     "qrcode": "^1.5.4",
