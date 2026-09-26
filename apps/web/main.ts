@@ -1,5 +1,17 @@
 import * as THREE from "three";
-import { $, DUR, S, countdown, hooks, pick, usd, type Phase } from "./game.ts";
+import {
+  $,
+  DUR,
+  S,
+  countdown,
+  hooks,
+  loadBettingIds,
+  pick,
+  refreshClaimable,
+  setWallet,
+  usd,
+  type Phase,
+} from "./game.ts";
 import {
   COINS,
   type CoinBox,
@@ -84,7 +96,9 @@ function hintText(): void {
         ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast
           ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
-          : S.phase === "bet" && !S.bet && S.credit > 0
+          : S.phase === "bet" && !S.bet && S.poolId === null
+            ? "OPENING THE BOOK"
+            : S.phase === "bet" && !S.bet && S.credit > 0
             ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
             : S.claim
               ? `COLLECT ${b("OK")}`
@@ -151,6 +165,10 @@ const pressKey = (id: string, z: number): void => {
 };
 function holdStart(side: number): void {
   if (S.phase !== "bet" || S.bet || holdTimer) return;
+  if (S.poolId === null) {
+    sfx.deny();
+    return say("Opening the book.");
+  }
   if (stake() > S.credit) {
     sfx.deny();
     return say(S.credit <= 0 ? "No stake. Feed the coin box." : "Not enough for that stake.");
@@ -185,10 +203,17 @@ let chainCredit = 0;
 async function mountCoinBox(): Promise<void> {
   if (coinBox !== null) return;
   const wallet = await getGameWallet();
+  setWallet(wallet);
+  await loadBettingIds();
+  void refreshClaimable().catch((err: unknown) => {
+    console.error(
+      `claimable after wallet mount failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
   coinBox = createCoinBox(
     wallet,
     (usdc) => {
-      S.credit += usdc - chainCredit;
+      S.credit = usdc;
       chainCredit = usdc;
       hintText();
     },

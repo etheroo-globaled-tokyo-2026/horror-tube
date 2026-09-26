@@ -37,7 +37,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; players will bet through Sui `/tx`, not yet wired in the room) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`; `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`; `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`) → next bout, until one is left.
 
 ## The wallet
 
@@ -49,9 +49,8 @@ reads the meter:
 - `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
-- Bets and claims (Sui Move USDC via `/tx`; room handler not wired yet): the plan is
-  `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`. No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
-  coin).
+- Bets and claims: `betting.ts` builds kinds with `@horror-tube/betting` (`betTx` / `claimTx`) and sends them through
+  `runKind` → `POST /tx`. IDs come from `GET /betting`. Odds use `RoundState.pool` and `feeBps`.
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
   Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
 - **USDsui** (Sui's own dollar, issued by Bridge) is the coin for mainnet:

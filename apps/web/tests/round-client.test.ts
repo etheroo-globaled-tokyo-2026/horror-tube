@@ -28,6 +28,10 @@ describe("formatPoolOdds", () => {
     assert.equal(formatPoolOdds([7, 0], 0), "no stake");
     assert.equal(formatPoolOdds([0, 0], 0), "no stake");
   });
+
+  it("nets feeBps off the opposing stake", () => {
+    assert.equal(formatPoolOdds([100, 100], 0, 200), "1.98");
+  });
 });
 
 describe("postVote", () => {
