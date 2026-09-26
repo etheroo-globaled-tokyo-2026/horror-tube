@@ -18,6 +18,14 @@ export type GameServerOptions = {
   game?: GameLoop;
   /** HMAC pepper for the waiver session. Required for POST /vote. */
   sessionPepper?: string;
+  /** Public Sui betting IDs for GET /betting. */
+  betting?: {
+    packageId: string;
+    houseId: string;
+    coinType: string;
+    network: string;
+    feeBps: number;
+  };
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -175,10 +183,17 @@ function readBearerToken(req: IncomingMessage): string {
 }
 
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir, wallet, worldId, game, sessionPepper } = options;
+  const { staticDir, wallet, worldId, game, sessionPepper, betting } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void handleRequest(req, res, { staticDir, wallet, worldId, game, sessionPepper });
+    void handleRequest(req, res, {
+      staticDir,
+      wallet,
+      worldId,
+      game,
+      sessionPepper,
+      betting,
+    });
   });
 
   return server;
@@ -193,6 +208,7 @@ async function handleRequest(
     worldId?: WorldIdHandlerDeps;
     game?: GameLoop;
     sessionPepper?: string;
+    betting?: GameServerOptions["betting"];
   },
 ): Promise<void> {
   const method = req.method ?? "GET";
@@ -285,36 +301,24 @@ async function handleRequest(
         }
         return;
       }
-      if (method === "POST" && path === "/bet") {
-        const raw = await readBody(req);
-        let body: { side?: unknown; amount?: unknown };
-        try {
-          body = JSON.parse(raw) as { side?: unknown; amount?: unknown };
-        } catch {
-          sendBadRequest(res, "bet body must be JSON.");
+      if (method === "GET" && path === "/betting") {
+        const cfg = opts.betting;
+        if (cfg === undefined) {
+          sendText(res, 500, "Betting config is not configured on this server.");
           return;
         }
-        const side = Number(body.side);
-        const amount = Number(body.amount);
-        if (side !== 0 && side !== 1) {
-          sendBadRequest(res, "bet.side must be 0 or 1.");
-          return;
-        }
-        try {
-          await opts.game.bet(side, amount);
-          const payload = JSON.stringify({
-            ok: true,
-            state: opts.game.getState(),
-          });
-          res.writeHead(200, {
-            "content-type": "application/json; charset=utf-8",
-            "content-length": Buffer.byteLength(payload),
-          });
-          res.end(payload);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, 400, { ok: false, error: message });
-        }
+        const payload = JSON.stringify({
+          packageId: cfg.packageId,
+          houseId: cfg.houseId,
+          coinType: cfg.coinType,
+          network: cfg.network,
+          feeBps: cfg.feeBps,
+        });
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": Buffer.byteLength(payload),
+        });
+        res.end(payload);
         return;
       }
       if (method === "POST" && path === "/retry-settle") {
