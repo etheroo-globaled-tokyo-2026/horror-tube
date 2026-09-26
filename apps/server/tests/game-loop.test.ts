@@ -843,6 +843,35 @@ describe("GameLoop phases", () => {
     assert.ok(deps.betCalls.some((c) => c.startsWith("cancel:")));
     assert.throws(() => loop.assertBetAllowed(poolId), /only open in the bet phase/u);
   });
+
+  it("stays over after a failed video until a verified start", async () => {
+    const { loop, step } = await startedLoop();
+    await loop.failVideo("fal render failed: timeout");
+    assert.equal(loop.getState().phase, "over");
+    await step(60_000);
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().error, "fal render failed: timeout");
+    await loop.start();
+    assert.equal(loop.getState().phase, "vote");
+    assert.equal(loop.getState().error, null);
+  });
+
+  it("stays over when one fighter is left until a verified start", async () => {
+    const { loop, step } = await startedLoop({
+      config: fastConfig,
+      ensLabels: ["alpha", "bravo"],
+      ensStatuses: ["alive", "alive"],
+    });
+    await readyAlphaWin(loop, "last-one");
+    await startPlayback(loop);
+    await step(1_000);
+    await step(1);
+    await step(1_000);
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().chars.filter((c) => c.alive).length, 1);
+    await step(60_000);
+    assert.equal(loop.getState().phase, "over");
+  });
 });
 
 describe("betting cutoff", () => {
