@@ -55,6 +55,13 @@ const dAppKit = createDAppKit({
   createClient: (network) => new SuiGrpcClient({ network, baseUrl: SUI_TESTNET_GRPC }),
 });
 
+const shadowOnlyModalTheme = new CSSStyleSheet();
+shadowOnlyModalTheme.replaceSync(`
+  dialog { box-shadow: inset 0 0 0 2px var(--grime), 0 0 0 4px var(--soot); }
+  dialog::backdrop { background: var(--shade); }
+  .title { font: 400 16px/1 var(--f-osd); text-transform: uppercase; letter-spacing: 0.06em; }
+`);
+
 const cssVar = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
 
@@ -71,6 +78,7 @@ async function connectBrowserWallet(): Promise<string | null> {
   const modal = document.createElement("mysten-dapp-kit-connect-modal");
   modal.instance = dAppKit;
   document.body.append(modal);
+  modal.shadowRoot?.adoptedStyleSheets.push(shadowOnlyModalTheme);
   const connected = new Promise<string | null>((resolve) => {
     const stop = dAppKit.stores.$connection.subscribe((connection) => {
       if (connection.account === null) return;
