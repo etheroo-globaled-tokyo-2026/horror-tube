@@ -8,6 +8,7 @@ import { createBattleBettingPorts, readHouseFeeBps } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { PostgresRoundStore } from "./db/rounds.js";
+import { PostgresPoolLedger } from "./db/sui-pools.js";
 import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
 import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
@@ -19,6 +20,7 @@ import {
 import { GameLoop } from "./game/loop.js";
 import { loadLivingCardsFromEns } from "./load-living-cards.js";
 import { createGameServer, listenGameServer } from "./server.js";
+import { recordPools } from "./stranded-pools.js";
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -29,7 +31,7 @@ loadWorldIdEnv();
 const port = readGamePort();
 const staticDir = readStaticDir();
 const host = "0.0.0.0";
-const battleBetting = createBattleBettingPorts();
+const suiOperator = createBattleBettingPorts();
 const fightJob = createFightJobRunner({
   loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
 });
@@ -39,6 +41,8 @@ console.log("database: verified TLS connection ok");
 
 const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
+const poolLedger = new PostgresPoolLedger(pg);
+const battleBetting = recordPools(suiOperator, poolLedger);
 const chainWritePorts = createEnsChainWritePorts(process.env, {
   settle: (battleId, side) => battleBetting.settle(battleId, side),
 });

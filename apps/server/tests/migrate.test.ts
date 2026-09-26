@@ -110,7 +110,19 @@ describe("migration SQL shape", () => {
       "001_game_loop.sql",
       "002_battle_results.sql",
       "003_betting_closes_at.sql",
+      "004_sui_pools.sql",
     ]);
+  });
+
+  it("defines the sui_pools ledger with the columns the pool store reads and writes", async () => {
+    const sql = await readMigrationSql("004_sui_pools.sql");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS sui_pools/u);
+    assert.match(sql, /battle_id text PRIMARY KEY/u);
+    assert.match(sql, /pool_id text NOT NULL/u);
+    assert.match(sql, /opened_at timestamptz NOT NULL DEFAULT now\(\)/u);
+    assert.match(sql, /resolved_at timestamptz,/u);
+    assert.match(sql, /resolution text,/u);
+    assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS schema_migrations/u);
   });
 
   it("defines seasons, rounds, votes, and tallies with ENS-label ids and tie-break", async () => {
