@@ -7,16 +7,17 @@ import {
   hooks,
   loadBettingIds,
   pick,
-  refreshClaimable,
   setWallet,
   usd,
   type Phase,
 } from "./game.ts";
 import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
+import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { STAKES, T, Z, W8, LOW, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { errorHint, esc } from "./hint.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -73,6 +74,11 @@ function hintText(): void {
     h.innerHTML = Z.at === null ? meter : `${meter} <span class="hint-key">ESC</span>`;
     return;
   }
+  const error = errorHint(S);
+  if (error !== null) {
+    h.innerHTML = error;
+    return;
+  }
   h.innerHTML = hovered
     ? `${b(num(hovered.id + 1))} ${hovered.name}`
     : S.phase === "gate"
@@ -95,15 +101,19 @@ function hintText(): void {
           ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
           : S.phase === "bet" && !S.bet && S.poolId === null
             ? "OPENING THE BOOK"
-            : S.phase === "bet" && !S.bet && S.credit > 0
-              ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
-              : S.claim
-                ? `COLLECT ${b("OK")}`
-                : S.phase === "over"
-                  ? `AGAIN ${b("OK")}`
-                  : S.credit <= 0
-                    ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                    : `NEXT ${b("N")}`;
+            : S.pending === "bet"
+              ? "PLACING YOUR BET…"
+              : S.pending === "claim"
+                ? "COLLECTING…"
+                : S.phase === "bet" && !S.bet && S.credit > 0
+                  ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+                  : S.claim
+                    ? `COLLECT ${b("OK")}`
+                    : S.phase === "over"
+                      ? `AGAIN ${b("OK")}`
+                      : S.credit <= 0
+                        ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                        : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -149,9 +159,8 @@ function ok(): void {
     T.revealUntil = performance.now() + 3200;
     if (S.picks.length >= S.slots) $("#h-cast").click();
   } else if (S.claim) {
+    if (!canCollect(S)) return;
     $("#h-claim").click();
-    sfx.coins(14);
-    say("Collected.");
   } else if (S.phase === "over") $("#h-reset").click();
 }
 let holdTimer = 0;
@@ -161,7 +170,7 @@ const pressKey = (id: string, z: number): void => {
   if (k) k.position.z = z;
 };
 function holdStart(side: number): void {
-  if (S.phase !== "bet" || S.bet || holdTimer) return;
+  if (S.phase !== "bet" || S.bet || S.pending !== null || holdTimer) return;
   if (S.poolId === null) {
     sfx.deny();
     return say("Opening the book.");
@@ -181,7 +190,7 @@ function holdStart(side: number): void {
       sfx.bet();
       S.side = side;
       S.amt = stake();
-      $("#h-bet").click();
+      if (canBet(S)) $("#h-bet").click();
       hintText();
     }
   }, 100);
@@ -214,9 +223,6 @@ let coinBoxMount: Promise<void> | null = null;
 async function connectCoinBox(wallet: GameWallet): Promise<void> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
-  void refreshClaimable().catch((err: Error) =>
-    console.error(`claimable after wallet mount failed: ${err.message}`),
-  );
   coinBox.connect(wallet, coinType);
 }
 async function mountCoinBox(wallet: GameWallet): Promise<void> {
@@ -612,6 +618,11 @@ hooks.render = () => {
     PHASE_SOUND.get(S.phase)?.();
   }
   hintText();
+};
+
+hooks.collected = () => {
+  sfx.coins(14);
+  say("Collected.");
 };
 
 waiverHooks.hintText = hintText;

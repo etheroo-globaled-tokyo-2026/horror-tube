@@ -854,7 +854,9 @@ export function drawTV(): void {
       text(
         S.bet
           ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`
-          : "HOLD A OR B TO BET",
+          : S.pending === "bet"
+            ? "PLACING YOUR BET…"
+            : "HOLD A OR B TO BET",
         H - 70,
         24,
         COL.bone,
@@ -885,6 +887,7 @@ export function drawTV(): void {
           26,
           COL.soot,
         );
+      else if (S.pending === "bet") text("PLACING YOUR BET…", 360, 26, COL.soot);
       else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
       else if (S.credit <= 0) text("NO STAKE. FEED THE COIN BOX.", 360, 24, COL.soot);
       else {
@@ -910,8 +913,9 @@ export function drawTV(): void {
       text(l.name.toUpperCase(), 200, 40, COL.blood);
       text("has left the program.", 248, 28, COL.bone, "DotGothic16", 400);
       text(`${w.name} walks on, bleeding.`, 290, 28, COL.bone, "DotGothic16", 400);
-      if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
-      else if (S.bet && S.result < 0) text(`YOU LOST ${usd(S.bet.amt)} USDC`, 390, 26, COL.rust);
+      if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
+      else if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
+      else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
       const l = living(),
