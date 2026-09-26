@@ -169,9 +169,20 @@ def cmd_plan_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _refuse_fixture_for_chain(path: Path) -> None:
+    resolved = path.resolve()
+    if "fixtures" in resolved.parts:
+        raise RosterValidationError(
+            f"{path}: register will not accept a fixture. "
+            "Run `python -m roster propose` against Fandom and pass that JSON. "
+            "An end-to-end ENS or CDN upload requires that real sheet."
+        )
+
+
 def cmd_register(args: argparse.Namespace) -> int:
     ens_label = _require_ens_label()
     input_path = Path(_require_flag(args.input, name="--input"))
+    _refuse_fixture_for_chain(input_path)
 
     characters = load_characters(input_path)
     require_no_duplicate_labels(characters, source=str(input_path))
@@ -342,7 +353,10 @@ def build_parser() -> argparse.ArgumentParser:
     register_p.add_argument(
         "--input",
         required=True,
-        help="Path to a single-character object or bulk character array JSON.",
+        help=(
+            "Path to propose output: a single-character object or bulk array. "
+            "Files under a fixtures directory are rejected."
+        ),
     )
     register_p.add_argument(
         "--out",
