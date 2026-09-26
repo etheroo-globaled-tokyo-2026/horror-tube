@@ -1,7 +1,7 @@
 import { config as loadDotenv } from "dotenv";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   type Address,
   type Hex,
@@ -29,41 +29,19 @@ import {
   CONTRACTS_V2_COMMIT,
   PIN_DEPLOYED_AT,
   PIN_DEPLOYMENT_JSON_BASE,
+  type PinAddresses,
   loadPinAddresses,
-  rejectBannedAddress,
 } from "./pin.js";
 
 loadDotenv();
 
-function parseLabel(value: string | undefined): string {
-  if (value === undefined || value.trim() === "") {
-    fail(
-      "ENS_LABEL is required. Set it to the .eth label only, for example ENS_LABEL=horrortube. Refusing to default a name.",
-    );
-  }
-  const trimmed = value.trim();
-  if (trimmed.includes(".")) {
-    fail(
-      `ENS_LABEL must be one label, not a full name. Got: ${trimmed}. The script registers that label under .eth.`,
-    );
-  }
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(trimmed)) {
-    fail(
-      `ENS_LABEL must be a single lowercase DNS label (letters, digits, internal hyphens). Got: ${trimmed}`,
-    );
-  }
-  return trimmed;
-}
-
-const label = parseLabel(process.env.ENS_LABEL);
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const STATUS_NAMES = ["AVAILABLE", "RESERVED", "REGISTERED"] as const;
 
-type Command = "check" | "commit" | "register" | "full";
+export type Command = "check" | "commit" | "register" | "full";
 
-type CommitState = {
+export type CommitState = {
   label: string;
   owner: Address;
   secret: Hex;
@@ -77,12 +55,16 @@ type CommitState = {
   commitTime: number;
 };
 
+type WriteConfig = {
+  privateKey: Hex;
+  paymentTokenChoice: "MockDAI" | "MockUSDC";
+  durationSeconds: bigint;
+};
+
 type EnvConfig = {
   command: Command;
   rpcUrl: string;
-  privateKey: Hex | null;
-  paymentTokenChoice: "MockDAI" | "MockUSDC";
-  durationSeconds: bigint;
+  write: WriteConfig | null;
 };
 
 function fail(message: string): never {
@@ -90,97 +72,103 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function parseCommand(argv: string[]): Command {
+export function parseLabel(value: string | undefined): string {
+  if (value === undefined || value.trim() === "") {
+    throw new Error(
+      "ENS_LABEL is required. Set it to the .eth label only, for example ENS_LABEL=horrortube. Refusing to default a name.",
+    );
+  }
+  const trimmed = value.trim();
+  if (trimmed.includes(".")) {
+    throw new Error(
+      `ENS_LABEL must be one label, not a full name. Got: ${trimmed}. The script registers that label under .eth.`,
+    );
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(trimmed)) {
+    throw new Error(
+      `ENS_LABEL must be a single lowercase DNS label (letters, digits, internal hyphens). Got: ${trimmed}`,
+    );
+  }
+  return trimmed;
+}
+
+export function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
-    fail(
+    throw new Error(
       "Command is required. Use: check | commit | register | full. Refusing to default a command.",
     );
   }
-  if (
-    arg === "check" ||
-    arg === "commit" ||
-    arg === "register" ||
-    arg === "full"
-  ) {
+  if (arg === "check" || arg === "commit" || arg === "register" || arg === "full") {
     return arg;
   }
-  fail(`Unknown command "${arg}". Use: check | commit | register | full`);
+  throw new Error(`Unknown command "${arg}". Use: check | commit | register | full`);
 }
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
+export function requiredEnv(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  const value = env[name];
   if (value === undefined || value.trim() === "") {
-    fail(
+    throw new Error(
       `${name} is required. Set it in .env. See .env.example. Refusing to fall back.`,
     );
   }
   return value.trim();
 }
 
-function parsePrivateKey(value: string | undefined): Hex | null {
-  if (value === undefined || value === "") {
-    return null;
-  }
+function parsePrivateKey(value: string): Hex {
   const normalized = value.startsWith("0x") ? value : `0x${value}`;
   if (!isHex(normalized) || normalized.length !== 66) {
-    fail(
+    throw new Error(
       `PRIVATE_KEY must be a 32-byte hex string (0x + 64 hex chars). Got length ${normalized.length}`,
     );
   }
   return normalized;
 }
 
-function parseDuration(value: string): bigint {
+export function parseDuration(value: string): bigint {
   if (!/^[0-9]+$/u.test(value)) {
-    fail(`DURATION_SECONDS must be an integer. Got: ${value}`);
+    throw new Error(`DURATION_SECONDS must be an integer. Got: ${value}`);
   }
   return BigInt(value);
 }
 
-function parsePaymentChoice(value: string): "MockDAI" | "MockUSDC" {
+export function parsePaymentChoice(value: string): "MockDAI" | "MockUSDC" {
   if (value === "MockDAI" || value === "MockUSDC") {
     return value;
   }
-  fail(`PAYMENT_TOKEN must be MockDAI or MockUSDC. Got: ${value}`);
+  throw new Error(`PAYMENT_TOKEN must be MockDAI or MockUSDC. Got: ${value}`);
 }
 
-function readEnv(): EnvConfig {
+export function readEnv(argv: string[], env: NodeJS.ProcessEnv): EnvConfig {
+  const command = parseCommand(argv);
+  const rpcUrl = requiredEnv("SEPOLIA_RPC_URL", env);
+  if (command === "check") {
+    return { command, rpcUrl, write: null };
+  }
   return {
-    command: parseCommand(process.argv),
-    rpcUrl: requiredEnv("SEPOLIA_RPC_URL"),
-    privateKey: parsePrivateKey(process.env.PRIVATE_KEY),
-    paymentTokenChoice: parsePaymentChoice(requiredEnv("PAYMENT_TOKEN")),
-    durationSeconds: parseDuration(requiredEnv("DURATION_SECONDS")),
+    command,
+    rpcUrl,
+    write: {
+      privateKey: parsePrivateKey(requiredEnv("PRIVATE_KEY", env)),
+      paymentTokenChoice: parsePaymentChoice(requiredEnv("PAYMENT_TOKEN", env)),
+      durationSeconds: parseDuration(requiredEnv("DURATION_SECONDS", env)),
+    },
   };
 }
 
-function commitStatePath(): string {
-  return join(
-    dirname(fileURLToPath(import.meta.url)),
-    ".ens-commit-state",
-    `${label}.json`,
-  );
+export function commitStatePathForLabel(label: string): string {
+  return join(dirname(fileURLToPath(import.meta.url)), ".ens-commit-state", `${label}.json`);
 }
 
-function writeCommitState(state: CommitState): void {
-  const path = commitStatePath();
+function writeCommitState(label: string, state: CommitState): void {
+  const path = commitStatePathForLabel(label);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
-function readCommitState(): CommitState {
-  const path = commitStatePath();
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(path, "utf8"));
-  } catch (error) {
-    fail(
-      `Missing commit state at ${path}. Run commit first. Underlying error: ${String(error)}`,
-    );
-  }
+export function parseCommitState(raw: unknown, expectedLabel: string, path: string): CommitState {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    fail(`Commit state at ${path} is not an object`);
+    throw new Error(`Commit state at ${path} is not an object`);
   }
   const record = raw as Record<string, unknown>;
   const required = [
@@ -198,11 +186,11 @@ function readCommitState(): CommitState {
   ] as const;
   for (const key of required) {
     if (!(key in record)) {
-      fail(`Commit state missing field ${key}`);
+      throw new Error(`Commit state missing field ${key}`);
     }
   }
-  if (record.label !== label) {
-    fail(`Commit state label is ${String(record.label)}, expected ${label}`);
+  if (record.label !== expectedLabel) {
+    throw new Error(`Commit state label is ${String(record.label)}, expected ${expectedLabel}`);
   }
   if (
     typeof record.owner !== "string" ||
@@ -216,7 +204,7 @@ function readCommitState(): CommitState {
     typeof record.commitTxHash !== "string" ||
     typeof record.commitTime !== "number"
   ) {
-    fail(`Commit state field types are wrong in ${path}`);
+    throw new Error(`Commit state field types are wrong in ${path}`);
   }
   if (
     !isHex(record.secret) ||
@@ -224,7 +212,7 @@ function readCommitState(): CommitState {
     !isHex(record.commitment) ||
     !isHex(record.commitTxHash)
   ) {
-    fail(`Commit state hex fields are invalid in ${path}`);
+    throw new Error(`Commit state hex fields are invalid in ${path}`);
   }
   return {
     label: record.label,
@@ -241,6 +229,21 @@ function readCommitState(): CommitState {
   };
 }
 
+function readCommitState(label: string): CommitState {
+  const path = commitStatePathForLabel(label);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    fail(`Missing commit state at ${path}. Run commit first. Underlying error: ${String(error)}`);
+  }
+  try {
+    return parseCommitState(raw, label, path);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -248,14 +251,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const env = readEnv();
-  const pin = loadPinAddresses();
-
-  rejectBannedAddress("ETHRegistrar", pin.ETHRegistrar);
-  rejectBannedAddress("ETHRegistry", pin.ETHRegistry);
-  rejectBannedAddress("MockDAI", pin.MockDAI);
-  rejectBannedAddress("MockUSDC", pin.MockUSDC);
-  rejectBannedAddress("StandardRentPriceOracle", pin.StandardRentPriceOracle);
+  let label: string;
+  let env: EnvConfig;
+  let pin: PinAddresses;
+  try {
+    label = parseLabel(process.env.ENS_LABEL);
+    env = readEnv(process.argv, process.env);
+    pin = loadPinAddresses();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
 
   console.log(
     JSON.stringify(
@@ -351,9 +356,7 @@ async function main(): Promise<void> {
   }
 
   const statusName =
-    status >= 0 && status < STATUS_NAMES.length
-      ? STATUS_NAMES[status]
-      : `UNKNOWN(${status})`;
+    status >= 0 && status < STATUS_NAMES.length ? STATUS_NAMES[status] : `UNKNOWN(${status})`;
 
   console.log(
     JSON.stringify(
@@ -381,30 +384,23 @@ async function main(): Promise<void> {
     fail(`Cannot ${env.command}: name is taken`);
   }
 
-  if (env.command === "check") {
+  if (env.write === null) {
     console.log(
       `AVAILABLE: ${label}.eth can be registered. Required before pnpm ens:register full: ENS_LABEL, SEPOLIA_RPC_URL, PAYMENT_TOKEN, DURATION_SECONDS, PRIVATE_KEY.`,
     );
     return;
   }
+  const write = env.write;
 
-  if (env.privateKey === null) {
+  if (write.durationSeconds < minRegisterDuration) {
     fail(
-      "PRIVATE_KEY is missing. Export a burner key in the environment (never commit it). See docs/ens-sepolia-parent.md",
+      `DURATION_SECONDS=${write.durationSeconds} is below MIN_REGISTER_DURATION=${minRegisterDuration}`,
     );
   }
 
-  if (env.durationSeconds < minRegisterDuration) {
-    fail(
-      `DURATION_SECONDS=${env.durationSeconds} is below MIN_REGISTER_DURATION=${minRegisterDuration}`,
-    );
-  }
+  const paymentToken = write.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
 
-  const paymentToken =
-    env.paymentTokenChoice === "MockDAI" ? pin.MockDAI : pin.MockUSDC;
-  rejectBannedAddress("paymentToken", paymentToken);
-
-  const account = privateKeyToAccount(env.privateKey);
+  const account = privateKeyToAccount(write.privateKey);
   const walletClient = createWalletClient({
     account,
     chain: sepolia,
@@ -449,7 +445,7 @@ async function main(): Promise<void> {
         address: pin.ETHRegistrar,
         abi: ethRegistrarAbi,
         functionName: "getRegisterPrice",
-        args: [label, env.durationSeconds, paymentToken],
+        args: [label, write.durationSeconds, paymentToken],
       }),
     ]);
     ethBalance = tokenMeta[0];
@@ -464,9 +460,7 @@ async function main(): Promise<void> {
     base = BigInt(String(price[0]));
     premium = BigInt(String(price[1]));
   } catch (error) {
-    fail(
-      `Balance/price read failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    fail(`Balance/price read failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const totalCost = base + premium;
@@ -474,7 +468,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         paymentToken,
-        paymentTokenChoice: env.paymentTokenChoice,
+        paymentTokenChoice: write.paymentTokenChoice,
         isPaymentToken,
         tokenSymbol,
         tokenDecimals,
@@ -486,7 +480,7 @@ async function main(): Promise<void> {
         registerPricePremium: premium.toString(),
         registerPriceTotal: totalCost.toString(),
         registerPriceTotalFormatted: formatUnits(totalCost, tokenDecimals),
-        durationSeconds: env.durationSeconds.toString(),
+        durationSeconds: write.durationSeconds.toString(),
       },
       null,
       2,
@@ -515,7 +509,7 @@ async function main(): Promise<void> {
       [
         `Missing ${tokenSymbol} payment token balance for register.`,
         `wallet=${account.address}`,
-        `token=${paymentToken} (${env.paymentTokenChoice})`,
+        `token=${paymentToken} (${write.paymentTokenChoice})`,
         `balance=${tokenBalance.toString()} (${formatUnits(tokenBalance, tokenDecimals)} ${tokenSymbol})`,
         `required=${totalCost.toString()} (${formatUnits(totalCost, tokenDecimals)} ${tokenSymbol})`,
         `shortfall=${(totalCost - tokenBalance).toString()}`,
@@ -532,7 +526,7 @@ async function main(): Promise<void> {
     const subregistry = ZERO_ADDRESS;
     const resolver = ZERO_ADDRESS;
     const referrer = ZERO_BYTES32;
-    const duration = env.durationSeconds;
+    const duration = write.durationSeconds;
 
     let commitment: Hex;
     try {
@@ -540,20 +534,10 @@ async function main(): Promise<void> {
         address: pin.ETHRegistrar,
         abi: ethRegistrarAbi,
         functionName: "makeCommitment",
-        args: [
-          label,
-          account.address,
-          secret,
-          subregistry,
-          resolver,
-          duration,
-          referrer,
-        ],
+        args: [label, account.address, secret, subregistry, resolver, duration, referrer],
       })) as Hex;
     } catch (error) {
-      fail(
-        `makeCommitment failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(`makeCommitment failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     console.log(`commitment=${commitment}`);
@@ -567,9 +551,7 @@ async function main(): Promise<void> {
         args: [commitment],
       });
     } catch (error) {
-      fail(
-        `commit() failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(`commit() failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     console.log(`commitTxHash=${commitTxHash}`);
@@ -581,7 +563,7 @@ async function main(): Promise<void> {
     }
 
     const commitTime = Math.floor(Date.now() / 1000);
-    writeCommitState({
+    writeCommitState(label, {
       label: label,
       owner: account.address,
       secret,
@@ -594,7 +576,7 @@ async function main(): Promise<void> {
       commitTxHash,
       commitTime,
     });
-    console.log(`wrote ${commitStatePath()}`);
+    console.log(`wrote ${commitStatePathForLabel(label)}`);
 
     if (env.command === "commit") {
       console.log(
@@ -609,7 +591,7 @@ async function main(): Promise<void> {
   }
 
   if (env.command === "register" || env.command === "full") {
-    const state = readCommitState();
+    const state = readCommitState(label);
     if (getAddress(state.owner) !== getAddress(account.address)) {
       fail(`Commit state owner ${state.owner} != wallet ${account.address}`);
     }
@@ -644,15 +626,11 @@ async function main(): Promise<void> {
         ),
       );
     } catch (error) {
-      fail(
-        `allowance read failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(`allowance read failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     if (allowance < totalCost) {
-      console.log(
-        `approving ETHRegistrar for ${totalCost.toString()} ${tokenSymbol}`,
-      );
+      console.log(`approving ETHRegistrar for ${totalCost.toString()} ${tokenSymbol}`);
       let approveHash: Hex;
       try {
         approveHash = await walletClient.writeContract({
@@ -662,9 +640,7 @@ async function main(): Promise<void> {
           args: [pin.ETHRegistrar, totalCost],
         });
       } catch (error) {
-        fail(
-          `approve failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        fail(`approve failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       console.log(`approveTxHash=${approveHash}`);
       const approveReceipt = await publicClient.waitForTransactionReceipt({
@@ -693,9 +669,7 @@ async function main(): Promise<void> {
         ],
       });
     } catch (error) {
-      fail(
-        `register() failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      fail(`register() failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     console.log(`registerTxHash=${registerHash}`);
     const registerReceipt = await publicClient.waitForTransactionReceipt({
@@ -742,15 +716,23 @@ async function main(): Promise<void> {
     );
 
     if (postStatusName !== "REGISTERED") {
-      fail(
-        `register tx succeeded but getStatus is ${postStatusName}, expected REGISTERED`,
-      );
+      fail(`register tx succeeded but getStatus is ${postStatusName}, expected REGISTERED`);
     }
   }
 }
 
-main().catch((error: unknown) => {
-  fail(
-    `Unhandled error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-  );
-});
+function isDirectRun(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) {
+    return false;
+  }
+  return import.meta.url === pathToFileURL(resolve(entry)).href;
+}
+
+if (isDirectRun()) {
+  main().catch((error: unknown) => {
+    fail(
+      `Unhandled error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
+  });
+}

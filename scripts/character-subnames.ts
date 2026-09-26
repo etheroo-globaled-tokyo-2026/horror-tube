@@ -30,7 +30,6 @@ import {
   CONTRACTS_V2_COMMIT,
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
-  rejectBannedAddress,
 } from "./pin.js";
 
 loadDotenv();
@@ -200,11 +199,6 @@ async function main(): Promise<void> {
   const rpcUrl = requiredEnv("SEPOLIA_RPC_URL");
   const privateKey = parsePrivateKey(requiredEnv("PRIVATE_KEY"));
   const pin = loadSubnamePinAddresses();
-
-  rejectBannedAddress("UserRegistryImpl", pin.UserRegistryImpl);
-  rejectBannedAddress("VerifiableFactory", pin.VerifiableFactory);
-  rejectBannedAddress("PermissionedResolverImpl", pin.PermissionedResolverImpl);
-  rejectBannedAddress("ETHRegistry", pin.ETHRegistry);
 
   const account = privateKeyToAccount(privateKey);
   const publicClient = createPublicClient({
