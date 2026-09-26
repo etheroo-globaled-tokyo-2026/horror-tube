@@ -26,7 +26,8 @@ export type CoinBoxView = "meter" | "sticker";
 
 export type CoinBox = {
   group: THREE.Group;
-  address: string;
+  address: () => string | null;
+  connect: (wallet: GameWallet, coinType: string) => void;
   credit: () => number;
   partAt: (hit: THREE.Intersection) => CoinBoxPart;
   view: (at: CoinBoxView) => [eye: THREE.Vector3, target: THREE.Vector3];
@@ -124,8 +125,6 @@ function drawQr(g: CanvasRenderingContext2D, text: string, rect: Rect, ink: stri
 }
 
 export function createCoinBox(
-  wallet: GameWallet,
-  coinType: string,
   onCredit: (usdc: number) => void,
   say: (text: string) => void,
   onError: (message: string) => void,
@@ -221,6 +220,20 @@ export function createCoinBox(
   const topTex = pixelTexture(topCanvas);
   const drawerTex = pixelTexture(drawerCanvas);
   topTex.userData.text = true;
+  let link: { wallet: GameWallet; coinType: string } | null = null;
+  const stickerSpace = (): void => {
+    dg.translate(STICKER[0] + STICKER[2] / 2, STICKER[1] + STICKER[3] / 2);
+    dg.rotate(-0.035);
+    dg.translate(-STICKER[2] / 2, -STICKER[3] / 2);
+  };
+  function paintQr(): void {
+    if (link === null) return;
+    dg.save();
+    stickerSpace();
+    drawQr(dg, link.wallet.address, [6, 6, 112, 112], colors.soot);
+    dg.restore();
+    drawerTex.needsUpdate = true;
+  }
   function paintStatic(): void {
     enamel(tb, FW, TOP_H);
     tb.fillStyle = colors.soot;
@@ -311,11 +324,8 @@ export function createCoinBox(
       "DO NOT USE DAMAGED COINS",
     ].forEach((line, i) => dg.fillText(line, FW / 2, RULES[1] + 14 + i * 14.5));
     dg.save();
-    dg.translate(STICKER[0] + STICKER[2] / 2, STICKER[1] + STICKER[3] / 2);
-    dg.rotate(-0.035);
-    dg.translate(-STICKER[2] / 2, -STICKER[3] / 2);
+    stickerSpace();
     plate(dg, [0, 0, STICKER[2], STICKER[3]], false);
-    drawQr(dg, wallet.address, [6, 6, 112, 112], colors.soot);
     dg.textAlign = "left";
     dg.fillStyle = colors.soot;
     dg.font = "700 16px Silkscreen";
@@ -336,6 +346,7 @@ export function createCoinBox(
     dg.fill();
     dg.restore();
     drawerTex.needsUpdate = true;
+    paintQr();
   }
   paintStatic();
 
@@ -497,8 +508,14 @@ export function createCoinBox(
     draw();
   }
 
+  const linked = (): { wallet: GameWallet; coinType: string } => {
+    if (link === null) throw new Error("The coin box is not connected to your wallet yet.");
+    return link;
+  };
+
   async function refresh(): Promise<void> {
-    const next = fromUsdcUnits(await getUsdcBalance(wallet, coinType));
+    if (link === null) return;
+    const next = fromUsdcUnits(await getUsdcBalance(link.wallet, link.coinType));
     if (next === credit) return;
     sfx.meter();
     credit = next;
@@ -507,6 +524,7 @@ export function createCoinBox(
   }
 
   async function deposit(dollars: number): Promise<void> {
+    const { wallet, coinType } = linked();
     const payer = await connectBrowserWallet();
     if (payer === null) throw new Error("No wallet connected. The slot stays shut.");
     const gas = await dAppKit.getClient().core.getBalance({ owner: payer });
@@ -527,6 +545,7 @@ export function createCoinBox(
   }
 
   async function withdraw(): Promise<void> {
+    const { wallet, coinType } = linked();
     const units = await getUsdcBalance(wallet, coinType);
     if (units === 0n) return say("Nothing to give back.");
     const to = storedPayout() ?? (await connectBrowserWallet());
@@ -573,12 +592,18 @@ export function createCoinBox(
     paintStatic();
     draw();
   });
-  void refresh();
   setInterval(() => void refresh().catch(() => undefined), 4000);
 
   return {
     group,
-    address: wallet.address,
+    address: () => link?.wallet.address ?? null,
+    connect: (wallet, coinType) => {
+      link = { wallet, coinType };
+      paintQr();
+      void refresh().catch((error: Error) =>
+        console.error(`Coin box balance read failed: ${error.message}`),
+      );
+    },
     credit: () => credit,
     partAt: (hit) => {
       if (hit.object.parent === handle) return "slot";
