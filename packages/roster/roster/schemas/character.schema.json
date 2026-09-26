@@ -5,13 +5,19 @@
   "description": "One character for roster import. Every key listed is required; empty string is allowed only where noted. Do not include strength, intelligence, luck, or role.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["label", "look", "brief", "injuries", "status", "icon"],
+  "required": ["label", "display_name", "look", "brief", "injury_places", "injuries", "status", "icon"],
   "properties": {
     "label": {
       "type": "string",
       "minLength": 1,
       "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
       "description": "Single lowercase DNS label for the subname under ENS_LABEL."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "description": "Human-readable character name. Must not be derived from the DNS label."
     },
     "look": {
       "type": "string",
@@ -23,9 +29,14 @@
       "minLength": 1,
       "description": "One short lore line the fight can act on."
     },
+    "injury_places": {
+      "type": "string",
+      "minLength": 1,
+      "description": "JSON array of at least one place this character can be injured. Each item is descriptive text or a short label. Taken from roster issues #11, #12, and #13. Not the current damage."
+    },
     "injuries": {
       "type": "string",
-      "description": "Carried damage text. Must be present; use \"\" when unhurt. Missing key is an error."
+      "description": "JSON array of non-empty injury strings for damage the character is carrying now. Must be present; use \"[]\" when unhurt."
     },
     "status": {
       "type": "string",

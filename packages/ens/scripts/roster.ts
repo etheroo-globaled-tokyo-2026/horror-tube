@@ -79,14 +79,92 @@ const textResolverAbi = parseAbi(["function text(bytes32 node, string key) view 
 
 export type CharacterSheet = {
   label: string;
+  display_name: string;
   name: string;
   owner: string;
   look: string;
   brief: string;
+  injury_places: string[];
+  injuries: string[];
+  status: string;
+  icon: string;
+};
+
+type CharacterTexts = {
+  display_name: string;
+  look: string;
+  brief: string;
+  injury_places: string;
   injuries: string;
   status: string;
   icon: string;
 };
+
+export function parseStringList(
+  label: string,
+  key: string,
+  raw: string,
+  minimum: number,
+): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}`,
+    );
+  }
+  const items = parsed.map((item, index) => {
+    if (typeof item !== "string" || item.trim() === "") {
+      throw new Error(
+        `${label}: ${key}[${String(index)}] must be a non-empty string. Got ${JSON.stringify(raw)}`,
+      );
+    }
+    return item.trim();
+  });
+  if (items.length < minimum) {
+    throw new Error(
+      `${label}: ${key} must contain at least ${String(minimum)} entry. Got ${JSON.stringify(raw)}`,
+    );
+  }
+  return items;
+}
+
+export function parseInjuries(label: string, raw: string): string[] {
+  return parseStringList(label, "injuries", raw, 0);
+}
+
+export function parseInjuryPlaces(label: string, raw: string): string[] {
+  return parseStringList(label, "injury_places", raw, 1);
+}
+
+export function characterSheetFromTexts(
+  label: string,
+  name: string,
+  owner: string,
+  texts: CharacterTexts,
+): CharacterSheet {
+  if (texts.display_name.trim() === "") {
+    throw new Error(`${label}: display_name is missing or blank.`);
+  }
+  return {
+    label,
+    display_name: texts.display_name.trim(),
+    name,
+    owner,
+    look: texts.look,
+    brief: texts.brief,
+    injury_places: parseInjuryPlaces(label, texts.injury_places),
+    injuries: parseInjuries(label, texts.injuries),
+    status: texts.status,
+    icon: texts.icon,
+  };
+}
 
 function labelId(label: string): bigint {
   return BigInt(keccak256(stringToBytes(label)));
@@ -318,15 +396,32 @@ async function loadCharacterSheets(
           );
         }
       };
-      const [owner, [look, brief, injuries, status, icon]] = await Promise.all([
+      const textKeys = [
+        "display_name",
+        "look",
+        "brief",
+        "injury_places",
+        "injuries",
+        "status",
+        "icon",
+      ] as const;
+      const [owner, texts] = await Promise.all([
         readOwner(),
         Promise.all(
-          ["look", "brief", "injuries", "status", "icon"].map((key) =>
-            readText(publicClient, resolver, dnsName, key),
-          ),
+          textKeys.map((key) => readText(publicClient, resolver, dnsName, key)),
         ),
       ]);
-      return { label, name, owner, look, brief, injuries, status, icon };
+      const [display_name, look, brief, injury_places, injuries, status, icon] =
+        texts;
+      return characterSheetFromTexts(label, name, owner, {
+        display_name,
+        look,
+        brief,
+        injury_places,
+        injuries,
+        status,
+        icon,
+      });
     }),
   );
 }
@@ -386,4 +481,46 @@ export async function readRosterFromChain(
   const labels = await discoverRegisteredLabels(publicClient, subregistry, latestBlock);
   const sheets = await loadCharacterSheets(publicClient, ensLabel, subregistry, resolver, labels);
   return { parentName: `${ensLabel}.eth`, sheets };
+}
+
+/** Registered subname labels only. Does not read text records. */
+export async function readRegisteredLabels(
+  ensLabel: string,
+  rpcUrl: string,
+  ethRegistry: Address,
+): Promise<string[]> {
+  const publicClient = createPublicClient({
+    chain: sepolia,
+    transport: http(rpcUrl, { batch: true }),
+    batch: { multicall: true },
+  });
+  let subregistry: Address;
+  try {
+    subregistry = getAddress(
+      await publicClient.readContract({
+        address: ethRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getSubregistry",
+        args: [ensLabel],
+      }),
+    );
+  } catch (error) {
+    throw new Error(
+      `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (subregistry === ZERO_ADDRESS) {
+    throw new Error(
+      `Parent ${ensLabel}.eth has no subregistry (getSubregistry returned zero address).`,
+    );
+  }
+  let latestBlock: bigint;
+  try {
+    latestBlock = await publicClient.getBlockNumber();
+  } catch (error) {
+    throw new Error(
+      `getBlockNumber failed while listing ${ensLabel}.eth subnames: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return discoverRegisteredLabels(publicClient, subregistry, latestBlock);
 }

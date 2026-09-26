@@ -2,7 +2,7 @@
   "name": "@horror-tube/ens",
   "private": true,
   "scripts": {
-    "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts",
+    "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts tests/permissions.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "tsx scripts/register-eth-label.ts check",
     "register": "tsx scripts/register-eth-label.ts",

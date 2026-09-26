@@ -14,6 +14,11 @@ variable "spaces_bucket_name" {
   type        = string
 }
 
+variable "spaces_fight_media_bucket_name" {
+  description = "Globally unique Spaces bucket name for fight videos and last frames. Required; no default. Must not be the icons bucket."
+  type        = string
+}
+
 variable "db_size" {
   description = "Managed PostgreSQL size slug from GET /v2/databases/options (pg layouts). Operator must set db-s-1vcpu-2gb (verified against the API). Required; no default and no silent fallback to another size."
   type        = string
