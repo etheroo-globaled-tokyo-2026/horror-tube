@@ -131,6 +131,5 @@ its signer.
 The four addresses are anvil's first four default dev accounts. Two runs of
 `tsx --test tests/permissions.test.ts` on anvil 1.8.3 logged the same line,
 the proxy address included. A fresh anvil with the same deploy order puts the
-proxy at the same address on every run. The deploy block depends on how the
-anvil version mines blocks, so the test reads it from the `deployProxy`
-receipt.
+proxy at the same address on every run. The test reads the deploy block from
+the `deployProxy` receipt.
