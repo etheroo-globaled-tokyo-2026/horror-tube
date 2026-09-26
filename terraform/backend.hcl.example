@@ -1,0 +1,10 @@
+# Copy to backend.hcl (gitignored). Never commit backend.hcl.
+# Used by: terraform init -backend-config=backend.hcl
+#
+# Create the private state bucket once out-of-band (it cannot live in the same
+# state it stores). Endpoint is the Spaces region endpoint for sgp1.
+# region in versions.tf is us-east-1 (AWS SDK dummy only) — not the app region.
+
+bucket   = "horror-tube-tfstate-REPLACE_ME"
+key      = "horror-tube/terraform.tfstate"
+endpoint = "https://sgp1.digitaloceanspaces.com"
