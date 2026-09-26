@@ -6,21 +6,24 @@ import {
   createPublicClient,
   getAddress,
   http,
-  keccak256,
-  stringToBytes,
   zeroAddress,
 } from "viem";
 import { sepolia } from "viem/chains";
 
 import { ethRegistryAbi, permissionedResolverAbi } from "./abis.js";
-import { AGENT_TEXT_KEYS, ROSTER_TEXT_KEYS } from "./grant-text-roles.js";
+import {
+  AGENT_TEXT_KEYS,
+  ROLE_SET_TEXT,
+  ROSTER_TEXT_KEYS,
+  textKeyResource,
+} from "./grant-text-roles.js";
 import { loadAgentKey, loadBootstrapKey, loadRosterKey, requiredEnv } from "./process-keys.js";
 import { loadPinAddresses } from "./pin.js";
 import { parseLabel } from "./register-eth-label.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
-export const ROLE_SET_TEXT = 1n << 4n;
+export { ROLE_SET_TEXT, textKeyResource };
 export const SETTER_ROLE_KEYS = [...ROSTER_TEXT_KEYS, ...AGENT_TEXT_KEYS] as const;
 export const SETTER_ROLE_ACCOUNTS = ["bootstrap", "roster", "agent"] as const;
 const REQUIRED_ENV = [
@@ -39,10 +42,6 @@ export type SetterRoleRead = {
   rootSetText: Record<SetterRoleAccount, boolean>;
   keys: Record<SetterRoleKey, KeyAccountsRead>;
 };
-
-export function textKeyResource(key: string): bigint {
-  return BigInt(keccak256(stringToBytes(key)));
-}
 
 /** Returns one message per account/key that breaks the roster/agent split; empty means pass. */
 export function classifySetterRoles(read: SetterRoleRead): string[] {
