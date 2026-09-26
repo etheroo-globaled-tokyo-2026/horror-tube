@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 
 import { MemoryBattleQueueStore } from "@horror-tube/fight/battle-queue";
 
+import { MemoryRoundStore } from "../src/db/rounds.js";
 import { GameLoop } from "../src/game/loop.js";
 import { issueSession } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
@@ -19,7 +20,7 @@ const config = {
   settleSeconds: 8,
 };
 
-function testLoop(): GameLoop {
+function testLoop(roundStore = new MemoryRoundStore()): GameLoop {
   return new GameLoop({
     config,
     ensLabels: ["jason", "freddy", "chucky"],
@@ -28,6 +29,7 @@ function testLoop(): GameLoop {
       throw new Error(`randomInt unused in vote tests. max=${String(max)}`);
     },
     battleQueueStore: new MemoryBattleQueueStore(),
+    roundStore,
     chainWritePorts: {
       async writeWinnerInjuries() {
         throw new Error("vote tests must not write injuries.");
@@ -117,6 +119,27 @@ describe("POST /vote session", () => {
     assert.equal(body.ok, true);
     assert.equal(body.state.voters, 1);
     assert.equal(game.getState().voters, 1);
+  });
+
+  it("answers 500 naming the round when the vote row cannot be stored", async () => {
+    const store = new MemoryRoundStore();
+    store.insertVote = async () => {
+      throw new Error("too many clients already");
+    };
+    const game = testLoop(store);
+    const base = await listen(game, PEPPER);
+    const res = await fetch(`${base}/vote`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
+      },
+      body: JSON.stringify({ picks: [0, 1] }),
+    });
+    assert.equal(res.status, 500);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    assert.match(body.error, /Vote insert failed for round 1 .*too many clients already/u);
+    assert.equal(game.getState().voters, 0);
   });
 
   it("rejects a missing Authorization header", async () => {

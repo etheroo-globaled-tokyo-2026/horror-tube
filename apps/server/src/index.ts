@@ -6,6 +6,7 @@ import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { createBattleBettingPorts } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
+import { PostgresRoundStore } from "./db/rounds.js";
 import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
 import {
@@ -57,6 +58,7 @@ const game = new GameLoop({
   ensStatuses,
   randomInt: cryptoRandomInt,
   battleQueueStore,
+  roundStore: new PostgresRoundStore(pg),
   chainWritePorts,
   battleBetting,
   fightJob,

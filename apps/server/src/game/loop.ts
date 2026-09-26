@@ -17,6 +17,7 @@ import { normalizeSuiAddress } from "@mysten/sui/utils";
 
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
+import { DuplicateVoteError, type RoundStore } from "../db/rounds.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import {
@@ -45,6 +46,8 @@ export type GameLoopOptions = {
    */
   randomInt?: RandomInt;
   battleQueueStore: BattleQueueStore;
+  /** Seasons, rounds, votes, and tallies. Votes count only once stored here. */
+  roundStore: RoundStore;
   chainWritePorts: ChainWritePorts;
   /** Sui betting operator (openPool / cancel / close / settle). Bets go through /tx. */
   battleBetting: BattleBettingPorts;
@@ -57,13 +60,19 @@ export type GameLoopOptions = {
 };
 
 type Listener = (state: RoundState) => void;
+type Tally = NonNullable<RoundState["tally"]>;
 
-/** The playback-start write to battle_results failed; nothing was stored. */
-export class PlaybackStartStoreError extends Error {
+/** A Postgres write the round depends on failed; nothing was stored or counted. */
+export class StoreWriteError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
-    this.name = "PlaybackStartStoreError";
+    this.name = "StoreWriteError";
   }
+}
+
+/** Most votes first; ties go to the character that reached its count first, then lower id. */
+function rankTally(rows: Tally): Tally {
+  return [...rows].sort((a, b) => b.votes - a.votes || a.reachedAt - b.reachedAt || a.id - b.id);
 }
 
 function emptyVotes(ids: number[]): Record<number, number> {
@@ -113,6 +122,7 @@ export class GameLoop {
   private readonly verifyWorldId: WorldIdVerifier;
   private readonly randomInt: RandomInt;
   private readonly battleQueueStore: BattleQueueStore;
+  private readonly roundStore: RoundStore;
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
@@ -125,10 +135,14 @@ export class GameLoop {
   private endsAt: number | null = null;
   private champion: number | null = null;
   private voters = 0;
+  /** Counts of stored votes, for the live screen. Fighters come from the stored tally. */
   private votes: Record<number, number> = {};
-  /** When each character's current vote_count was first reached (tie-break). */
-  private reachedAt: Record<number, number> = {};
-  private nullifiers = new Set<string>();
+  private seasonId: string | null = null;
+  private roundId: string | null = null;
+  private roundRowWrite: Promise<string> | null = null;
+  private votingClosed = false;
+  private readonly pendingVotes = new Set<Promise<void>>();
+  private tally: Tally | null = null;
   private fighters: [number, number] | null = null;
   private pool: [number, number] = [0, 0];
   /** Sui pool battle id (UUID) while this bout's betting window is open. */
@@ -180,6 +194,7 @@ export class GameLoop {
         );
       });
     this.battleQueueStore = options.battleQueueStore;
+    this.roundStore = options.roundStore;
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
     this.fightJob = options.fightJob;
@@ -207,6 +222,7 @@ export class GameLoop {
       voters: this.voters,
       quorum: this.config.quorumVotes,
       votes: { ...this.votes },
+      tally: this.tally === null ? null : this.tally.map((t) => ({ ...t })),
       fighters: this.fighters,
       battleId: this.onChainBattleId,
       poolId: this.poolObjectId,
@@ -273,16 +289,22 @@ export class GameLoop {
    */
   async vote(proof: unknown, picks: number[]): Promise<void> {
     const { nullifier } = await this.verifyWorldId(proof);
-    this.voteWithNullifier(nullifier, picks);
+    await this.voteWithNullifier(nullifier, picks);
   }
 
-  /** Record one human's picks. Nullifier comes from the waiver session. */
-  voteWithNullifier(nullifier: string, picks: number[]): void {
+  /**
+   * Record one human's picks. Nullifier comes from the waiver session. The vote
+   * counts only after its `votes` row is stored; one row per nullifier per round.
+   */
+  async voteWithNullifier(nullifier: string, picks: number[]): Promise<void> {
     this.assertBeforeCutoff("vote", this.now());
     if (this.phase !== "vote" && this.phase !== "countdown") {
       throw new Error(
         `vote is only allowed in vote or countdown phases. Current phase: ${this.phase}.`,
       );
+    }
+    if (this.votingClosed) {
+      throw new Error(`vote rejected: voting for round ${String(this.round)} is closed.`);
     }
     const slots = this.slots();
     if (picks.length !== slots) {
@@ -300,18 +322,18 @@ export class GameLoop {
     if (nullifier.trim() === "") {
       throw new Error("World ID nullifier is empty.");
     }
-    if (this.nullifiers.has(nullifier)) {
-      throw new Error(
-        `World ID nullifier already voted this round: ${nullifier}.`,
-      );
+    const labels = picks.map((id) => this.labelOf(id));
+    const stored = this.storeVote(nullifier, labels);
+    this.pendingVotes.add(stored);
+    try {
+      await stored;
+    } finally {
+      this.pendingVotes.delete(stored);
     }
-    this.nullifiers.add(nullifier);
     this.voters += 1;
     const now = this.now();
     for (const id of picks) {
-      const next = (this.votes[id] ?? 0) + 1;
-      this.votes[id] = next;
-      this.reachedAt[id] = now;
+      this.votes[id] = (this.votes[id] ?? 0) + 1;
     }
     if (
       this.phase === "vote" &&
@@ -321,6 +343,60 @@ export class GameLoop {
       this.endsAt = now + this.config.voteCountdownSeconds * 1000;
     }
     this.emit();
+  }
+
+  private async storeVote(nullifier: string, picks: string[]): Promise<void> {
+    const round = this.round;
+    let roundId: string | null = null;
+    try {
+      roundId = await this.ensureRoundRow();
+      await this.roundStore.insertVote({ roundId, nullifier, picks, at: this.now() });
+    } catch (cause) {
+      if (cause instanceof DuplicateVoteError) throw cause;
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new StoreWriteError(
+        `Vote insert failed for round ${String(round)} (rounds.id=${String(roundId)}): ${detail}. The vote was not counted.`,
+        { cause },
+      );
+    }
+  }
+
+  /** The season and round rows are created on the round's first vote. */
+  private ensureRoundRow(): Promise<string> {
+    if (this.roundId !== null) return Promise.resolve(this.roundId);
+    this.roundRowWrite ??= this.createRoundRow().finally(() => {
+      this.roundRowWrite = null;
+    });
+    return this.roundRowWrite;
+  }
+
+  private async createRoundRow(): Promise<string> {
+    const round = this.round;
+    this.seasonId ??= await this.roundStore.startSeason(
+      this.chars.map((c) => ({
+        ensLabel: this.labelOf(c.id),
+        alive: c.alive,
+        kills: c.kills,
+        damage: c.damage,
+      })),
+    );
+    const id = await this.roundStore.startRound({
+      seasonId: this.seasonId,
+      roundNumber: round,
+      slots: this.slots(),
+      quorum: this.config.quorumVotes,
+      championLabel: this.champion === null ? null : this.labelOf(this.champion),
+    });
+    if (this.round === round) this.roundId = id;
+    return id;
+  }
+
+  private labelOf(id: number): string {
+    const label = this.ensLabels[id];
+    if (label === undefined) {
+      throw new Error(`Character id ${String(id)} has no ENS label.`);
+    }
+    return label;
   }
 
   /**
@@ -394,7 +470,7 @@ export class GameLoop {
       });
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      throw new PlaybackStartStoreError(
+      throw new StoreWriteError(
         `Storing betting_closes_at failed for battle ${battleId} (battle_results ${queueId}): ${detail}. Betting stays open.`,
         { cause },
       );
@@ -607,6 +683,7 @@ export class GameLoop {
     });
     this.champion = null;
     this.round = 1;
+    this.seasonId = null;
     this.videoUrl = null;
     this.frameUrl = null;
     this.error = null;
@@ -642,20 +719,49 @@ export class GameLoop {
   private resetVoteTallies(): void {
     const aliveIds = this.chars.filter((c) => c.alive).map((c) => c.id);
     this.votes = emptyVotes(aliveIds);
-    this.reachedAt = {};
-    this.nullifiers = new Set();
     this.voters = 0;
+    this.roundId = null;
+    this.votingClosed = false;
+    this.tally = null;
   }
 
+  /**
+   * Stage 1 only; stage 2+ pairs via enterBetFromRotation. Closes voting, waits
+   * for in-flight vote inserts, stores the tally from the `votes` rows, shows it,
+   * and only then opens betting on the top two. A failed insert stops the round.
+   */
   private async closeVoting(now: number): Promise<void> {
-    // Stage 1 only: top two by votes. Stage 2+ pairs via enterBetFromRotation
-    // after settle (no challenger ballot).
     if (this.champion !== null) {
       throw new Error(
         "closeVoting: stage 2+ must not collect a challenger ballot. Next bout starts from nextRotationPair after settle.",
       );
     }
-    const ranked = this.rankCandidates();
+    this.votingClosed = true;
+    this.endsAt = null;
+    await Promise.allSettled([...this.pendingVotes]);
+    const roundId = this.roundId;
+    try {
+      if (roundId === null) throw new Error("no rounds row was stored for this round");
+      this.tally = rankTally(
+        (await this.roundStore.storeTally(roundId)).map((row) => ({
+          id: this.idOf(row.ensLabel),
+          votes: row.voteCount,
+          reachedAt: row.reachedAt,
+        })),
+      );
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      this.error = `Tally insert failed for round ${String(this.round)} (rounds.id=${String(roundId)}): ${detail}. Betting stays closed.`;
+      console.error(this.error);
+      this.phase = "over";
+      this.emit();
+      return;
+    }
+    console.log(
+      `tally stored round=${String(this.round)} rounds.id=${roundId} ${this.tally.map((t) => `${this.labelOf(t.id)}=${String(t.votes)}`).join(",")}`,
+    );
+    this.emit();
+    const ranked = this.tally.map((t) => t.id);
     if (ranked.length < 2) {
       this.error = `Not enough votable characters to fill 2 slot(s).`;
       this.phase = "over";
@@ -685,20 +791,12 @@ export class GameLoop {
     this.kickFightJob();
   }
 
-  private rankCandidates(): number[] {
-    const candidates = this.chars
-      .filter((c) => c.alive && c.id !== this.champion)
-      .map((c) => c.id);
-    candidates.sort((a, b) => {
-      const va = this.votes[a] ?? 0;
-      const vb = this.votes[b] ?? 0;
-      if (vb !== va) return vb - va;
-      const ra = this.reachedAt[a] ?? Number.POSITIVE_INFINITY;
-      const rb = this.reachedAt[b] ?? Number.POSITIVE_INFINITY;
-      if (ra !== rb) return ra - rb;
-      return a - b;
-    });
-    return candidates;
+  private idOf(ensLabel: string): number {
+    const id = this.ensLabels.indexOf(ensLabel);
+    if (id < 0) {
+      throw new Error(`Stored tally names ${JSON.stringify(ensLabel)}, which is not in ROSTER_ENS_LABELS.`);
+    }
+    return id;
   }
 
   /**
@@ -871,6 +969,7 @@ export class GameLoop {
       return;
     }
     this.round += 1;
+    this.tally = null;
     this.winner = null;
     this.pool = [0, 0];
     this.onChainBattleId = null;
