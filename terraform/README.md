@@ -99,7 +99,7 @@ Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publ
 
 Fight video uploads use a **separate** bucket and a **bucket-scoped** Spaces key created by Terraform (`digitalocean_spaces_key.fight_media`, grant `readwrite` on the fight-media bucket only). Do not widen the icons key to the whole account.
 
-After `terraform apply`, copy the sensitive outputs into `.env` (and into 1Password when you create the item). There is no 1Password path yet for these values — `.env.example` says so:
+After `terraform apply`, laptop `.env` is filled from 1Password item **Horror Tube fight media** (vault Private). The paths are in `.env.example`. Do not commit the secret.
 
 | Terraform output | `.env` variable |
 | --- | --- |
@@ -110,7 +110,7 @@ After `terraform apply`, copy the sensitive outputs into `.env` (and into 1Passw
 
 Also set `FIGHT_MEDIA_SPACES_ENDPOINT` to `https://<region>.digitaloceanspaces.com` for the same `region` tfvar (operator value `sgp1` → `https://sgp1.digitaloceanspaces.com`). If any of those variables is missing or blank, the upload package stops and names `.env.example`. Do not commit the secret.
 
-Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, App Platform gets `FIGHT_MEDIA_SPACES_*` from the fight-media resources; laptops copy the sensitive outputs into `.env` for local uploads (no 1Password path).
+Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, App Platform gets `FIGHT_MEDIA_SPACES_*` from the fight-media resources. Laptops read the same values from 1Password item **Horror Tube fight media**.
 
 ## Required tfvars (no defaults)
 
@@ -183,7 +183,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `FIGHT_MEDIA_SPACES_CDN_HOST` | *(none)* | from `digitalocean_cdn.fight_media.endpoint` |
 | `FIGHT_MEDIA_SPACES_ENDPOINT` | *(none)* | `https://${var.region}.digitaloceanspaces.com` |
 
-The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops still copy the sensitive Terraform outputs into `.env` after apply for local uploads; there is still no 1Password path for those values.
+The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
 `FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet). Laptop-only and one-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `SEPOLIA_RPC_URL`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them.
 
