@@ -455,8 +455,8 @@ function gate(step) {
     <div class="row"><button class="btn primary" data-act="wallet">OPEN YOUR WALLET</button><button class="btn" data-act="empty">CONNECT AN EMPTY WALLET</button></div>`;
   if (step === "funds")
     g.innerHTML = `<p class="osd t-alive lit">■ ${S.wallet}</p><h1 class="lit">${S.credit > 0 ? "FUNDS OK" : "NO FUNDS"}</h1>
-    <p class="ens">check_funds(${S.wallet}) → ${S.credit.toFixed(4)} Ξ on Sepolia</p>
-    <p>${S.credit > 0 ? "You can vote and bet." : "You can vote, but you cannot bet. Send Sepolia ETH to this address, then open your wallet again."}</p>
+    <p class="ens">check_funds(${S.wallet}) → ${S.credit.toFixed(2)} USDC on Sui testnet</p>
+    <p>${S.credit > 0 ? "You can vote and bet." : "You can vote, but you cannot bet. Send testnet USDC to this address, then open your wallet again."}</p>
     <div class="row"><button class="btn primary" data-act="enter">ENTER</button></div>`;
 }
 
@@ -466,8 +466,8 @@ document.addEventListener("click", (e) => {
   const act = el.dataset.act;
   if (act === "wallet") {
     HT.wallet().then(async (w) => {
-      S.wallet = w.account.address;
-      S.credit = Number(await w.getBalance({ address: S.wallet })) / 1e18;
+      S.wallet = w.address;
+      S.credit = Number(await HT.usdcBalance(w)) / 1e6;
       gate("funds");
     });
   } else if (act === "empty") {

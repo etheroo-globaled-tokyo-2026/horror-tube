@@ -149,9 +149,10 @@
     <script src="game.js"></script>
     <script type="module">
       import * as THREE from "three";
-      import { getWalletClient } from "./wallet.ts";
+      import { getGameWallet, getUsdcBalance } from "./wallet.ts";
 
-      HT.wallet = getWalletClient;
+      HT.wallet = getGameWallet;
+      HT.usdcBalance = getUsdcBalance;
 
       const V = (n) => HT.css("--" + n);
       const COL = {
