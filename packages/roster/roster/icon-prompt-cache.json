@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "characters": [
+    {
+      "label": "jason",
+      "display_name": "Jason Voorhees",
+      "look": "Jason Voorhees is a large, muscular man recognized by wearing a hockey mask to cover his face, and the use of a machete as his weapon of choice.",
+      "brief": "1 Powers and Abilities 1.1 Natural Abilities 1.2 Supernatural Powers 1.3 Nanokinetic Powers.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. Jason Voorhees is a large, muscular man recognized by wearing a hockey mask to cover his face, and the use of a as his of choice.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Jason_Voorhees_(Friday_the_13th)",
+        "brief": "https://villains.fandom.com/wiki/Jason_Voorhees_(Friday_the_13th)"
+      }
+    },
+    {
+      "label": "freddy",
+      "display_name": "Freddy Krueger",
+      "look": "In all of his appearances, Freddy is depicted as an undead, demonic serial killer who is commonly identified by his burned, disfigured face, red and dark green striped sweater and brown fedora.",
+      "brief": "Freddy Krueger can invade people's dreams and kill them within their nightmares, which will also kill them in reality.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. In all of his appearances, Freddy is depicted as an undead, demonic serial who is commonly identified by his burned, disfigured face, red and dark green striped sweater and brown fedora.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Freddy_Krueger_(original)",
+        "brief": "https://villains.fandom.com/wiki/Freddy_Krueger_(original)"
+      }
+    },
+    {
+      "label": "chucky",
+      "display_name": "Chucky",
+      "look": "Throughout the series, Chucky has gone through changes to his appearance.",
+      "brief": "Despite his small size and structure, Chucky has the strength and speed of a full grown human adult.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. Throughout the series, Chucky has gone through changes to his appearance.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Chucky_(Child%27s_Play)",
+        "brief": "https://villains.fandom.com/wiki/Chucky_(Child%27s_Play)"
+      }
+    },
+    {
+      "label": "pinhead",
+      "display_name": "Pinhead",
+      "look": "Pinhead's unique physical description has made him a notable figure in the horror genre.",
+      "brief": "Immortality: Pinhead is shown to be biologically immortal, he is ageless and his body never decays.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. Pinhead's unique physical description has made him a notable figure in the horror genre.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Pinhead_(Hellraiser)",
+        "brief": "https://villains.fandom.com/wiki/Pinhead_(Hellraiser)"
+      }
+    },
+    {
+      "label": "godzilla",
+      "display_name": "Godzilla",
+      "look": "The original 1954 Godzilla design, known as \"ShodaiGoji\", featured the creature with a heavy lower body, small arms and a large, round head.",
+      "brief": "1 Abilities 1.1 Amphibious lifestyle 1.2 Atomic breath 1.3 Durability 1.4 Bite 1.5 Tail.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. The original 1954 Godzilla design, known as \"ShodaiGoji\", featured the creature with a heavy lower body, small arms and a large, round head.",
+      "sources": {
+        "look": "https://godzilla.fandom.com/wiki/Godzilla_(1954)",
+        "brief": "https://godzilla.fandom.com/wiki/Godzilla_(1954)"
+      }
+    },
+    {
+      "label": "frankenstein",
+      "display_name": "Frankenstein's Monster",
+      "look": "This version of the creature was a huge, hulking man with green skin (as opposed go the yellowish skin that barely covered his organs in the novel) with visible stitches adorning it all over, a large, flat forehead, a bolted neck, a black flat top hairstyle and wore a rather ragged ill fitting evening suit.",
+      "brief": "Superhuman Condition: Victor's creation was made to be stronger, faster, more durable, and agile than an ordinary man, specifically Victor himself.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. This version of the creature was a huge, hulking man with green skin (as opposed go the yellowish skin that barely covered his organs in the novel) with visible stitches adorning it all over, a large, flat forehead, a bolted neck, a black flat top hairstyle and wore a rather ragged ill fitting evening suit.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)",
+        "brief": "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)"
+      }
+    },
+    {
+      "label": "count",
+      "display_name": "Count Dracula",
+      "look": "Count Dracula is a gaunt man with pale skin.",
+      "brief": "Count Dracula possesses the following powers and abilities:.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. Count Dracula is a gaunt man with pale skin.",
+      "sources": {
+        "look": "https://movie-monster.fandom.com/wiki/Count_Dracula",
+        "brief": "https://movie-monster.fandom.com/wiki/Count_Dracula"
+      }
+    },
+    {
+      "label": "wolf",
+      "display_name": "Wolf Man",
+      "look": "The Wolfman appears to be a large, bipedal muscular hairy wolf creature with sharp fangs and razor sharp claws.",
+      "brief": "Sharp fangs.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. The Wolfman appears to be a large, bipedal muscular hairy wolf creature with sharp fangs and razor sharp claws.",
+      "sources": {
+        "look": "https://movie-monster.fandom.com/wiki/Wolf_Man",
+        "brief": "https://movie-monster.fandom.com/wiki/Wolf_Man"
+      }
+    },
+    {
+      "label": "leatherface",
+      "display_name": "Leatherface",
+      "look": "Leatherface's appearance in Mortal Kombat X takes on an original appearance inspired by his appearance in the original Texas Chain Saw Massacre with subtle changes.",
+      "brief": "Although Leatherface possesses no superhuman powers or abilities, he does seem to have incredible strength, being able to effortlessly swing and toss a chainsaw around with the littlest of ease.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. Leatherface's appearance in Mortal Kombat X takes on an original appearance inspired by his appearance in the original Texas with subtle changes.",
+      "sources": {
+        "look": "https://mortalkombat.fandom.com/wiki/Leatherface",
+        "brief": "https://mortalkombat.fandom.com/wiki/Leatherface"
+      }
+    },
+    {
+      "label": "imhotep",
+      "display_name": "Imhotep",
+      "look": "With the discovery of Tutankhamun's tomb by Howard Carter in 1922, alongside notions of a curse associated with mummies and process of mummification on deceased Egyptians in the past, The Mummy is conceived as one of Universal Monster's iconic characters, depicted as a cursed undead being and reanimated mummy who awakened by desecration of his/her grave and proceed to wreak havoc on humanity.",
+      "brief": "As a mortal, Imhotep demonstrated great mystical powers as the pharaoh's high priest.",
+      "image_prompt": "Square character portrait icon, head and shoulders, centered, facing the camera, plain dark background, no text, no blood, no gore, no wounds, no weapons. With the discovery of Tutankhamun's tomb by Howard Carter in 1922, alongside notions of a curse associated with mummies and process of mummification on deceased Egyptians in the past, The Mummy is conceived as one of Universal Monster's iconic characters, depicted as a cursed undead being and reanimated mummy who awakened by desecration of his/her grave and proceed to wreak havoc on humanity.",
+      "sources": {
+        "look": "https://villains.fandom.com/wiki/Imhotep_(Universal_Monsters)",
+        "brief": "https://villains.fandom.com/wiki/Imhotep_(Universal_Monsters)"
+      }
+    }
+  ]
+}
