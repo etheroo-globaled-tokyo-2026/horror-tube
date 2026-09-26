@@ -1,0 +1,40 @@
+# Sui betting 1: Move package Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Run the Move package's tests in CI and review it before the first publish.
+
+**Architecture:** `packages/betting/move` (module `horror_tube::betting`) and its 20 tests are on main and pass. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
+
+**Tech Stack:** Sui Move 2024, Sui CLI `testnet-v1.80.1`, GitHub Actions.
+
+---
+
+### Task 1: CI job
+
+**Files:** Modify `.github/workflows/ci.yml` (add a job after `server`)
+
+- [ ] Add:
+
+```yaml
+  betting-move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Sui CLI testnet-v1.80.1
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL https://github.com/MystenLabs/sui/releases/download/testnet-v1.80.1/sui-testnet-v1.80.1-ubuntu-x86_64.tgz \
+            | tar -xz -C "$HOME/.local/bin" ./sui
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: sui move test --path packages/betting/move
+```
+
+- [ ] The job passes on the PR.
+- [ ] Commit: `ci: run Move betting tests`.
+
+### Task 2: Security review
+
+- [ ] Invoke the `move-security` skill on `packages/betting/move/sources/betting.move`. Check at least: every operator function calls `assert_operator`; every pool access checks `assert_owns` or the ticket's `pool_id`; a ticket can't be paid twice (`redeem` deletes it); a pool can't settle twice (`status == OPEN`); `mul_div` can't overflow (`stake ≤ W`); `withdraw_fees` needs `AdminCap`; both caps have `store` (holders can transfer them: accepted).
+- [ ] Fix real findings with a failing Move test first; list accepted ones in the PR body.
+- [ ] Commit: `fix: <finding>` per fix.
