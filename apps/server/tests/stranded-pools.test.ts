@@ -59,7 +59,6 @@ async function stranded(pools: [string, OnChain][]) {
 }
 
 function fakeBetting(calls: string[] = []): BattleBettingPorts {
-  let opened = 0;
   return {
     config: {
       network: "testnet",
@@ -69,11 +68,8 @@ function fakeBetting(calls: string[] = []): BattleBettingPorts {
       coinType: "0x2::sui::SUI",
     },
     poolIdFor: poolOf,
-    async openBattle() {
-      opened += 1;
-      const battleId = `battle-${String(opened)}`;
+    async openBattle(battleId) {
       calls.push(`open:${battleId}`);
-      return battleId;
     },
     async cancelBattle(battleId) {
       calls.push(`cancel:${battleId}`);
@@ -165,8 +161,10 @@ describe("recording Sui pools in sui_pools", () => {
   it("records each opened pool and marks it resolved when settled or cancelled", async () => {
     const ledger = new MemoryPoolLedger();
     const betting = recordPools(fakeBetting(), ledger);
-    const settledId = await betting.openBattle("alpha", "bravo", 100n);
-    const cancelledId = await betting.openBattle("charlie", "delta", 100n);
+    const settledId = "battle-settled";
+    const cancelledId = "battle-cancelled";
+    await betting.openBattle(settledId, 100n);
+    await betting.openBattle(cancelledId, 100n);
     assert.deepEqual(
       (await ledger.listUnresolved()).map((pool) => [pool.battleId, pool.poolId]),
       [
@@ -184,7 +182,7 @@ describe("recording Sui pools in sui_pools", () => {
     const calls: string[] = [];
     const betting = recordPools(fakeBetting(calls), new OpenNotRecorded());
     await assert.rejects(
-      betting.openBattle("alpha", "bravo", 100n),
+      betting.openBattle("battle-1", 100n),
       /Battle battle-1: .*sui_pools failed: connection refused/u,
     );
     assert.deepEqual(calls, ["open:battle-1", "cancel:battle-1"]);
@@ -193,7 +191,8 @@ describe("recording Sui pools in sui_pools", () => {
   it("returns the settle digest even when marking the pool resolved fails", async () => {
     const ledger = new ResolutionNotRecorded();
     const betting = recordPools(fakeBetting(), ledger);
-    const battleId = await betting.openBattle("alpha", "bravo", 100n);
+    const battleId = "battle-1";
+    await betting.openBattle(battleId, 100n);
     assert.equal(await betting.settle(battleId, 1), `digest-${battleId}`);
     assert.deepEqual(
       (await ledger.listUnresolved()).map((pool) => pool.battleId),
