@@ -83,7 +83,7 @@ jobs:
       # Runtime World ID gate (apps/server/src/index.ts). CI-only values; not production secrets.
       WORLD_ID_APP_ID: "app_ci_docker"
       WORLD_ID_RP_ID: "rp_ci_docker"
-      WORLD_ID_SIGNING_KEY: "0xabababababababababababababababababababababababababababababababababab"
+      WORLD_ID_SIGNING_KEY: "0xababababababababababababababababababababababababababababababababab"
       WORLD_ID_ENVIRONMENT: "production"
     steps:
       - uses: actions/checkout@v4
