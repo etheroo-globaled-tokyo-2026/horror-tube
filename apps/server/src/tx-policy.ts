@@ -12,11 +12,21 @@ type TxInput = TxData["inputs"][number];
 type Call = NonNullable<Command["MoveCall"]>;
 type CallArg = Call["arguments"][number];
 
-function forbidden(detail: string): HttpError {
-  return new HttpError(
-    403,
-    `Only a USDC transfer, with change returned to the coin box, or a call to the betting package is allowed. ${detail}`,
-  );
+const TX_RULE =
+  "Only a USDC transfer, with change returned to the coin box, or a call to the betting package is allowed.";
+const DEPOSIT_RULE = "Only a USDC deposit from the sender into the coin box is sponsored.";
+
+type KindRules = {
+  rule: string;
+  usdc: string;
+  recipients: ReadonlySet<string>;
+  ownedCoins: boolean;
+  transfers: boolean;
+  packageCall: (call: Call) => void;
+};
+
+function forbidden(rules: KindRules, detail: string): HttpError {
+  return new HttpError(403, `${rules.rule} ${detail}`);
 }
 
 function badKind(detail: string): HttpError {
@@ -31,7 +41,9 @@ function inputAt(inputs: readonly TxInput[], index: number): TxInput {
 
 function coinKey(arg: CallArg): string | undefined {
   if (arg.$kind === "Result") return String(arg.Result);
-  if (arg.$kind === "NestedResult") return `${String(arg.NestedResult[0])}:${String(arg.NestedResult[1])}`;
+  if (arg.$kind === "NestedResult")
+    return `${String(arg.NestedResult[0])}:${String(arg.NestedResult[1])}`;
+  if (arg.$kind === "Input") return `in:${String(arg.Input)}`;
   return undefined;
 }
 
@@ -40,10 +52,10 @@ function isUsdcCoin(arg: CallArg, usdcCoins: ReadonlySet<string>): boolean {
   return key !== undefined && usdcCoins.has(key);
 }
 
-function pureAddress(arg: CallArg, inputs: readonly TxInput[]): string {
-  if (arg.$kind !== "Input") throw forbidden("USDC recipient was not an address input.");
+function pureAddress(rules: KindRules, arg: CallArg, inputs: readonly TxInput[]): string {
+  if (arg.$kind !== "Input") throw forbidden(rules, "USDC recipient was not an address input.");
   const input = inputAt(inputs, arg.Input);
-  if (input.$kind !== "Pure") throw forbidden("USDC recipient was not an address.");
+  if (input.$kind !== "Pure") throw forbidden(rules, "USDC recipient was not an address.");
   try {
     return normalizeSuiAddress(bcs.Address.parse(fromBase64(input.Pure.bytes)));
   } catch (err) {
@@ -53,51 +65,157 @@ function pureAddress(arg: CallArg, inputs: readonly TxInput[]): string {
   }
 }
 
-function requireSenderUsdcWithdrawal(arg: CallArg, inputs: readonly TxInput[], usdcType: string): void {
-  if (arg.$kind !== "Input") throw forbidden("USDC redeem_funds did not withdraw from the sender.");
+function requireSenderUsdcWithdrawal(
+  rules: KindRules,
+  arg: CallArg,
+  inputs: readonly TxInput[],
+): void {
+  if (arg.$kind !== "Input")
+    throw forbidden(rules, "USDC redeem_funds did not withdraw from the sender.");
   const input = inputAt(inputs, arg.Input);
-  if (input.$kind !== "FundsWithdrawal") throw forbidden("USDC redeem_funds did not withdraw from the sender.");
+  if (input.$kind !== "FundsWithdrawal") {
+    throw forbidden(rules, "USDC redeem_funds did not withdraw from the sender.");
+  }
   const withdrawal = input.FundsWithdrawal;
   if (withdrawal.withdrawFrom.$kind !== "Sender") {
-    throw forbidden("USDC redeem_funds must withdraw from the sender.");
+    throw forbidden(rules, "USDC redeem_funds must withdraw from the sender.");
   }
-  if (withdrawal.typeArg.$kind !== "Balance" || normalizeStructTag(withdrawal.typeArg.Balance) !== usdcType) {
-    throw forbidden("redeem_funds withdrew a coin other than USDC.");
+  if (
+    withdrawal.typeArg.$kind !== "Balance" ||
+    normalizeStructTag(withdrawal.typeArg.Balance) !== rules.usdc
+  ) {
+    throw forbidden(rules, "redeem_funds withdrew a coin other than USDC.");
   }
 }
 
 function checkFrameworkCoin(
+  rules: KindRules,
   call: Call,
   inputs: readonly TxInput[],
   usdcCoins: ReadonlySet<string>,
-  usdcType: string,
-  coinBox: string,
+  sentTo: string[],
 ): void {
-  if (call.module !== "coin") throw forbidden(`MoveCall ${call.package}::${call.module}::${call.function}`);
-  if (call.typeArguments.length !== 1 || normalizeStructTag(call.typeArguments[0] ?? "") !== usdcType) {
-    throw forbidden(`MoveCall ${call.package}::${call.module}::${call.function} was not USDC.`);
+  const name = `MoveCall ${call.package}::${call.module}::${call.function}`;
+  if (call.module !== "coin") throw forbidden(rules, name);
+  if (
+    call.typeArguments.length !== 1 ||
+    normalizeStructTag(call.typeArguments[0] ?? "") !== rules.usdc
+  ) {
+    throw forbidden(rules, `${name} was not USDC.`);
   }
   if (call.function === "redeem_funds") {
     const arg = call.arguments[0];
     if (arg === undefined || call.arguments.length !== 1) {
-      throw forbidden("USDC redeem_funds arguments were not a single withdrawal.");
+      throw forbidden(rules, "USDC redeem_funds arguments were not a single withdrawal.");
     }
-    requireSenderUsdcWithdrawal(arg, inputs, usdcType);
+    requireSenderUsdcWithdrawal(rules, arg, inputs);
     return;
   }
   if (call.function === "send_funds") {
     const coin = call.arguments[0];
     const recipient = call.arguments[1];
     if (coin === undefined || recipient === undefined || call.arguments.length !== 2) {
-      throw forbidden("USDC send_funds arguments were not a coin and an address.");
+      throw forbidden(rules, "USDC send_funds arguments were not a coin and an address.");
     }
-    if (!isUsdcCoin(coin, usdcCoins)) throw forbidden("send_funds coin was not USDC from this transaction.");
-    if (pureAddress(recipient, inputs) !== coinBox) {
-      throw forbidden("USDC send_funds recipient was not the coin box.");
+    if (!isUsdcCoin(coin, usdcCoins))
+      throw forbidden(rules, "send_funds coin was not USDC from this transaction.");
+    const to = pureAddress(rules, recipient, inputs);
+    if (!rules.recipients.has(to))
+      throw forbidden(rules, `USDC send_funds recipient ${to} is not allowed.`);
+    sentTo.push(to);
+    return;
+  }
+  if (call.function === "destroy_zero") {
+    const coin = call.arguments[0];
+    if (coin === undefined || call.arguments.length !== 1 || !isUsdcCoin(coin, usdcCoins)) {
+      throw forbidden(rules, "destroy_zero coin was not USDC from this transaction.");
     }
     return;
   }
-  throw forbidden(`MoveCall ${call.package}::${call.module}::${call.function}`);
+  throw forbidden(rules, name);
+}
+
+function ownedCoinKeys(inputs: readonly TxInput[]): string[] {
+  const keys: string[] = [];
+  for (const [index, input] of inputs.entries()) {
+    if (input.$kind === "Object" && input.Object.$kind === "ImmOrOwnedObject")
+      keys.push(`in:${String(index)}`);
+  }
+  return keys;
+}
+
+function walkKind(rules: KindRules, txKind: string): string[] {
+  let tx: Transaction;
+  try {
+    tx = Transaction.fromKind(txKind);
+  } catch (err) {
+    throw badKind(err instanceof Error ? err.message : String(err));
+  }
+  const data = tx.getData();
+  if (data.commands.length === 0) throw forbidden(rules, "Transaction kind was empty.");
+  const usdcCoins = new Set<string>(rules.ownedCoins ? ownedCoinKeys(data.inputs) : []);
+  const sentTo: string[] = [];
+  for (let index = 0; index < data.commands.length; index += 1) {
+    const command = data.commands[index];
+    if (command === undefined) throw badKind(`Missing command ${String(index)}.`);
+    switch (command.$kind) {
+      case "MoveCall": {
+        const call = command.MoveCall;
+        if (call === undefined) throw badKind("MoveCall had no payload.");
+        if (normalizeSuiAddress(call.package) === SUI_FRAMEWORK) {
+          checkFrameworkCoin(rules, call, data.inputs, usdcCoins, sentTo);
+          if (call.function === "redeem_funds") usdcCoins.add(String(index));
+          break;
+        }
+        rules.packageCall(call);
+        break;
+      }
+      case "SplitCoins": {
+        const split = command.SplitCoins;
+        if (split === undefined) throw badKind("SplitCoins had no payload.");
+        if (!isUsdcCoin(split.coin, usdcCoins)) {
+          throw forbidden(rules, "SplitCoins coin was not USDC from this transaction.");
+        }
+        for (let i = 0; i < split.amounts.length; i += 1) {
+          usdcCoins.add(`${String(index)}:${String(i)}`);
+        }
+        break;
+      }
+      case "MergeCoins": {
+        const merge = command.MergeCoins;
+        if (merge === undefined) throw badKind("MergeCoins had no payload.");
+        if (!isUsdcCoin(merge.destination, usdcCoins)) {
+          throw forbidden(rules, "MergeCoins destination was not USDC from this transaction.");
+        }
+        for (const source of merge.sources) {
+          if (!isUsdcCoin(source, usdcCoins)) {
+            throw forbidden(rules, "MergeCoins source was not USDC from this transaction.");
+          }
+        }
+        break;
+      }
+      case "TransferObjects": {
+        const transfer = command.TransferObjects;
+        if (transfer === undefined) throw badKind("TransferObjects had no payload.");
+        if (!rules.transfers) throw forbidden(rules, "Command TransferObjects is not allowed.");
+        if (transfer.objects.length === 0)
+          throw forbidden(rules, "TransferObjects had no objects.");
+        for (const object of transfer.objects) {
+          if (!isUsdcCoin(object, usdcCoins)) {
+            throw forbidden(
+              rules,
+              "TransferObjects moved an object other than USDC from this transaction.",
+            );
+          }
+        }
+        pureAddress(rules, transfer.address, data.inputs);
+        break;
+      }
+      default:
+        throw forbidden(rules, `Command ${command.$kind} is not allowed.`);
+    }
+  }
+  return sentTo;
 }
 
 function objectId(input: TxInput): string | undefined {
@@ -138,80 +256,46 @@ export function assertSponsorableKind(
   usdcType: string,
   bettingPackageId: string | undefined,
 ): void {
-  const box = normalizeSuiAddress(coinBox);
-  const usdc = normalizeStructTag(usdcType);
   const betting =
     bettingPackageId === undefined ? undefined : normalizeSuiAddress(bettingPackageId);
-  let tx: Transaction;
-  try {
-    tx = Transaction.fromKind(txKind);
-  } catch (err) {
-    throw badKind(err instanceof Error ? err.message : String(err));
-  }
-  const data = tx.getData();
-  if (data.commands.length === 0) throw forbidden("Transaction kind was empty.");
-  const usdcCoins = new Set<string>();
-  for (let index = 0; index < data.commands.length; index += 1) {
-    const command = data.commands[index];
-    if (command === undefined) throw badKind(`Missing command ${String(index)}.`);
-    switch (command.$kind) {
-      case "MoveCall": {
-        const call = command.MoveCall;
-        if (call === undefined) throw badKind("MoveCall had no payload.");
-        if (normalizeSuiAddress(call.package) === SUI_FRAMEWORK) {
-          checkFrameworkCoin(call, data.inputs, usdcCoins, usdc, box);
-          if (call.function === "redeem_funds") usdcCoins.add(String(index));
-          break;
-        }
-        if (betting === undefined) {
-          throw new HttpError(
-            500,
-            "BETTING_PACKAGE_ID is required. Set it in .env. See .env.example.",
-          );
-        }
-        if (normalizeSuiAddress(call.package) !== betting) {
-          throw forbidden(`MoveCall ${call.package}::${call.module}::${call.function}`);
-        }
-        break;
+  const rules: KindRules = {
+    rule: TX_RULE,
+    usdc: normalizeStructTag(usdcType),
+    recipients: new Set([normalizeSuiAddress(coinBox)]),
+    ownedCoins: false,
+    transfers: true,
+    packageCall: (call) => {
+      if (betting === undefined) {
+        throw new HttpError(
+          500,
+          "BETTING_PACKAGE_ID is required. Set it in .env. See .env.example.",
+        );
       }
-      case "SplitCoins": {
-        const split = command.SplitCoins;
-        if (split === undefined) throw badKind("SplitCoins had no payload.");
-        if (!isUsdcCoin(split.coin, usdcCoins)) {
-          throw forbidden("SplitCoins coin was not USDC from this transaction.");
-        }
-        for (let i = 0; i < split.amounts.length; i += 1) {
-          usdcCoins.add(`${String(index)}:${String(i)}`);
-        }
-        break;
+      if (normalizeSuiAddress(call.package) !== betting) {
+        throw forbidden(rules, `MoveCall ${call.package}::${call.module}::${call.function}`);
       }
-      case "MergeCoins": {
-        const merge = command.MergeCoins;
-        if (merge === undefined) throw badKind("MergeCoins had no payload.");
-        if (!isUsdcCoin(merge.destination, usdcCoins)) {
-          throw forbidden("MergeCoins destination was not USDC from this transaction.");
-        }
-        for (const source of merge.sources) {
-          if (!isUsdcCoin(source, usdcCoins)) {
-            throw forbidden("MergeCoins source was not USDC from this transaction.");
-          }
-        }
-        break;
-      }
-      case "TransferObjects": {
-        const transfer = command.TransferObjects;
-        if (transfer === undefined) throw badKind("TransferObjects had no payload.");
-        if (transfer.objects.length === 0) throw forbidden("TransferObjects had no objects.");
-        for (const object of transfer.objects) {
-          if (!isUsdcCoin(object, usdcCoins)) {
-            throw forbidden("TransferObjects moved an object other than USDC from this transaction.");
-          }
-        }
-        pureAddress(transfer.address, data.inputs);
-        break;
-      }
-      default:
-        throw forbidden(`Command ${command.$kind} is not allowed.`);
-    }
-  }
+    },
+  };
+  walkKind(rules, txKind);
+}
+
+export function assertDepositKind(
+  txKind: string,
+  sender: string,
+  coinBox: string,
+  usdcType: string,
+): void {
+  const box = normalizeSuiAddress(coinBox);
+  const rules: KindRules = {
+    rule: DEPOSIT_RULE,
+    usdc: normalizeStructTag(usdcType),
+    recipients: new Set([box, normalizeSuiAddress(sender)]),
+    ownedCoins: true,
+    transfers: false,
+    packageCall: (call) => {
+      throw forbidden(rules, `MoveCall ${call.package}::${call.module}::${call.function}`);
+    },
+  };
+  if (!walkKind(rules, txKind).includes(box))
+    throw forbidden(rules, "No USDC went to the coin box.");
 }

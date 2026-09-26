@@ -62,7 +62,8 @@ export type JsonBody =
   | HttpErrorBody
   | { session: string }
   | { address: string }
-  | { digest: string };
+  | { digest: string }
+  | { txBytes: string; signature: string };
 
 export function sendJson(res: ServerResponse, status: number, body: JsonBody): void {
   const payload = JSON.stringify(body);
