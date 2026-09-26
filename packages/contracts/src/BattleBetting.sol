@@ -260,6 +260,8 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
         bytes memory name = abi.encodePacked(uint8(bytes(fighter).length), fighter, _parentDnsName);
         bytes memory textCall = abi.encodeCall(ITextResolver.text, (fighterNode(fighter), "status"));
         try UNIVERSAL_RESOLVER.resolve(name, textCall) returns (bytes memory result, address) {
+            // An ABI-encoded string is at least 64 bytes; anything shorter would fail to decode silently.
+            if (result.length < 64) revert EnsLookupFailed(battleId, fighter, result);
             return keccak256(bytes(abi.decode(result, (string)))) == DEAD;
         } catch (bytes memory reason) {
             revert EnsLookupFailed(battleId, fighter, reason);

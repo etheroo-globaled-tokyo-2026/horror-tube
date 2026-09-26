@@ -269,6 +269,11 @@ contract BattleBettingTest is Test {
             )
         );
         betting.settleBattle(id);
+
+        bytes32 jason = betting.fighterNode("jason");
+        ens.setAnswersEmpty(jason);
+        vm.expectRevert(abi.encodeWithSelector(BattleBetting.EnsLookupFailed.selector, id, "jason", ""));
+        betting.settleBattle(id);
     }
 
     function test_settleMakesTheLivingFighterTheWinner() public {

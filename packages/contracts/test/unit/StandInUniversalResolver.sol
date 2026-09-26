@@ -10,6 +10,7 @@ contract StandInUniversalResolver is IUniversalResolver {
 
     mapping(bytes32 node => string status) public statusOf;
     mapping(bytes32 node => bool) public failsFor;
+    mapping(bytes32 node => bool) public answersEmptyFor;
 
     function setStatus(bytes32 node, string calldata status) external {
         statusOf[node] = status;
@@ -19,12 +20,17 @@ contract StandInUniversalResolver is IUniversalResolver {
         failsFor[node] = true;
     }
 
+    function setAnswersEmpty(bytes32 node) external {
+        answersEmptyFor[node] = true;
+    }
+
     function resolve(bytes calldata name, bytes calldata data) external view returns (bytes memory, address) {
         require(bytes4(data[:4]) == ITextResolver.text.selector, "stand-in: only text()");
         (bytes32 node, string memory key) = abi.decode(data[4:], (bytes32, string));
         require(keccak256(bytes(key)) == keccak256("status"), "stand-in: only the status key");
         require(_namehash(name, 0) == node, "stand-in: name and node disagree");
         if (failsFor[node]) revert StandInLookupFailed(node);
+        if (answersEmptyFor[node]) return ("", address(this));
         return (abi.encode(statusOf[node]), address(this));
     }
 
