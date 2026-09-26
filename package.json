@@ -1,19 +1,28 @@
 {
   "name": "horror-tube",
   "private": true,
-  "packageManager": "pnpm@11.6.0",
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
     "lint": "oxlint",
     "format": "oxfmt",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ens:check": "tsx scripts/register-eth-label.ts check",
+    "ens:register": "tsx scripts/register-eth-label.ts",
+    "ens:subnames": "tsx scripts/character-subnames.ts"
+  },
+  "dependencies": {
+    "viem": "^2.56.8"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
-    "oxlint": "1.85.0",
+    "@types/node": "^26.6.2",
+    "dotenv": "^18.0.3",
     "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2"
-  }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.6.0"
 }

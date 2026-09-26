@@ -12,6 +12,7 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
+    "scripts/**",
     "tools/oxlint/anti-slop/**"
   ],
   "jsPlugins": [{ "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }],

@@ -1,0 +1,98 @@
+# Horror Tube — DigitalOcean Terraform
+
+Provisions a Spaces bucket with CDN (character icons) and a Managed PostgreSQL cluster (battle state) with a database firewall.
+
+## Auth (token never on disk, never pasted into shell history)
+
+Terraform’s DigitalOcean token is a **single** input: `var.do_token`, set only via `TF_VAR_do_token` (or the provider’s `DIGITALOCEAN_TOKEN` if you wire the provider that way). Do **not** put the token in `*.tfvars`, do **not** write it to a file in the repo, and do **not** `export` a pasted secret (that lands the secret in shell history).
+
+Load the token from 1Password item **DigitalOcean IRC** into the process environment for that one command only:
+
+```bash
+cd terraform
+
+env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
+  terraform plan
+
+env TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')" \
+  terraform apply
+```
+
+The secret stays in the child process environment for that invocation; it is not written to disk and is not an `export` of a literal token.
+
+### Spaces API keys (icon uploads)
+
+Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** from the environment. There are **no defaults** — if either is missing or blank, stop. Do not put real values in `.env` committed to git; `.env.example` lists only empty names.
+
+`terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Do not treat those names as interchangeable.
+
+Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command.
+
+Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-spaces` is limited to bucket `horror-tube-icons-sgp1-m4k9` with permission `readwrite` (UI: Read/Write/Delete). The CDN hostname is only a public read front for that same bucket; there is no separate CDN key. Sharing `spaces_access_key_id` and `spaces_secret` with the team shares that bucket only, not the DigitalOcean account and not the Postgres database.
+
+A fresh agent shell may already have `AWS_PROFILE` or an SSO session token; if those are set, the AWS CLI ignores the Spaces key or sends the wrong token. Unset them in the same command.
+
+Read the keys inside a subshell first: `env A="$(…)" B="$A"` does not work, because the parent shell expands `$A` before `env` sets it, so `B` is empty and the AWS CLI silently uses `~/.aws` credentials instead. The `:?` checks stop the command if `op read` fails or a value is blank:
+
+```bash
+(
+  set -euo pipefail
+  : "${KEY:?KEY (object key) is required}"
+  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
+  SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
+  : "${SPACES_SECRET:?SPACES_SECRET is required}"
+  env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_SESSION_TOKEN \
+    AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+    AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
+    aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
+    --endpoint-url "https://sgp1.digitaloceanspaces.com" \
+    --acl public-read
+)
+```
+
+`terraform apply` takes the same key under the provider's names, `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY`:
+
+```bash
+(
+  set -euo pipefail
+  TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
+  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
+  SPACES_SECRET_ACCESS_KEY="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
+  : "${TF_VAR_do_token:?TF_VAR_do_token is required}"
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
+  : "${SPACES_SECRET_ACCESS_KEY:?SPACES_SECRET_ACCESS_KEY is required}"
+  export TF_VAR_do_token SPACES_ACCESS_KEY_ID SPACES_SECRET_ACCESS_KEY
+  terraform apply
+)
+```
+
+Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publicly fetchable. Do not commit Spaces key values.
+
+## Required tfvars (no defaults)
+
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, or bucket name:
+
+| Variable | Operator value for this project |
+| --- | --- |
+| `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
+| `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
+| `spaces_bucket_name` | globally unique name |
+
+The Managed Postgres firewall is hardcoded public in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`, covering all IPv4) because hackathon developers are not on one IP. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
+
+There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
+
+`db-s-1vcpu-2gb` was verified under `options.pg.layouts` for `num_nodes: 1`.
+
+## Spaces icons: public read + CDN
+
+The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cdn_endpoint` output). Uploads still must set each object’s ACL to **`public-read`** (see the Spaces API keys section above). Public icon URLs use `https://` + CDN endpoint + object key. Applied bucket: `horror-tube-icons-sgp1-m4k9` (CDN: `horror-tube-icons-sgp1-m4k9.sgp1.cdn.digitaloceanspaces.com`, region `sgp1`).
+
+## Validate
+
+```bash
+cd terraform
+terraform init
+terraform validate
+```

@@ -1,0 +1,28 @@
+---
+description: Application configuration comes from .env and is tracked in .env.example
+alwaysApply: true
+---
+
+# Configuration lives in .env
+
+Application configuration is read from the environment. Do not hardcode it in source.
+
+This includes names and labels, RPC URLs, chain ids, private keys, contract addresses the app chooses, durations, payment-token choice, and feature flags.
+
+```typescript
+// Bad
+const LABEL = "horrortube";
+const RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+
+// Good
+const label = process.env.ENS_LABEL;
+if (label === undefined || label.trim() === "") {
+  throw new Error("ENS_LABEL is required. Set it in .env. See .env.example.");
+}
+```
+
+- Add every variable to `.env.example` with an empty value. Do not put secrets or real defaults there.
+- If a variable is missing or blank, fail with an error that names the variable.
+- `.env` stays gitignored. Never commit it.
+
+Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `scripts/pin/` and `scripts/abis/` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
