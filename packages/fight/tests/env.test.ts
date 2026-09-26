@@ -4,8 +4,56 @@ import { describe, it } from "node:test";
 import {
   loadFalVideoConfig,
   loadNarrationConfig,
+  loadVideoEffectsConfig,
   requiredEnv,
 } from "../src/env.js";
+
+describe("loadVideoEffectsConfig", () => {
+  it("needs nothing else when both switches are 0", () => {
+    assert.deepEqual(loadVideoEffectsConfig({ DEMON_SOUND: "0", ROTOSCOPE: "0" }), {
+      demonSound: false,
+      rotoscope: null,
+    });
+  });
+
+  it("accepts only 0 or 1", () => {
+    assert.throws(
+      () => loadVideoEffectsConfig({ DEMON_SOUND: "true", ROTOSCOPE: "0" }),
+      /DEMON_SOUND must be "0" or "1"\. Got: "true"/,
+    );
+    assert.throws(
+      () => loadVideoEffectsConfig({ DEMON_SOUND: "0" }),
+      /ROTOSCOPE is required/,
+    );
+  });
+
+  it("requires ROTOSCOPE_URL when ROTOSCOPE=1", () => {
+    assert.throws(
+      () =>
+        loadVideoEffectsConfig({
+          DEMON_SOUND: "0",
+          ROTOSCOPE: "1",
+          ROTOSCOPE_TIMEOUT_MS: "660000",
+        }),
+      /ROTOSCOPE_URL is required/,
+    );
+  });
+
+  it("loads the rotoscope URL without its trailing slash, and the timeout", () => {
+    assert.deepEqual(
+      loadVideoEffectsConfig({
+        DEMON_SOUND: "1",
+        ROTOSCOPE: "1",
+        ROTOSCOPE_URL: "http://127.0.0.1:8765/",
+        ROTOSCOPE_TIMEOUT_MS: "660000",
+      }),
+      {
+        demonSound: true,
+        rotoscope: { url: "http://127.0.0.1:8765", timeoutMs: 660000 },
+      },
+    );
+  });
+});
 
 describe("requiredEnv", () => {
   it("returns a trimmed value", () => {
