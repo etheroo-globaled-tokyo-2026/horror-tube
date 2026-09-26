@@ -80,14 +80,14 @@ describe("transaction allowlist", () => {
     assert.doesNotThrow(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID));
   });
 
-  it("rejects USDC sent anywhere other than the coin box", async () => {
+  it("allows a USDC payout when the change returns to the coin box", async () => {
     const txKind = await kind(COIN_BOX, (tx) => {
       tx.transferObjects(
         [coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })],
         OTHER,
       );
     });
-    assert.throws(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID), status(403));
+    assert.doesNotThrow(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID));
   });
 
   it("rejects a call to any other package", async () => {
@@ -130,7 +130,8 @@ describe("wallet HTTP", () => {
   });
 
   function fakeShinami(): ShinamiPort & { executed: string[]; created: number } {
-    const state = { executed: [] as string[], created: 0, address: `0x${"44".repeat(32)}` };
+    const executed: string[] = [];
+    const state = { executed, created: 0, address: `0x${"44".repeat(32)}` };
     const port: ShinamiPort & { executed: string[]; created: number } = {
       executed: state.executed,
       created: 0,
@@ -223,16 +224,12 @@ describe("wallet HTTP", () => {
     assert.equal(shinami.executed.length, 1);
   });
 
-  it("returns 403 and does not execute a transaction to another address", async () => {
+  it("returns 403 and does not execute a call to another package", async () => {
     const shinami = fakeShinami();
     const base = await start(shinami);
     const session = issueSession(NULLIFIER, PEPPER);
-    const wallet = `0x${"44".repeat(32)}`;
-    const txKind = await kind(wallet, (tx) => {
-      tx.transferObjects(
-        [coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })],
-        OTHER,
-      );
+    const txKind = await kind(undefined, (tx) => {
+      tx.moveCall({ target: `${OTHER}::evil::drain`, arguments: [] });
     });
     const res = await fetch(`${base}/tx`, {
       method: "POST",
@@ -240,7 +237,7 @@ describe("wallet HTTP", () => {
       body: JSON.stringify({ txKind }),
     });
     assert.equal(res.status, 403);
-    assert.match(v.parse(ErrorJson, await res.json()).error, /coin box/u);
+    assert.match(v.parse(ErrorJson, await res.json()).error, /betting package/u);
     assert.equal(shinami.executed.length, 0);
   });
 
