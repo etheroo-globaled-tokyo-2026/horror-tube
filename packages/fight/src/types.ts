@@ -37,6 +37,9 @@ export type NarrationTurn = {
 /** Structured model output. Next opponent is set by rotation after the fight. */
 export type NarrationModelTurn = Omit<NarrationTurn, "next_opponent_subname">;
 
+/** "rotoscope": the video is the rotoscope service's line drawing. "film": fal's footage. */
+export type VideoStyle = "rotoscope" | "film";
+
 export type FightTurnResult = {
   turn: NarrationTurn;
   ensLines: [string, string];
@@ -45,6 +48,7 @@ export type FightTurnResult = {
   videoPrompt: string;
   /** Durable Spaces CDN URL after upload. Never the expiring fal generator URL. */
   videoUrl: string;
+  videoStyle: VideoStyle;
   /**
    * Durable Spaces CDN URL of this fight's last frame under frames/.
    * Stored on the round as RoundState.frameUrl; the next bout passes it as
