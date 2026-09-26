@@ -75,7 +75,12 @@ export class MemoryPoolLedger implements PoolLedger {
     if (this.entries.has(battleId)) {
       throw new Error(`sui_pools already has a row for battle ${battleId}.`);
     }
-    this.entries.set(battleId, { poolId, openedAt: Date.now(), resolvedAt: null, resolution: null });
+    this.entries.set(battleId, {
+      poolId,
+      openedAt: Date.now(),
+      resolvedAt: null,
+      resolution: null,
+    });
   }
 
   async recordResolved(battleId: string, resolution: PoolResolution): Promise<void> {
