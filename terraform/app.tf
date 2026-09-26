@@ -167,6 +167,41 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
+        value = digitalocean_spaces_key.fight_media.access_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_SECRET"
+        value = digitalocean_spaces_key.fight_media.secret_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_BUCKET"
+        value = digitalocean_spaces_bucket.fight_media.name
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_CDN_HOST"
+        value = digitalocean_cdn.fight_media.endpoint
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_ENDPOINT"
+        value = "https://${var.region}.digitaloceanspaces.com"
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "QUORUM_VOTES"
         value = tostring(var.quorum_votes)
         scope = "RUN_TIME"

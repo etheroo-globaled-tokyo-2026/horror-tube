@@ -2,10 +2,12 @@
 # DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
 # for that one terraform command only. See README.md.
 #
-# App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*) and BUILD_TIME Vite env
+# App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*, SHINAMI_ACCESS_KEY,
+# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, DATABASE_CA_CERT) and BUILD_TIME Vite env
 # (ENS_LABEL, VITE_SEPOLIA_RPC_URL) are also NOT set here. Pass them as TF_VAR_*
-# for that one apply, sourced from the repo .env (including DATABASE_CA_CERT). DATABASE_URL for the app is
-# wired from the Managed Postgres public uri in Terraform (no VPC). See README.md.
+# for that one apply, sourced from the repo .env. DATABASE_URL and
+# FIGHT_MEDIA_SPACES_* for the app are wired from Managed Postgres / fight-media
+# Spaces resources in Terraform (no VPC). See README.md.
 
 region                         = "sgp1"
 spaces_bucket_name             = "horror-tube-icons-REPLACE_ME"
