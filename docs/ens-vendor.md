@@ -64,6 +64,11 @@ Permission tests run on **local anvil chain id 31337**. They deploy the
 checked-in pin bytecode on a free loopback port. They do **not** send writes
 to the Sepolia resolver.
 
+Right after that deploy, the suite reads `getBlockNumber({ cacheTime: 0 })` to
+count the deploy's transactions (factory, implementation, deployProxy). viem's
+client otherwise caches the block number for its polling interval, which would
+return a stale value immediately after a fresh anvil deploy.
+
 Run `pnpm --filter @horror-tube/ens test` (and `typecheck` when you change
 types). The suite covers:
 

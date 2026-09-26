@@ -93,7 +93,6 @@ async function waitForRpc(url: string): Promise<void> {
         return;
       }
     } catch {
-      // retry
     }
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -107,7 +106,7 @@ async function getFreeLocalPort(): Promise<number> {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  assert(address !== null && typeof address !== "string");
+  assert(address instanceof Object);
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error) {
@@ -118,6 +117,13 @@ async function getFreeLocalPort(): Promise<number> {
     });
   });
   return address.port;
+}
+
+type ContractPin = { bytecode: Hex; contractsV2Commit: string };
+
+function readContractPin(path: string): ContractPin {
+  // SAFETY: every file under scripts/pin/ is a checked-in artifact with exactly this shape.
+  return JSON.parse(readFileSync(path, "utf8")) as ContractPin;
 }
 
 describe("process key config (unit, no network)", () => {
@@ -251,12 +257,8 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
   before(async () => {
     assert.match(CONTRACTS_V2_COMMIT, /^71a3b733/u);
-    const factoryPin = JSON.parse(
-      readFileSync(join(pinDir, "VerifiableFactory.json"), "utf8"),
-    ) as { bytecode: Hex; contractsV2Commit: string };
-    const implPin = JSON.parse(
-      readFileSync(join(pinDir, "PermissionedResolverImpl.json"), "utf8"),
-    ) as { bytecode: Hex; contractsV2Commit: string };
+    const factoryPin = readContractPin(join(pinDir, "VerifiableFactory.json"));
+    const implPin = readContractPin(join(pinDir, "PermissionedResolverImpl.json"));
     assert.equal(factoryPin.contractsV2Commit, CONTRACTS_V2_COMMIT);
     assert.equal(implPin.contractsV2Commit, CONTRACTS_V2_COMMIT);
 
@@ -298,8 +300,6 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
     const chainId = await publicClient.getChainId();
     assert.equal(chainId, 31337);
-    // The fresh chain holds only the deploy: factory, implementation, deployProxy.
-    // viem caches the block number for its polling interval, which can be stale here.
     const head = await publicClient.getBlockNumber({ cacheTime: 0 });
     const txHashes: Hex[] = [];
     for (let n = 0n; n <= head; n += 1n) {
