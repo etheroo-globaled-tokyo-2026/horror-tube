@@ -143,6 +143,38 @@ variable "world_id_signing_key" {
   sensitive   = true
 }
 
+variable "shinami_access_key" {
+  description = "SHINAMI_ACCESS_KEY for Invisible Wallets. Set via TF_VAR_shinami_access_key from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "wallet_secret_pepper" {
+  description = "WALLET_SECRET_PEPPER. Losing it loses every Invisible Wallet. Set via TF_VAR_wallet_secret_pepper from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "world_id_api_url" {
+  description = "WORLD_ID_API_URL origin for POST /api/v4/verify. Set via TF_VAR_world_id_api_url from .env. Required; no default."
+  type        = string
+}
+
+variable "world_id_environment" {
+  description = "WORLD_ID_ENVIRONMENT (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
+  type        = string
+}
+
+variable "world_id_wallet_action" {
+  description = "WORLD_ID_WALLET_ACTION the wallet login proof must use. Set via TF_VAR_world_id_wallet_action from .env. Required; no default."
+  type        = string
+}
+
+variable "sui_usdc_type" {
+  description = "SUI_USDC_TYPE the /tx allowlist accepts. Set via TF_VAR_sui_usdc_type from .env. Required; no default."
+  type        = string
+}
+
 variable "quorum_votes" {
   description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
   type        = number

@@ -132,6 +132,48 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "SHINAMI_ACCESS_KEY"
+        value = var.shinami_access_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "WALLET_SECRET_PEPPER"
+        value = var.wallet_secret_pepper
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "WORLD_ID_API_URL"
+        value = var.world_id_api_url
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "WORLD_ID_ENVIRONMENT"
+        value = var.world_id_environment
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "WORLD_ID_WALLET_ACTION"
+        value = var.world_id_wallet_action
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "SUI_USDC_TYPE"
+        value = var.sui_usdc_type
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "QUORUM_VOTES"
         value = tostring(var.quorum_votes)
         scope = "RUN_TIME"
