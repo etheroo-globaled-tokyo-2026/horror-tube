@@ -134,13 +134,16 @@ class MlxSam31:
                     keep.append((tr, full))
                 elif best is not None:                               # lost for now: its weak find stays a plain find
                     used.discard(taken[t])
-            new = [fd for j, fd in enumerate(finds) if j not in used and fd["score"] >= START and fd["text"] in tracked]
-            now += [(fd["text"], fd["score"], None, False, fd["mask"]) for j, fd in enumerate(finds) if j not in used]
+            # a sure find no track covers starts one; it carries the new track's id from this frame on
+            new = {j: next_id + n for n, j in enumerate(
+                j for j, fd in enumerate(finds) if j not in used and fd["score"] >= START and fd["text"] in tracked)}
+            next_id += len(new)
+            now += [(fd["text"], fd["score"], new.get(j), False, fd["mask"])
+                    for j, fd in enumerate(finds) if j not in used]
             out.append(now)
             if new or (state is not None and step >= RESEED):
-                for fd in new:
-                    keep.append(({"text": fd["text"], "id": next_id}, fd["full"]))
-                    next_id += 1
+                for j, tid in new.items():
+                    keep.append(({"text": finds[j]["text"], "id": tid}, finds[j]["full"]))
                 if keep:
                     state = sam._init_tracker_state(self.model, feats, [full.astype(np.float32) for _, full in keep])
                     tracks, step = [tr for tr, _ in keep], 0
