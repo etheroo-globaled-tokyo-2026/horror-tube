@@ -34,7 +34,7 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
-import { LOW, T, W8, wrap, num } from "./room-state.ts";
+import { fitFont, lines, LOW, T, W8, wrap, num } from "./room-state.ts";
 import { collapse, drawPower, powerStage } from "./room-power.ts";
 
 export const TW = 640,
@@ -605,15 +605,21 @@ function drawCaseFile(ch: Character): void {
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
   g.fillText("RESIDENT FILE", x, y + 34);
+  const injuries = ch.injuries || "None recorded.",
+    top = y + 60;
+  const lh = fitFont(g, "DotGothic16", 20, 10, (lh) => {
+    const end = Math.max(top + lines(g, ch.brief, W - x - 32).length * lh, 272);
+    return end + 26 + (lines(g, injuries, W - 64).length - 1) * lh <= 426;
+  });
+  const font = g.font;
   g.fillStyle = COL.bone;
-  g.font = "20px DotGothic16";
-  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
+  y = Math.max(wrap(g, ch.brief, x, top, W - x - 32, lh), 272);
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
   g.fillText("INJURIES", 32, y);
   g.fillStyle = COL.bone;
-  g.font = "20px DotGothic16";
-  wrap(g, ch.injuries || "None recorded.", 32, y + 26, W - 64, 26);
+  g.font = font;
+  wrap(g, injuries, 32, y + 26, W - 64, lh);
   const booking =
     (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") && onProgramme;
   const [footer, color] = dead
@@ -847,11 +853,7 @@ export function drawTV(): void {
           const resident = S.chars[id];
           if (resident === undefined) return;
           g.fillStyle = COL.bone;
-          g.fillText(
-            `${num(id + 1)}  ${resident.short}`,
-            i < 8 ? 36 : 340,
-            150 + (i % 8) * 32,
-          );
+          g.fillText(`${num(id + 1)}  ${resident.short}`, i < 8 ? 36 : 340, 150 + (i % 8) * 32);
         });
       }
     }
@@ -951,12 +953,7 @@ export function drawTV(): void {
       else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
       else if (S.credit <= 0) text("ADD USDC AT THE COIN BOX TO BET.", 360, 24, COL.soot);
       else {
-        text(
-          `AMOUNT ${T.buf === "" ? "—" : T.buf} USDC · A OR B · OK`,
-          360,
-          22,
-          COL.soot,
-        );
+        text(`AMOUNT ${T.buf === "" ? "—" : T.buf} USDC · A OR B · OK`, 360, 22, COL.soot);
       }
     } else if (S.phase === "fight") {
       if (!vidMode && S.frame % 28 >= 22) {
