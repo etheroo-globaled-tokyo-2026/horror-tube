@@ -59,17 +59,12 @@ fills the challenger slot from rotation after settle.
 ### Errors
 
 - If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error and refund all bets.
-- Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`).
-- Exception until the video pipeline exists: the client plays `apps/web/assets/demo-fight.mp4` for every fight. Remove it when `videoUrl` is real.
+- Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`). The fight plays `RoundState.videoUrl` only.
 
 ### Settle
 
-- After betting is closed **and** the fight video has finished playing, apply the
-  queued ENS writes (winner `injuries` first, then loser `status=dead`), then the
-  BattleBetting settlement transaction, then start the next bout from the stored
-  rotation opponent (or `fightInputFromRotation`). If either the betting-closed
-  or playback-finished signal is missing, stop and name it. Do not use a timer
-  fallback for those gates.
+- After the fight video ends, `GameLoop` settle updates in-memory `chars` (loser dead, winner damage) and opens the next bout. That is what the room shows today.
+- Planned (not sent yet; issue 111): after betting-closed **and** playback-finished, apply ENS writes (winner `injuries` first, then loser `status=dead`), then `BattleBetting` settlement, then start the next bout from the stored rotation opponent. If either gate is missing, stop and name it. Do not use a timer fallback for those gates.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
@@ -123,28 +118,22 @@ type RoundState = {
 
 Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
-`chars[].alive` (and `seasons.characters` in Postgres) is a holding copy for the current
-season/bet window: the app updates it when the fight result is known so the bet window can
-run; ENS text writes and BattleBetting settle run from the battle-result queue after
-betting-closed and playback-finished. Do not write ENS before those gates. Do not treat the
-holding copy as what pays out. After the ENS write, ENS is the authority. Stakes are not
-defined here (no stake columns).
+`chars[].alive` is the server's holding copy for the current season: settle updates it in memory so the next bout can
+run. ENS text writes and BattleBetting settle are not sent from the loop yet (issue 111; `battle_results` is the
+planned queue). Do not treat the holding copy as what pays out. After an ENS write exists, ENS is the authority. Stakes
+are not defined here (no stake columns).
 
 **Actions from the client:**
 
-- `vote(proof, picks)`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server verifies the World ID proof. Stage 2+ has no vote.
-- `bet(side, amount)`: allowed only in the `bet` phase. Zero bets is a valid fight.
+- `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). Stage 2+ has no vote.
+- `POST /bet` with `{ side, amount }`: allowed only in the `bet` phase. Adds to the in-memory pool. Does not call `BattleBetting` or debit USDC. Zero bets is a valid fight.
 
-## Client changes
+## Client
 
-Not started. Today the client runs the old local loop: a timer on every phase, top 2 by votes, no champion.
-
-1. In `apps/web/game.ts`, remove the local loop: the `setInterval` timer, the fake votes, the fake pool growth, `next()`, and the `story` phase.
-2. In `apps/web/main.ts`, add the `countdown` phase. Make the vote screen use `slots` (1 or 2 picks), and hide the champion from the list.
-3. Until the server exists, run a local fake server that follows the contract. When the real server is ready, change one URL.
+The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow server `RoundState` (SSE `/events` and `GET /round`). Votes and bets go to the server. The fight video is `RoundState.videoUrl`.
 
 ## Out of scope
 
-- How the server is built and hosted.
-- ENS updates and the Sui contract. They connect later at the `SETTLE` step.
+- How the server is hosted.
+- ENS updates and the Sui contract. They connect later at the `SETTLE` step (issue 111).
 - Season end beyond today's `OVER` screen and reset.

@@ -38,8 +38,34 @@ try {
   wallet = failingWalletHandler(message);
 }
 
-const server = createGameServer({ port, host, staticDir, wallet, game });
-await listenGameServer(server, { port, host, staticDir, wallet, game });
+// Same pepper as the wallet session. Missing pepper fails POST /vote by name.
+const pepperRaw = process.env.WALLET_SECRET_PEPPER;
+const sessionPepper =
+  pepperRaw !== undefined && pepperRaw.trim() !== ""
+    ? pepperRaw.trim()
+    : undefined;
+if (sessionPepper === undefined) {
+  console.error(
+    "POST /vote will fail: WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
+  );
+}
+
+const server = createGameServer({
+  port,
+  host,
+  staticDir,
+  wallet,
+  game,
+  sessionPepper,
+});
+await listenGameServer(server, {
+  port,
+  host,
+  staticDir,
+  wallet,
+  game,
+  sessionPepper,
+});
 
 const tickMs = 250;
 setInterval(() => {

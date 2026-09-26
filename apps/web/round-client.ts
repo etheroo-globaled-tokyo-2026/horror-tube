@@ -1,5 +1,7 @@
 /** Same-origin RoundState client (docs/game-loop.md). No second host. */
 
+import { WALLET_SESSION_KEY, type SessionStore } from "./wallet.ts";
+
 export type ServerPhase = "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 
 export type ServerRoundState = {
@@ -52,14 +54,26 @@ export function connectRoundEvents(onState: RoundListener): () => void {
   };
 }
 
+function storedVoteSession(store: SessionStore): string {
+  const session = store.getItem(WALLET_SESSION_KEY);
+  if (session === null || session.trim() === "") {
+    throw new Error("World ID session is required. Finish the waiver scan first.");
+  }
+  return session;
+}
+
 export async function postVote(
-  proof: unknown,
   picks: number[],
+  store: SessionStore = localStorage,
 ): Promise<ServerRoundState> {
+  const session = storedVoteSession(store);
   const res = await fetch(apiUrl("/vote"), {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ proof, picks }),
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${session}`,
+    },
+    body: JSON.stringify({ picks }),
   });
   const body = (await res.json()) as {
     ok?: boolean;

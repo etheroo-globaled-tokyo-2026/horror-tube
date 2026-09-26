@@ -153,7 +153,17 @@ export class GameLoop {
     }
   }
 
+  /**
+   * Unit-test path: verify a proof, then record the vote.
+   * Production HTTP uses voteWithNullifier after readSession.
+   */
   async vote(proof: unknown, picks: number[]): Promise<void> {
+    const { nullifier } = await this.verifyWorldId(proof);
+    this.voteWithNullifier(nullifier, picks);
+  }
+
+  /** Record one human's picks. Nullifier comes from the waiver session. */
+  voteWithNullifier(nullifier: string, picks: number[]): void {
     if (this.phase !== "vote" && this.phase !== "countdown") {
       throw new Error(
         `vote is only allowed in vote or countdown phases. Current phase: ${this.phase}.`,
@@ -172,9 +182,8 @@ export class GameLoop {
     for (const id of picks) {
       this.assertVotable(id);
     }
-    const { nullifier } = await this.verifyWorldId(proof);
     if (nullifier.trim() === "") {
-      throw new Error("World ID verifier returned an empty nullifier.");
+      throw new Error("World ID nullifier is empty.");
     }
     if (this.nullifiers.has(nullifier)) {
       throw new Error(
