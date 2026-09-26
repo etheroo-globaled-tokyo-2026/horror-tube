@@ -10,7 +10,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.                      |
 | `game.ts`               | The simulated game from `docs/PLAN.md`. No layout. Characters come from ENS (below). |
 | `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                |
-| `coinbox.ts`            | The coin box: meter, coin slot, PAY BY PHONE sticker, coin return.                   |
+| `coinbox.ts`            | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.    |
 | `sprites.ts`            | `paint` (pixel art) and the line helpers.                                            |
 | `ht.css`                | Tokens, plus the World ID gate and coin box panel styles.                            |
 | `system.html`           | The specimen page for the tokens.                                                    |
@@ -107,7 +107,8 @@ sponsorship (paid tiers only; testnet pricing unclear).
 Onboarding happens in the room, not on a form page. It takes from Buckshot Roulette (you sign a waiver) and Paratopic
 (hard cuts, no loading screens).
 
-- **Read:** the camera looks down at a paper waiver on the table, below the TV. The TV shows static. No remote yet.
+- **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
+  No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
 - **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the TV.
 - **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
@@ -126,13 +127,19 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
 
 - **The room:** real 3D, low-poly, rusty textures with hard pixels, fog, one flickering bulb. Warm surfaces only.
   - All textures are drawn in code from the tokens (no image files): stained wallpaper over a wood wainscot, floor
-    boards, a wood-veneer TV with a speaker grille, a desk with two drawers. Each texture is also its own bump map.
+    boards, a low stool with cracked, torn vinyl. Each texture is also its own bump map.
+  - The TV is a 1960s UK rental set (reference: Getty Images 3065599, 1963): a yellowed ivory mask with a rounded
+    screen, a perforated speaker grille, knobs and a channel dial, rabbit ears. It is worn, not clean: nicotine
+    yellowing, grime around the screen, cracks, rusty screws, cigarette burns, drag marks, fingerprints and a
+    hairline crack on the glass, a missing knob, foil on an antenna, and a tape note: DON'T TURN IT OFF. It stands on
+    its own four splayed, tapered metal legs with brass tips and side stretchers, like the reference. Wear is
+    drawn with the helpers in `sprites.ts` (`blotch`, `drip`, `crack`, `scratches`, `screw`, `burn`).
   - Texels stay small (about 1 cm, 2 to 3 screen pixels) and clean: flowing grain lines, flat shapes, no random
     speckle. Big noisy texels are what made the room look like mush. Textures use nearest filtering up close and
     mipmaps plus anisotropic filtering far away, so surfaces seen at an angle do not sparkle. The TV picture has
     mipmaps too, so small text stays whole.
-  - Depth comes from light, not from more props. The bulb hangs low over the desk and is the key light: it makes a
-    pool of light on the desk and the TV, and the wall falls into the dark. Ambient light stays low, because flat
+  - Depth comes from light, not from more props. The bulb hangs low in front of the TV and is the key light: it makes
+    a pool of light on the TV and the stool, and the wall falls into the dark. Ambient light stays low, because flat
     light makes the room look flat.
   - The bulb casts hard shadows (`BasicShadowMap`). Ambient occlusion (`GTAOPass`) darkens the places where things
     touch. Exponential fog makes far things darker. The TV picture has no fog.
@@ -166,24 +173,33 @@ Rules from review:
 
 ## The coin box
 
-Old motel TVs took coins: pay to keep watching, pull the lever to get your coins back. Ours sits on the table, next to
-the TV. Everyone knows how it works, so it needs no explanation. The money is USDC on Sui testnet.
+A 1960s UK rental TV took coins through a slot meter bolted to its side: pay to keep watching. Ours copies the Smith
+Meters "Prepayment TV Switch" (6d, early 1960s; reference photos and notes from eBay UK, the Science Museum Group and
+rental-trade memories). It is bolted flush to the TV's left side, top level with the TV top, with a cable down to the
+TV. Real proportions (23 × 8 × 7 cm), scaled with our oversized TV. The money is USDC on Sui testnet.
 
-- **The meter:** the in-game wallet's real USDC balance on Sui testnet, `CREDIT 5.00`, read every 4 seconds. It counts
-  up when money lands. Bets are simulated today, so the meter does not move when you bet; the TV credit
-  (`… LEFT · 5.00 USDC`) is the real balance plus simulated wins and losses.
-- **The coin slot:** deposit from a browser wallet. Click the slot, pick a coin (5 / 10 / 20 USDC). Your wallet extension
-  opens once to approve, and the meter counts up.
-- **The sticker, PAY BY PHONE:** deposit from a phone wallet. A QR code on a peeling sticker. Scan it and send USDC. The
-  meter counts up when the money lands.
-- **The coin return lever:** withdraw. The credit goes back to the wallet that paid in.
-- **Empty:** the meter reads `CREDIT 0.00`. You can vote. A and B on the remote do nothing, the TV says
-  `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
+From top to bottom: a peaked cap, the credit window, the rating plate (`T.V. SWITCH`, an invented maker), the drum
+counter, the coin dial with its wing handle, a padlock on a staple, and the cash drawer with the instruction plate and
+the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-stained.
+
+- **The meter:** the in-game wallet's real USDC balance on Sui testnet, read every 4 seconds. The needle in the
+  `USDC PAID FOR` window moves from 0 to `FULL` (20). The drum counter shows the exact number (`05.00`); real meters
+  had their counter on the side, but the game needs the number in view. Bets are simulated today, so the meter does not
+  move when you bet; the TV credit (`… LEFT · 5.00 USDC`) is the real balance plus simulated wins and losses.
+- **The coin dial:** deposit from a browser wallet. Click the dial or the wing handle: the handle turns, you pick a
+  coin (5 / 10 / 20 USDC), your wallet extension opens once to approve, and the needle rises.
+- **The rental sticker, PAY BY PHONE:** deposit from a phone wallet. A QR code on a crooked paper sticker on the
+  drawer. Scan it and send USDC. The meter counts up when the money lands.
+- **The padlock and the drawer:** withdraw. Real meters had no coin return: the collector unlocked the drawer and paid
+  back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, and the credit goes back to
+  the wallet that paid in.
+- **Empty:** the needle rests at 0 and the drums read `00.00`. You can vote. A and B on the remote do nothing, the TV
+  says `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
-- Keys: `D` the coin slot, `P` the sticker, `W` the coin return. Stakes are 1, 3 and 5 USDC.
-- **Gas today:** the paying wallet needs testnet SUI for a deposit, and the in-game wallet needs SUI for the coin
-  return. Errors stay in a panel ("THE BOX SPAT IT OUT") until closed.
+- Keys: `D` the coin dial, `P` the sticker, `W` the padlock. Stakes are 1, 3 and 5 USDC.
+- **Gas today:** the paying wallet needs testnet SUI for a deposit, and the in-game wallet needs SUI to pay back.
+  Errors stay in a panel ("THE BOX SPAT IT OUT") until closed.
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
@@ -193,8 +209,9 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
 Only the tokens in `ht.css`. No hex values anywhere else.
 
 Every surface in the room uses the warm set, but no two neighbours share a brightness step. From dark to light: the
-wall (`--char`, a faint `--sulfur` pattern), the desk (`--grime` walnut), the shelf and the TV (`--rust-deep`), then the paper,
-the tape labels and the TV picture. The inside of the shelf is `--soot`, so the tapes pop. Keep the grain sparse and
+floor and the legs (`--soot`), the wall (`--char`, a faint `--sulfur` pattern), the stool (`--rust-deep` vinyl) and
+the shelf (`--rust-deep`), the TV cabinet and the meter (yellowed ivory), then the paper, the tape labels and the TV
+picture. The inside of the shelf is `--soot`, so the tapes pop. Keep the grain sparse and
 drop random speckle: noise at the same brightness makes things run together.
 
 The light is split by temperature. The bulb is warm. The TV light (`--body`) and the ambient light (`--cold-deep`) are
