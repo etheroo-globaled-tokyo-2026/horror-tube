@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
 import { createClient, getPool, requiredEnv } from "@horror-tube/betting";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
-import { createBattleBettingPorts, readHouseFeeBps } from "./battle-betting.js";
+import { createBattleBettingPorts, readHouseTerms } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { migrate } from "./db/migrate.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
@@ -19,6 +19,7 @@ import {
   readRosterEnsLabels,
 } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
+import { createHouseBotChains, readHouseBotStakeUnits } from "./house-bot-chain.js";
 import { loadLivingCardsFromEns } from "./load-living-cards.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import {
@@ -39,6 +40,10 @@ const staticDir = readStaticDir();
 const host = "0.0.0.0";
 const suiPoolTimeoutMs = 20_000;
 const suiOperator = createBattleBettingPorts();
+const houseBots = {
+  chains: createHouseBotChains(suiOperator.config, suiPoolTimeoutMs),
+  stakeUnits: readHouseBotStakeUnits(),
+};
 const fightJob = createFightJobRunner({
   loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
 });
@@ -70,12 +75,23 @@ const game = new GameLoop({
   chainWritePorts,
   battleBetting,
   fightJob,
+  houseBots,
 });
 
 const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
-const feeBps = await readHouseFeeBps(battleBetting.config);
-console.log(`betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)}`);
+const { feeBps, minBet } = await readHouseTerms(battleBetting.config);
+console.log(
+  `betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)} min_bet=${String(minBet)}`,
+);
+if (houseBots.stakeUnits < minBet) {
+  throw new Error(
+    `HOUSE_BOT_STAKE_UNITS (${String(houseBots.stakeUnits)}) is below the House min_bet (${String(minBet)}) on BETTING_HOUSE_ID=${battleBetting.config.houseId}. Raise it in .env. See .env.example.`,
+  );
+}
+console.log(
+  `house bots: ${houseBots.chains.map((b) => b.address).join(",")} stake_units=${String(houseBots.stakeUnits)}`,
+);
 
 const suiClient = createClient(battleBetting.config);
 const suiPools: PoolChain = {

@@ -17,9 +17,11 @@ export type RoundInsert = {
   championLabel: string | null;
 };
 
+export type Voter = { kind: "human"; nullifier: string } | { kind: "bot"; address: string };
+
 export type VoteInsert = {
   roundId: string;
-  nullifier: string;
+  voter: Voter;
   picks: string[];
   at: number;
 };
@@ -38,11 +40,20 @@ export type RoundStore = {
 };
 
 export class DuplicateVoteError extends Error {
-  constructor(roundId: string, nullifier: string) {
-    super(`World ID nullifier already voted this round: ${nullifier} (rounds.id=${roundId}).`);
+  constructor(roundId: string, voter: Voter) {
+    super(
+      voter.kind === "human"
+        ? `World ID nullifier already voted this round: ${voter.nullifier} (rounds.id=${roundId}).`
+        : `House bot ${voter.address} already voted this round (rounds.id=${roundId}).`,
+    );
     this.name = "DuplicateVoteError";
   }
 }
+
+const sameVoter = (a: Voter, b: Voter): boolean =>
+  a.kind === "human"
+    ? b.kind === "human" && a.nullifier === b.nullifier
+    : b.kind === "bot" && a.address === b.address;
 
 type IdRow = QueryResultRow & { id: string };
 type TallyRow = QueryResultRow & { ens_label: string; vote_count: number; reached_at: Date };
@@ -79,13 +90,22 @@ export class PostgresRoundStore implements RoundStore {
   async insertVote(vote: VoteInsert): Promise<void> {
     try {
       await this.db.query(
-        `INSERT INTO votes (round_id, world_id_nullifier, picks, created_at)
-         VALUES ($1, $2, $3, $4)`,
-        [vote.roundId, vote.nullifier, vote.picks, new Date(vote.at)],
+        `INSERT INTO votes (round_id, world_id_nullifier, bot_address, picks, created_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          vote.roundId,
+          vote.voter.kind === "human" ? vote.voter.nullifier : null,
+          vote.voter.kind === "bot" ? vote.voter.address : null,
+          vote.picks,
+          new Date(vote.at),
+        ],
       );
     } catch (cause) {
-      if (isUniqueViolation(cause, "votes_round_nullifier_unique")) {
-        throw new DuplicateVoteError(vote.roundId, vote.nullifier);
+      if (
+        isUniqueViolation(cause, "votes_round_nullifier_unique") ||
+        isUniqueViolation(cause, "votes_round_bot_unique")
+      ) {
+        throw new DuplicateVoteError(vote.roundId, vote.voter);
       }
       throw cause;
     }
@@ -144,8 +164,8 @@ export class MemoryRoundStore implements RoundStore {
   }
 
   async insertVote(vote: VoteInsert): Promise<void> {
-    if (this.votes.some((v) => v.roundId === vote.roundId && v.nullifier === vote.nullifier)) {
-      throw new DuplicateVoteError(vote.roundId, vote.nullifier);
+    if (this.votes.some((v) => v.roundId === vote.roundId && sameVoter(v.voter, vote.voter))) {
+      throw new DuplicateVoteError(vote.roundId, vote.voter);
     }
     this.votes.push(structuredClone(vote));
   }
