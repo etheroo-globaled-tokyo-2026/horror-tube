@@ -15,14 +15,12 @@ import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
 import {
-  armSlot,
   drawPaper,
   enterRoom,
   nextGateStep,
   noOrb,
   paper,
   paperFlag,
-  practiceSlot,
   sign,
   store,
   waiverHooks,
@@ -72,11 +70,7 @@ function hintText(): void {
     ? `${b(num(hovered.id + 1))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
-        ? W8.slot === "judge"
-          ? `JUDGE SCAN ${b("ENTER")}`
-          : W8.slot === null
-            ? `PRACTICE ${b("1-5")} · JUDGE ${b("J")}`
-            : `PRACTICE ${b(String(W8.slot))} ${b("ENTER")}`
+        ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
           ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
           : W8.fail !== ""
@@ -325,7 +319,6 @@ $("#hint").addEventListener("click", (e) => {
   const coin = e.target instanceof Element ? e.target.closest("[data-coin]") : null;
   if (coin instanceof HTMLElement) insertCoin(Number(coin.dataset.coin));
 });
-$("#judge-scan").addEventListener("click", () => armSlot("judge"));
 $("#no-orb").addEventListener("click", noOrb);
 $("#forget").addEventListener("click", () => {
   store((s) => s.removeItem("ht.verified"));
@@ -400,10 +393,7 @@ addEventListener(
     const waiverUp = S.phase === "gate" && W8.step !== "done";
     if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
-      const practice = practiceSlot(k);
-      if (practice !== null) armSlot(practice);
-      else if (k === "j") armSlot("judge");
-      else if (k === "enter" && W8.step === "read") sign();
+      if (k === "enter" && W8.step === "read") sign();
       else if (k === "enter") nextGateStep();
       else if (k === "x") noOrb();
       else return;

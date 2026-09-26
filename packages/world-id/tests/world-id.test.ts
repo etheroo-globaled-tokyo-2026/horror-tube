@@ -14,8 +14,7 @@ import {
   createIdkitRequestContext,
   loadWorldIdEnv,
   parseProofOfHumanResult,
-  actionForSlot,
-  readGateActions,
+  enterRoomAction,
   stakeActionForBattle,
   verifyProofOfHuman,
   voteActionForRound,
@@ -86,30 +85,8 @@ const neverFetch: VerifyFetch = async () => {
   throw new Error("fetch must not be called");
 };
 
-test("gate actions are five practice slots and one judge action", () => {
-  const env = {
-    ...testEnv(),
-    WORLD_ID_PRACTICE_ACTIONS: "a,b,c,d,e",
-    WORLD_ID_JUDGE_ACTION: "judge-scan",
-  };
-  assert.equal(actionForSlot(3, env), "c");
-  assert.equal(actionForSlot("judge", env), "judge-scan");
-  assert.throws(
-    () => readGateActions({ ...env, WORLD_ID_PRACTICE_ACTIONS: undefined }),
-    /WORLD_ID_PRACTICE_ACTIONS is required/,
-  );
-  assert.throws(
-    () => readGateActions({ ...env, WORLD_ID_PRACTICE_ACTIONS: "a,b,c" }),
-    /five comma-separated/,
-  );
-  assert.throws(
-    () => readGateActions({ ...env, WORLD_ID_PRACTICE_ACTIONS: "a,b,c,d,a" }),
-    /five different/,
-  );
-  assert.throws(
-    () => readGateActions({ ...env, WORLD_ID_JUDGE_ACTION: "a" }),
-    /different from the practice/,
-  );
+test("action names are per round and per battle", () => {
+  assert.equal(enterRoomAction(), "enter-room");
   assert.equal(voteActionForRound("7"), "vote-round-7");
   assert.equal(stakeActionForBattle("42"), "stake-battle-42");
   assert.throws(() => voteActionForRound(" "), /roundId is required/);

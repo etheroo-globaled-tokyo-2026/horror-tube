@@ -178,16 +178,6 @@ variable "world_id_environment" {
   type        = string
 }
 
-variable "world_id_practice_actions" {
-  description = "WORLD_ID_PRACTICE_ACTIONS, five comma-separated World ID actions. Set via TF_VAR_world_id_practice_actions from .env. Required; no default."
-  type        = string
-}
-
-variable "world_id_judge_action" {
-  description = "WORLD_ID_JUDGE_ACTION reserved for the judge scan. Set via TF_VAR_world_id_judge_action from .env. Required; no default."
-  type        = string
-}
-
 variable "sui_usdc_type" {
   description = "SUI_USDC_TYPE the /tx allowlist accepts. Set via TF_VAR_sui_usdc_type from .env. Required; no default."
   type        = string

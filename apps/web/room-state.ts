@@ -1,6 +1,5 @@
 import type * as THREE from "three";
 import type { CoinBoxPart, CoinBoxView } from "./coinbox.ts";
-import type { GateSlot } from "./world-id.ts";
 
 export const STAKES = [1, 3, 5];
 
@@ -56,9 +55,8 @@ export type Waiver = {
   ink: number;
   qrUri: string;
   fail: string;
-  slot: GateSlot | null;
 };
-export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "", slot: null };
+export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "" };
 
 export type G = CanvasRenderingContext2D;
 

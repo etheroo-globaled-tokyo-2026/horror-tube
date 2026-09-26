@@ -5,7 +5,6 @@ import {
   fetchEnterRoomRequest,
   startEnterRoomProof,
   verifyEnterRoomProof,
-  type GateSlot,
 } from "./world-id.ts";
 import { openGameWallet } from "./wallet.ts";
 import { sfx } from "./sfx.ts";
@@ -161,27 +160,8 @@ export function step(name: Step): void {
   waiverHooks.hintText();
 }
 let scanAbort: AbortController | null = null;
-export function practiceSlot(key: string): 1 | 2 | 3 | 4 | 5 | null {
-  if (key === "1") return 1;
-  if (key === "2") return 2;
-  if (key === "3") return 3;
-  if (key === "4") return 4;
-  if (key === "5") return 5;
-  return null;
-}
-export function armSlot(slot: GateSlot): void {
-  if (W8.step === "signed" || W8.step === "done") return;
-  scanAbort?.abort();
-  scanAbort = null;
-  W8.qrUri = "";
-  W8.fail = "";
-  W8.ink = 0;
-  W8.slot = slot;
-  paperFlag.drawn = false;
-  step("read");
-}
 export function sign(): void {
-  if (W8.step !== "read" || W8.slot === null) return;
+  if (W8.step !== "read") return;
   step("ink");
   const t0 = performance.now();
   const inkTimer = setInterval(() => {
@@ -192,15 +172,14 @@ export function sign(): void {
   }, 30);
 }
 export async function beginWorldIdScan(): Promise<void> {
-  if ((W8.step !== "ink" && W8.step !== "scan") || W8.slot === null) return;
-  const slot = W8.slot;
+  if (W8.step !== "ink" && W8.step !== "scan") return;
   scanAbort?.abort();
   scanAbort = new AbortController();
   const { signal } = scanAbort;
   W8.qrUri = "";
   step("scan");
   try {
-    const context = await fetchEnterRoomRequest(slot);
+    const context = await fetchEnterRoomRequest();
     if (signal.aborted) return;
     const proof = await startEnterRoomProof(context);
     if (signal.aborted) return;
