@@ -355,13 +355,26 @@ async function findTransferLogStartBlock(
     address,
     birthBlock - 1n,
   );
-  if (!priorAvailable) {
-    console.error(
-      `discover: getBytecode birthBlock=${birthBlock.toString()} is at the RPC state frontier; scanning TransferSingle logs from block 0`,
-    );
-    return 0n;
+  if (priorAvailable) {
+    return birthBlock;
   }
-  return birthBlock;
+
+  console.error(
+    `discover: getBytecode birthBlock=${birthBlock.toString()} is at the RPC state frontier; walking TransferSingle logs backward`,
+  );
+  let start = birthBlock;
+  let cursor = birthBlock;
+  while (cursor > 0n) {
+    const from = cursor > LOG_CHUNK_SIZE ? cursor - LOG_CHUNK_SIZE : 0n;
+    const to = cursor - 1n;
+    const logs = await getLogsChunked(publicClient, address, from, to);
+    if (logs.length === 0) {
+      break;
+    }
+    start = from;
+    cursor = from;
+  }
+  return start;
 }
 
 async function getLogsChunked(
