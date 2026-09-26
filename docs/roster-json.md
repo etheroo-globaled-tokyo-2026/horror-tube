@@ -3,21 +3,21 @@
 Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
 and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
 
-| Command        | Chain?  | Role                                                                 |
-| -------------- | ------- | -------------------------------------------------------------------- |
-| `sections`     | no      | Print Fandom `api.php` section headings as JSON                      |
-| `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
-| `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
-| `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
-| `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
-| `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
-| `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
-| `icons-cache`  | no      | Explicitly regenerate icons from checked-in text and exact saved prompts |
-| `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
-| `wipe`         | **yes** | Unregister every character subname. Does not remove the parent `.eth` name |
-| `redeploy`     | **yes** | Propose the 10 cast fighters, upload icons, and register them |
-| `snapshot-text`| **yes** | Read every registered character's text records into a local JSON backup |
-| `reset-text`   | **yes** | setText those backup fields onto existing subnames (no unregister) |
+| Command         | Chain?  | Role                                                                       |
+| --------------- | ------- | -------------------------------------------------------------------------- |
+| `sections`      | no      | Print Fandom `api.php` section headings as JSON                            |
+| `propose`       | no      | Build roster JSON from Fandom `api.php`                                    |
+| `import`        | no      | Validate JSON and write an import **plan** (`chain_writes: false`)         |
+| `plan-remove`   | no      | Validate labels and write a removal **plan** (`chain_writes: false`)       |
+| `register`      | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`           |
+| `remove`        | **yes** | `UserRegistry.unregister` for each label                                   |
+| `icons`         | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet   |
+| `icons-cache`   | no      | Explicitly regenerate icons from checked-in text and exact saved prompts   |
+| `icons-chain`   | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only)  |
+| `wipe`          | **yes** | Unregister every character subname. Does not remove the parent `.eth` name |
+| `redeploy`      | **yes** | Propose the 10 cast fighters, upload icons, and register them              |
+| `snapshot-text` | **yes** | Read every registered character's text records into a local JSON backup    |
+| `reset-text`    | **yes** | setText those backup fields onto existing subnames (no unregister)         |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
 `icons-chain` / `wipe` / `redeploy` / `snapshot-text` / `reset-text` always hit
@@ -53,16 +53,16 @@ Checked in under `packages/roster/roster/schemas/`:
 
 ### Required fields (every key must be present)
 
-| Key        | Rules                                                                         |
-| ---------- | ----------------------------------------------------------------------------- |
-| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                           |
-| `display_name` | Non-empty human-readable name; never defaulted from `label`               |
+| Key             | Rules                                                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`         | Lowercase DNS label (`a-z0-9` and internal hyphens)                                                                                                           |
+| `display_name`  | Non-empty human-readable name; never defaulted from `label`                                                                                                   |
 | `injury_places` | JSON array of at least one place this character can be injured. `propose` reads `injury_places.json` (issues #11, #12, #13) and fails if the label is missing |
-| `look`     | Non-empty string                                                              |
-| `brief`    | Non-empty string                                                              |
-| `injuries` | String containing a JSON array of non-empty strings; use `"[]"` when unhurt. **Missing key is an error** |
-| `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
-| `icon`     | `""` or an `https://` URL. Missing key is an error                            |
+| `look`          | Non-empty string                                                                                                                                              |
+| `brief`         | Non-empty string                                                                                                                                              |
+| `injuries`      | String containing a JSON array of non-empty strings; use `"[]"` when unhurt. **Missing key is an error**                                                      |
+| `status`        | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default                              |
+| `icon`          | `""` or an `https://` URL. Missing key is an error                                                                                                            |
 
 **Forbidden keys:** `strength`, `intelligence`, `luck`, `role`.
 
@@ -173,6 +173,12 @@ it stops and names the file, label, and field. It does not fall back to
 Fandom, fixtures, or `icon-prompt-cache.json`. Default input path is the same
 checked-in file (override with `--input`).
 
+Before each `setText` it reads the current record. A field whose stored value
+already equals the file value exactly is skipped (`setTextSkip` log line, no
+transaction), so a rerun after a partial failure only sends the missing fields.
+A failed read stops the run and names the label and key. The run ends with a
+`setTextSummary` line of writes sent vs skipped.
+
 ```bash
 # From packages/roster/
 python3 -m roster snapshot-text
@@ -192,6 +198,9 @@ then registers with the bootstrap key and splits `setText` writes:
 - bootstrap (`PRIVATE_KEY`): `display_name`, `injury_places`
 - roster (`ROSTER_PRIVATE_KEY`): `look`, `brief`, `icon`
 - agent (`AGENT_PRIVATE_KEY`): `status`, `injuries` (new names get `alive` / `[]`)
+
+Writes are sent one at a time per key and waited to a receipt. A field whose
+stored value already matches is skipped, same as `reset-text`.
 
 ```bash
 python3 -m roster register --input /tmp/one-character.json
