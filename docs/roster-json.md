@@ -12,6 +12,7 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 | `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
 | `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
 | `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
+| `icons-cache`  | no      | Explicitly regenerate icons from checked-in text and exact saved prompts |
 | `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
@@ -111,6 +112,21 @@ python3 -m roster propose \
 interpreter is Python 3.9, and a backslash inside an f-string expression is a
 SyntaxError there.
 
+To fetch all 10 entries in `roster/cast.json` and update the checked-in prompt
+cache from that same live Fandom run:
+
+```bash
+python3 -m roster propose \
+  --cast \
+  --out /tmp/horror-tube-live-cast.json \
+  --prompt-cache roster/icon-prompt-cache.json
+```
+
+`--prompt-cache` is accepted only with `--cast`. The cache records
+`label`, `display_name`, the unmodified Fandom `look` and `brief`, the exact
+image prompt, and separate look/brief source URLs. It does not call Together,
+Spaces, or ENS.
+
 ### import (plan only)
 
 ```bash
@@ -194,6 +210,10 @@ empty `icon` field with that URL. A local PNG under `--out-dir` is not enough
 to skip; existence is checked on the bucket. Refuses a path under `fixtures`.
 One character failure stops the command.
 
+`face_prompt` removes configured violent terms from the image prompt only, then
+adds explicit no-blood, no-gore, no-wounds, and no-weapons instructions. The
+sheet's `look` remains the full Fandom sentence.
+
 ```bash
 python3 -m roster propose \
   --n 1 \
@@ -212,6 +232,26 @@ python3 -m roster icons \
   --out /tmp/pinhead-with-icon.json \
   --override
 ```
+
+### icons-cache (Together + Spaces, explicit cache use)
+
+The git-tracked cache is
+`packages/roster/roster/icon-prompt-cache.json`. `icons-cache` uses its saved
+text and exact `image_prompt`; it does not fetch Fandom and does not rebuild the
+prompt from `look`. A missing or malformed cache stops before Together or
+Spaces setup and names the cache file.
+
+```bash
+python3 -m roster icons-cache \
+  --cache roster/icon-prompt-cache.json \
+  --out-dir /tmp/horror-tube-icons \
+  --out /tmp/horror-tube-cached-icons.json \
+  --override
+```
+
+Omit `--override` to reuse canonical `<label>.png` objects already in Spaces.
+As with `icons`, `--override` writes `<label>-<unix-seconds>.png` when the
+canonical object exists.
 
 ### icons-chain (Together + Spaces + ENS icon only)
 
