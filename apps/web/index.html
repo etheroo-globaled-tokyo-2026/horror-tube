@@ -165,30 +165,10 @@
         sulfur: V("sulfur"),
         bone: V("bone"),
       };
-      const HINTS = [
-        "Hasn't slept in days.",
-        "Somebody still leaves the porch light on for them.",
-        "Asked us not to call again.",
-        "Keeps something under the pillow.",
-        "Laughs at the wrong moments.",
-        "Was a nice kid once.",
-        "Doesn't talk. Doesn't stop.",
-        "Writes letters nobody answers.",
-        "Knows your name.",
-        "Still owes us.",
-        "Hums when nervous.",
-        "Has been here the longest.",
-        "Came in last week.",
-        "Won't look at the camera.",
-        "Asked about you.",
-        "Sleeps with the light on.",
-      ];
       const STAKES = [0.01, 0.03, 0.05];
       const num = (n) => String(n).padStart(2, "0");
-      const hint = (ch) => HINTS[(ch.id * 7 + 3) % HINTS.length];
+      const known = (ch) => ch.bio.slice(0, 1 + ch.fights);
       const T = {
-        page: 0,
-        pageAt: 0,
         buf: "",
         reveal: -1,
         revealUntil: 0,
@@ -198,6 +178,8 @@
         say: "",
         sayUntil: 0,
         phase: "",
+        held: -1,
+        hover: -1,
       };
 
       const canvas = document.getElementById("view");
@@ -337,6 +319,7 @@
       const pg = paperCanvas.getContext("2d");
       const paperTex = new THREE.CanvasTexture(paperCanvas);
       paperTex.colorSpace = THREE.SRGBColorSpace;
+      paperTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
       const paper = new THREE.Mesh(
         new THREE.PlaneGeometry(0.3, 0.4),
         lambert({ map: paperTex, transparent: true, alphaTest: 0.5 }),
@@ -368,10 +351,12 @@
         g.font = "700 38px Silkscreen";
         g.fillText("HORROR TUBE", 28, 62);
         g.fillStyle = COL.rustDeep;
-        g.font = "700 16px Silkscreen";
-        g.fillText("READ BEFORE YOU WATCH", 28, 90);
+        g.font = "700 20px Silkscreen";
+        g.fillText("READ BEFORE YOU WATCH", 28, 92);
         g.fillStyle = COL.soot;
-        g.font = "24px DotGothic16";
+        g.font = "27px DotGothic16";
+        g.strokeStyle = COL.soot;
+        g.lineWidth = 1.5;
         [
           "I am 18 or older.",
           "I am one person,",
@@ -379,14 +364,17 @@
           "I will watch people die,",
           "and I will bet on it.",
           "I watch at my own risk.",
-        ].forEach((l, i) => g.fillText(l, 28, 140 + i * 34));
+        ].forEach((l, i) => {
+          g.fillText(l, 28, 138 + i * 38);
+          g.strokeText(l, 28, 138 + i * 38);
+        });
         g.fillStyle = COL.soot;
         g.fillRect(28, 402, PW - 56, 3);
         g.font = "700 26px Silkscreen";
         g.fillText("X", 30, 394);
         g.fillStyle = COL.rustDeep;
-        g.font = "700 14px Silkscreen";
-        g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 428);
+        g.font = "700 15px Silkscreen";
+        g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 430);
         if (W8.ink > 0) {
           g.strokeStyle = COL.soot;
           g.lineWidth = 3;
@@ -525,6 +513,195 @@
       );
       const keyById = Object.fromEntries(keys.map((k) => [k.keyId, k]));
 
+      // The resident's tape, held in the left hand. It rises when you type a number.
+      const VW = 320,
+        VH = 544;
+      const tapeCanvas = document.createElement("canvas");
+      tapeCanvas.width = VW;
+      tapeCanvas.height = VH;
+      const tapeTex = new THREE.CanvasTexture(tapeCanvas);
+      tapeTex.colorSpace = THREE.SRGBColorSpace;
+      tapeTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const plastic = lambert({ map: metalTex(COL.soot) });
+      const tape = box(0.2, 0.34, 0.04, [
+        plastic,
+        plastic,
+        plastic,
+        plastic,
+        basic({ map: tapeTex }),
+        plastic,
+      ]);
+      tape.rotation.set(-0.12, 0.26, 0.06);
+      camera.add(tape);
+      const TAPE = { key: "", id: -1, at: 0, up: 0 };
+      function drawTape(ch) {
+        const g = tapeCanvas.getContext("2d"),
+          hue = V(ch.hue),
+          seen = ch.fights > 0;
+        g.textBaseline = "alphabetic";
+        g.fillStyle = COL.soot;
+        g.fillRect(0, 0, VW, VH);
+        g.strokeStyle = hue;
+        g.lineWidth = 8;
+        g.strokeRect(4, 4, VW - 8, VH - 8);
+        g.fillStyle = hue;
+        g.fillRect(0, 0, VW, 44);
+        g.fillStyle = COL.soot;
+        g.textAlign = "left";
+        g.font = "700 20px Silkscreen";
+        g.fillText("HORROR TUBE", 16, 30);
+        g.textAlign = "right";
+        g.fillText(num(ch.id + 1), VW - 16, 30);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(avatar(ch), VW / 2 - 70, 56, 140, 140);
+        g.textAlign = "center";
+        g.fillStyle = COL.bone;
+        g.font = "28px DotGothic16";
+        g.fillText(ch.name, VW / 2, 232);
+        g.fillStyle = COL.sulfur;
+        g.font = "700 16px Silkscreen";
+        g.fillText(
+          seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??",
+          VW / 2,
+          262,
+        );
+        CAPS[ch.kind].forEach((cap, i) => {
+          const y = 280 + i * 28,
+            gone = i >= 3 - ch.lost;
+          g.fillStyle = gone ? COL.grime : COL.bone;
+          g.fillRect(24, y, VW - 48, 22);
+          g.fillStyle = COL.soot;
+          g.fillText(cap.toUpperCase(), VW / 2, y + 17);
+          if (gone) g.fillRect(34, y + 10, VW - 68, 2);
+        });
+        g.textAlign = "left";
+        g.fillStyle = COL.rust;
+        g.font = "700 14px Silkscreen";
+        g.fillText("CASE FILE", 24, 390);
+        g.font = "20px DotGothic16";
+        ch.bio.forEach((line, i) => {
+          const y = 418 + i * 28;
+          if (i < 1 + ch.fights) {
+            g.fillStyle = COL.bone;
+            g.fillText(line, 24, y);
+          } else {
+            g.fillStyle = COL.grime;
+            g.fillRect(24, y - 16, 150 + ((i * 53) % 90), 18);
+          }
+        });
+        g.textAlign = "center";
+        g.fillStyle = COL.grime;
+        g.font = "700 12px Silkscreen";
+        g.fillText("BE KIND · REWIND", VW / 2, VH - 18);
+        if (!ch.alive) {
+          g.save();
+          g.translate(VW / 2, 150);
+          g.rotate(-0.2);
+          g.strokeStyle = g.fillStyle = COL.blood;
+          g.lineWidth = 4;
+          g.strokeRect(-110, -28, 220, 48);
+          g.font = "700 28px Silkscreen";
+          g.fillText("DECEASED", 0, 8);
+          g.restore();
+        }
+        tapeTex.needsUpdate = true;
+      }
+      function tapeResident() {
+        if (S.phase === "gate") return null;
+        if (S.phase === "vote" && !S.cast) {
+          if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal];
+          if (T.buf.length === 2) return S.chars[+T.buf - 1] || null;
+        }
+        return S.chars[T.held] || null;
+      }
+
+      // The shelf: every resident's tape stands on top of the TV, cover out.
+      // A dead resident's tape turns around. Click a tape to hold it.
+      const deadBack = tex(36, 56, (g, w, h) => {
+        g.fillStyle = COL.soot;
+        g.fillRect(0, 0, w, h);
+        g.strokeStyle = COL.blood;
+        g.lineWidth = 4;
+        g.beginPath();
+        g.moveTo(8, 16);
+        g.lineTo(w - 8, h - 16);
+        g.moveTo(w - 8, 16);
+        g.lineTo(8, h - 16);
+        g.stroke();
+      });
+      const shelf = CAST.map((_, i) => {
+        const c = document.createElement("canvas");
+        c.width = 72;
+        c.height = 112;
+        const t = new THREE.CanvasTexture(c);
+        t.magFilter = t.minFilter = THREE.NearestFilter;
+        t.colorSpace = THREE.SRGBColorSpace;
+        const m = box(0.09, 0.14, 0.025, [
+          plastic,
+          plastic,
+          plastic,
+          plastic,
+          basic({ map: t }),
+          basic({ map: deadBack }),
+        ]);
+        m.userData = { i, canvas: c, tex: t, key: "", out: 0, turn: 0 };
+        m.position.set((i - (CAST.length - 1) / 2) * 0.1, 1.59, -1.12);
+        m.rotation.x = -0.1;
+        scene.add(m);
+        return m;
+      });
+      function drawSpine(m, ch) {
+        const g = m.userData.canvas.getContext("2d"),
+          hue = V(ch.hue);
+        g.fillStyle = COL.soot;
+        g.fillRect(0, 0, 72, 112);
+        g.fillStyle = hue;
+        g.fillRect(0, 0, 72, 22);
+        g.fillRect(0, 100, 72, 12);
+        g.fillStyle = COL.soot;
+        g.font = "700 16px Silkscreen";
+        g.textAlign = "center";
+        g.fillText(num(ch.id + 1), 36, 17);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(avatar(ch), 4, 28, 64, 64);
+        m.userData.tex.needsUpdate = true;
+      }
+      function updateShelf(shown) {
+        shelf.forEach((m) => {
+          const ch = S.chars[m.userData.i],
+            d = m.userData;
+          m.visible = S.phase !== "gate" && !!ch && shown !== ch;
+          if (!ch) return;
+          const key = ch.id + ch.hue;
+          if (d.key !== key) drawSpine(m, ch);
+          d.key = key;
+          const out = T.hover === d.i ? 1 : 0,
+            turn = ch.alive ? 0 : 1;
+          d.out = LOW ? out : d.out + (out - d.out) * 0.2;
+          d.turn = LOW ? turn : d.turn + (turn - d.turn) * 0.08;
+          m.position.y = 1.59 + d.out * 0.02;
+          m.position.z = -1.12 + d.out * 0.05;
+          m.rotation.y = d.turn * Math.PI;
+        });
+      }
+      function updateTape(now) {
+        const ch = tapeResident();
+        updateShelf(ch);
+        if (ch) {
+          const key = [ch.id, ch.alive, ch.fights, ch.kills, ch.damage, ch.lost].join();
+          if (ch.id !== TAPE.id) TAPE.at = now;
+          if (key !== TAPE.key) drawTape(ch);
+          TAPE.key = key;
+          TAPE.id = ch.id;
+        }
+        const up = ch ? 1 : 0;
+        TAPE.up = LOW ? up : TAPE.up + (up - TAPE.up) * 0.12;
+        const flip = LOW ? 1 : Math.min(1, (now - TAPE.at) / 380);
+        tape.visible = TAPE.up > 0.01;
+        tape.position.set(-0.34, -0.48 + TAPE.up * 0.48, -0.62);
+        tape.rotation.y = 0.26 + Math.PI * (1 - flip) * (1 - flip);
+      }
+
       const video = document.createElement("video");
       video.src = DEMO.video;
       video.playsInline = true;
@@ -607,13 +784,21 @@
           );
         } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
       }
-      const guidePage = (now) => (T.page + Math.floor((now - T.pageAt) / 5000)) % 2;
+      const avatars = new Map();
+      const avatar = (ch) => {
+        const key = ch.id + (ch.alive ? "" : "x");
+        if (!avatars.has(key)) {
+          const cv = document.createElement("canvas");
+          HT.portrait(cv, ch.kind, V(ch.hue), { dead: !ch.alive });
+          avatars.set(key, cv);
+        }
+        return avatars.get(key);
+      };
       function drawGuide(now) {
         const g = tvCtx,
           W = TW,
           H = TH,
-          top = 236,
-          page = guidePage(now);
+          top = 236;
         g.fillStyle = COL.soot;
         g.fillRect(0, 0, W, H);
         const film = document.getElementById("film");
@@ -647,41 +832,36 @@
         g.fillRect(0, top, W, 32);
         g.fillStyle = COL.soot;
         g.textAlign = "left";
-        g.font = "700 18px Silkscreen";
+        g.font = "700 20px Silkscreen";
         g.fillText(S.cast ? "GOOD NIGHT." : "TONIGHT'S RESIDENTS", 16, top + 23);
         g.textAlign = "right";
-        g.fillText(
-          S.cast ? "YOUR PICKS ARE IN" : `TYPE A NUMBER · ${page + 1}/2`,
-          W - 16,
-          top + 23,
-        );
-        for (let i = 0; i < 16; i++) {
-          const ch = S.chars[page * 16 + i];
-          if (!ch) continue;
-          const x = i < 8 ? 12 : W / 2 + 6,
-            y = top + 32 + (i % 8) * 26,
+        g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
+        S.chars.forEach((ch, i) => {
+          const x = i < 5 ? 12 : W / 2 + 6,
+            y = top + 34 + (i % 5) * 42,
             mine = S.picks.includes(ch.id);
           if (mine) {
             g.fillStyle = COL.bone;
-            g.fillRect(x - 6, y + 2, W / 2 - 12, 24);
+            g.fillRect(x - 6, y, W / 2 - 12, 40);
           }
+          g.imageSmoothingEnabled = false;
+          g.drawImage(avatar(ch), x, y + 2, 36, 36);
           g.textAlign = "left";
           g.font = "700 20px Silkscreen";
           g.fillStyle = !ch.alive ? COL.grime : mine ? COL.soot : COL.sulfur;
-          g.fillText(num(ch.id + 1), x, y + 22);
+          g.fillText(num(ch.id + 1), x + 44, y + 28);
           g.font = "22px DotGothic16";
           g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-          g.fillText(ch.name, x + 44, y + 22);
+          g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28);
           if (!ch.alive) {
             g.fillStyle = COL.rust;
-            g.fillRect(x + 42, y + 14, g.measureText(ch.name).width + 4, 2);
+            g.fillRect(x + 86, y + 20, g.measureText(ch.name).width + 4, 2);
           }
           if (mine) {
-            g.textAlign = "right";
-            g.font = "700 16px Silkscreen";
-            g.fillText("✓ PICKED", x + W / 2 - 22, y + 21);
+            g.font = "700 12px Silkscreen";
+            g.fillText("✓ PICKED", x + 88, y + 37);
           }
-        }
+        });
       }
 
       const wrap = (g, text, x, y, maxW, lh) => {
@@ -817,7 +997,7 @@
             else {
               g.font = "30px DotGothic16";
               g.fillStyle = COL.bone;
-              wrap(g, `“${hint(ch)}”`, W / 2, 262, W - 100, 38);
+              wrap(g, `“${known(ch).at(-1)}”`, W / 2, 262, W - 100, 38);
               text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
             }
           }
@@ -910,7 +1090,7 @@
         if (S.phase !== "gate") {
           g.globalAlpha = 0.8;
           g.textAlign = "right";
-          g.font = "700 18px Silkscreen";
+          g.font = "700 20px Silkscreen";
           g.fillStyle = S.phase === "bet" && S.view === 1 ? COL.soot : COL.bone;
           g.fillText(`${living().length} LEFT · Ξ ${S.credit.toFixed(3)}`, W - 24, 40);
           g.globalAlpha = 1;
@@ -949,7 +1129,7 @@
                 ? `Scan the code on the TV with ${b("World App")}. Orb only.`
                 : ""
             : S.phase === "vote" && !S.cast
-              ? `Type a resident number ${b("0–9")}, then ${b("OK")}. You pick two. ${b("VOL ±")} flips the guide.`
+              ? `Click a tape to read it. Type its number, then ${b("OK")}. You pick two.`
               : S.phase === "bet" && !S.bet && S.credit > 0
                 ? `${b("VOL ±")} changes your stake. ${b("Hold A or B")} to bet.`
                 : S.claim
@@ -973,16 +1153,13 @@
             T.reveal = -1;
             T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
           }
-        } else if (id === "clr") T.buf = "";
-        else if (id === "ok") ok();
+        } else if (id === "clr") {
+          T.buf = "";
+          T.held = -1;
+        } else if (id === "ok") ok();
         else if (id === "+" || id === "-") {
           if (S.phase === "bet" && !S.bet)
             T.stake = Math.max(0, Math.min(2, T.stake + (id === "+" ? 1 : -1)));
-          else if (S.phase === "vote") {
-            T.page = (guidePage(performance.now()) + 1) % 2;
-            T.pageAt = performance.now();
-            T.buf = "";
-          }
         }
         hintText();
       }
@@ -1037,6 +1214,13 @@
         if (!remote.visible) return null;
         const h = ray.intersectObjects(keys, false)[0];
         return h ? h.object.keyId : null;
+      };
+      const onShelf = (e) => {
+        if (S.phase === "gate") return null;
+        ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+        ray.setFromCamera(ndc, camera);
+        const h = ray.intersectObjects([...shelf.filter((m) => m.visible), tape], false)[0];
+        return h ? h.object : null;
       };
       const onPaper = (e) => {
         if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
@@ -1108,10 +1292,19 @@
       const look = new THREE.Vector2();
       addEventListener("pointermove", (e) => {
         look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-        canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e));
+        const hit = onShelf(e);
+        T.hover = hit && hit !== tape ? hit.userData.i : -1;
+        canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e) || !!hit);
       });
       canvas.addEventListener("pointerdown", (e) => {
         if (onPaper(e)) return sign();
+        const hit = onShelf(e);
+        if (hit) {
+          T.buf = "";
+          T.reveal = -1;
+          T.held = hit === tape ? -1 : hit.userData.i;
+          return hintText();
+        }
         const id = hitAt(e);
         if (!id) return;
         if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
@@ -1156,22 +1349,26 @@
 
       const clock = new THREE.Clock();
       let lastPaint = 0;
+      let gaze = 0;
       renderer.setAnimationLoop(() => {
         const t = clock.getElapsedTime();
         const waiver = S.phase === "gate" && W8.step !== "done";
         const dark = waiver && W8.step === "dark";
         if (waiver) {
           camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
-          camera.lookAt(look.x * 0.06, 0.78 - look.y * 0.04, -0.98);
+          const up = W8.step === "scan" ? 1 : 0;
+          gaze = LOW ? up : gaze + (up - gaze) * 0.06;
+          camera.lookAt(look.x * 0.06, 0.78 + gaze * 0.36 - look.y * 0.04, -0.98 - gaze * 0.42);
         } else {
           camera.position.set(
             0.1 + Math.sin(t * 0.6) * 0.008,
             1.2 + Math.sin(t * 1.0) * 0.006,
             0.28,
           );
-          camera.lookAt(0.16 + look.x * 0.12, 1.02 - look.y * 0.06, -1.4);
+          camera.lookAt(0.16 + look.x * 0.12, 1.15 - look.y * 0.06, -1.4);
         }
         remote.visible = !waiver;
+        updateTape(performance.now());
         $("#demo-room").hidden = S.phase === "gate";
         $("#demo-gate").hidden = S.phase !== "gate" || dark;
         $("#no-orb").hidden = !waiver;
@@ -1222,6 +1419,7 @@
       };
       document.fonts.ready.then(() => {
         paper.drawn = false;
+        TAPE.key = "";
         drawTV();
       });
       if (store((s) => s.getItem("ht.verified")) === "1") enterWallet();

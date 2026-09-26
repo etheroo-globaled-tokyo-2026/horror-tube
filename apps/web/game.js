@@ -25,38 +25,66 @@ const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.ceil(s) % 60).padStart(
 
 const HUES = ["blood", "cold", "rust"];
 const CAST = [
-  ["Jason Voorhees", "jason", "mask"],
-  ["Laurie Strode", "laurie", "hair"],
-  ["Freddy Krueger", "freddy", "hat"],
-  ["Michael Myers", "michael", "blank"],
-  ["Nancy Thompson", "nancy", "pony"],
-  ["Leatherface", "leatherface", "leather"],
-  ["Chucky", "chucky", "doll"],
-  ["Ellen Ripley", "ripley", "short"],
-  ["Pinhead", "pinhead", "pins"],
-  ["Ghostface", "ghostface", "ghost"],
-  ["Ash Williams", "ash", "chin"],
-  ["Pennywise", "pennywise", "clown"],
-  ["Candyman", "candyman", "hook"],
-  ["Sidney Prescott", "sidney", "hair"],
-  ["Samara", "samara", "girl"],
-  ["Van Helsing", "vanhelsing", "straw"],
-  ["Annabelle", "annabelle", "doll"],
-  ["Art the Clown", "art", "clown"],
-  ["Lorraine Warren", "lorraine", "cross"],
-  ["Victor Crowley", "victor", "leather"],
-  ["The Creeper", "creeper", "hat"],
-  ["Ed Warren", "ed", "cross"],
-  ["Kayako", "kayako", "girl"],
-  ["Hannibal Lecter", "hannibal", "blank"],
-  ["Alice Hardy", "alice", "pony"],
-  ["Frankenstein", "frankenstein", "chin"],
-  ["Jigsaw", "jigsaw", "doll"],
-  ["Tommy Jarvis", "tommy", "short"],
-  ["Count Dracula", "dracula", "blank"],
-  ["Esther", "esther", "girl"],
-  ["Kirsty Cotton", "kirsty", "hair"],
-  ["Dr. Loomis", "loomis", "chin"],
+  [
+    "Jason Voorhees",
+    "jason",
+    "mask",
+    ["Drowned at camp. Came back.", "Never runs. Always arrives.", "The lake still wants him."],
+  ],
+  [
+    "Freddy Krueger",
+    "freddy",
+    "hat",
+    ["Visits while you sleep.", "Wears the same sweater.", "Hates the smell of coffee."],
+  ],
+  [
+    "Leatherface",
+    "leatherface",
+    "leather",
+    ["Family man. Big family.", "Wears what he can find.", "The saw is always warm."],
+  ],
+  [
+    "Chucky",
+    "chucky",
+    "doll",
+    ["Small. Loud. Sharp.", "Someone else lives inside.", "Wants a new body. Yours."],
+  ],
+  [
+    "Pinhead",
+    "pinhead",
+    "pins",
+    ["Came when the box opened.", "Calls pain a gift.", "Speaks very politely."],
+  ],
+  [
+    "Ghostface",
+    "ghostface",
+    "ghost",
+    ["Likes scary movies.", "Could be anyone. Often is.", "Always calls first."],
+  ],
+  [
+    "Pennywise",
+    "pennywise",
+    "clown",
+    ["Lives under the town.", "Wakes every 27 years.", "Knows what scares you."],
+  ],
+  [
+    "Samara",
+    "samara",
+    "girl",
+    ["Lived at the bottom of a well.", "Watch the tape. Get a call.", "Seven days. Count them."],
+  ],
+  [
+    "Frankenstein",
+    "frankenstein",
+    "chin",
+    ["Stitched from many men.", "Afraid of fire.", "Wanted a friend. Killed one."],
+  ],
+  [
+    "Count Dracula",
+    "dracula",
+    "blank",
+    ["Old money. Old country.", "No reflection in mirrors.", "Only enters if invited."],
+  ],
 ];
 const CAPS = {
   mask: ["machete", "regrowth", "silence"],
@@ -67,14 +95,8 @@ const CAPS = {
   pins: ["chains", "the box", "pain"],
   ghost: ["knife", "phone call", "the mask"],
   clown: ["shapeshift", "fear feed", "sewers"],
-  hook: ["hook", "bees", "the mirror"],
   girl: ["the tape", "the well", "seven days"],
-  hair: ["kitchen knife", "run", "survive"],
-  pony: ["traps", "stay awake", "nerve"],
-  short: ["flamethrower", "motion tracker", "nerve"],
   chin: ["chainsaw hand", "boomstick", "one-liners"],
-  straw: ["stakes", "crossbow", "holy water"],
-  cross: ["crucifix", "faith", "research"],
 };
 const DEMO = {
   a: CAST.findIndex((c) => c[1] === "frankenstein"),
@@ -142,13 +164,15 @@ const note = (text, kind = "") => {
 };
 
 function newSeason() {
-  S.chars = CAST.map(([name, handle, kind], id) => ({
+  S.chars = CAST.map(([name, handle, kind, bio], id) => ({
     id,
     name,
     short: name.split(" ").at(-1).toUpperCase(),
     ens: handle + ".horrortube.eth",
     hue: HUES[id % 3],
     kind,
+    bio,
+    fights: 0,
     alive: true,
     kills: 0,
     damage: 0,
@@ -209,6 +233,8 @@ function startSettle() {
   const w = S.chars[S.fighters[S.winner]],
     l = S.chars[S.fighters[1 - S.winner]];
   l.alive = false;
+  w.fights++;
+  l.fights++;
   w.kills++;
   w.damage = Math.min(95, w.damage + S.dmg);
   const lost = (w.damage >= 67 ? 2 : w.damage >= 34 ? 1 : 0) - w.lost;
@@ -440,11 +466,6 @@ const pipbar = () =>
   `<p class="pipbar">LIVING <b>${living().length}</b> OF ${S.chars.length}<span class="pips-row" aria-hidden="true">${S.chars
     .map((ch) => `<i class="${ch.alive ? ch.hue : "dead"}"></i>`)
     .join("")}</span></p>`;
-const recs = (ch) => `<dl class="recs">
-  <dt>status</dt><dd class="${ch.alive ? "t-alive" : "t-dead"}">${ch.alive ? "alive" : "dead"}</dd>
-  <dt>kills</dt><dd>${ch.kills}</dd>
-  <dt>damage</dt><dd class="${ch.damage ? "t-dead" : ""}">${ch.damage}</dd>
-  <dt>capabilities</dt><dd>${CAPS[ch.kind].map((cap, i) => (i < 3 - ch.lost ? cap : `<s class="t-dead">${cap}</s>`)).join(", ")}</dd></dl>`;
 
 function gate(step) {
   const g = $("#gate");
