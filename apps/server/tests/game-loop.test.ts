@@ -8,7 +8,7 @@ import {
 } from "@horror-tube/fight/battle-queue";
 
 import type { BattleBettingPorts } from "../src/battle-betting.js";
-import type { FightJobRequest, FightJobResult } from "../src/fight-job.js";
+import type { FightJobRequest, FightJobResult, FightJobRunner } from "../src/fight-job.js";
 import {
   readGameLoopConfig,
   readRosterEnsLabels,
@@ -1375,5 +1375,95 @@ describe("stored vote and tally", () => {
     await closing;
     assert.equal(loop.getState().phase, "bet");
     assert.equal(store.votes.length, 1);
+  });
+});
+
+describe("chain call retries", () => {
+  function retryLoop(
+    overrides: {
+      chainWritePorts?: ChainWritePorts;
+      battleBetting?: BattleBettingPorts;
+      fightJob?: FightJobRunner;
+    } = {},
+  ) {
+    const clock = { now: 0 };
+    const deps = unusedSettleDeps();
+    let n = 0;
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => clock.now,
+      randomInt: pickFirst,
+      battleQueueStore: deps.battleQueueStore,
+      roundStore: deps.roundStore,
+      chainWritePorts: overrides.chainWritePorts ?? deps.chainWritePorts,
+      battleBetting: overrides.battleBetting ?? deps.battleBetting,
+      fightJob: overrides.fightJob ?? deps.fightJob,
+      verifyWorldId: async () => {
+        n += 1;
+        return { nullifier: `retry-${String(n)}` };
+      },
+    });
+    return { loop, clock, deps };
+  }
+
+  async function openStageOneBout(loop: GameLoop, clock: { now: number }): Promise<void> {
+    await loop.vote({}, [0, 1]);
+    clock.now += 1_000;
+    await loop.tick(clock.now);
+  }
+
+  async function readyAlphaWin(loop: GameLoop): Promise<void> {
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "retry-row" }));
+    loop.setOutcome(0, 0);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await startPlayback(loop);
+  }
+
+  it("a retried settle holds the round until it finishes and keeps its error on that bout", async () => {
+    const pending = { reject: (_cause: Error): void => {} };
+    let writeStatus = async (): Promise<string> => {
+      throw new Error("rpc timeout on status write");
+    };
+    const { loop, clock, deps } = retryLoop({
+      chainWritePorts: {
+        writeWinnerInjuries: async () => "0xinjuries",
+        writeLoserStatusDead: () => writeStatus(),
+        settleBattle: async () => "0xsettle",
+      },
+    });
+    await openStageOneBout(loop, clock);
+    await readyAlphaWin(loop);
+    clock.now += 1_000;
+    await loop.tick(clock.now);
+    clock.now += 1;
+    await loop.tick(clock.now);
+    assert.match(loop.getState().error ?? "", /rpc timeout on status write/u);
+
+    writeStatus = () =>
+      new Promise<string>((_resolve, reject) => {
+        pending.reject = reject;
+      });
+    const retry = loop.retrySettle();
+    await flushFightJob();
+    clock.now += 60_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "settle", "tick must not start the next bout mid-retry");
+    await assert.rejects(() => loop.retrySettle(), /already running/u);
+
+    pending.reject(new Error("rpc timeout on the retry"));
+    await retry;
+    const state = loop.getState();
+    assert.equal(state.round, 1);
+    assert.equal(state.phase, "settle");
+    assert.match(state.error ?? "", /rpc timeout on the retry/u);
+    assert.equal(deps.betCalls.filter((c) => c.startsWith("open:")).length, 1);
   });
 });

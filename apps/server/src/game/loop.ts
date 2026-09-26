@@ -226,19 +226,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "fight" && this.endsAt !== null && now >= this.endsAt) {
-      this.settleInFlight = true;
-      try {
-        await this.enterSettle(now);
-      } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        console.error(`ENS settle failed: ${message}`);
-        this.error = message;
-        this.endsAt = null;
-        this.emit();
-        throw cause;
-      } finally {
-        this.settleInFlight = false;
-      }
+      await this.runSettle(now);
       return;
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
@@ -767,6 +755,11 @@ export class GameLoop {
   }
 
   async retrySettle(): Promise<void> {
+    if (this.settleInFlight) {
+      throw new Error(
+        `retrySettle refused: a settle is already running for round ${String(this.round)}.`,
+      );
+    }
     if (this.error === null) {
       throw new Error(
         "retrySettle requires a failed settle. Current error is empty.",
@@ -778,7 +771,23 @@ export class GameLoop {
       );
     }
     this.error = null;
-    await this.enterSettle(this.now());
+    await this.runSettle(this.now());
+  }
+
+  private async runSettle(now: number): Promise<void> {
+    this.settleInFlight = true;
+    try {
+      await this.enterSettle(now);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`ENS settle failed (round ${String(this.round)}): ${message}`);
+      this.error = message;
+      this.endsAt = null;
+      this.emit();
+      throw cause;
+    } finally {
+      this.settleInFlight = false;
+    }
   }
 
   private async enterSettle(now: number): Promise<void> {
