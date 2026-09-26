@@ -19,18 +19,9 @@ import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import {
-  T,
-  Z,
-  W8,
-  LOW,
-  num,
-  say,
-  walkRef,
-  type WalkStep,
-} from "./room-state.ts";
+import { T, Z, W8, LOW, say, walkRef, type WalkStep } from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
-import { typedFighterId, typedStake } from "./typed-fighter.ts";
+import { roomNumber, typedFighterId, typedStake } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -73,7 +64,13 @@ function hintText(): void {
   const credit = `${usd(coinBox.credit())} USDC`;
   const waiting = coinBox.waiting();
   const collect =
-    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · COLLECT ${b("OK")}` : "";
+    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · ${b("COLLECT")}` : "";
+  const bookingId = typedFighterId(T.buf, S.selectable);
+  const booking = bookingId === null ? undefined : S.chars[bookingId];
+  const open = (choose: string): string =>
+    booking === undefined
+      ? `${choose} ${b("0–9")}${collect}`
+      : `OPEN ${b(roomNumber(booking.id))} ${booking.short}`;
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.at === "sticker"
@@ -105,7 +102,7 @@ function hintText(): void {
     return;
   }
   h.innerHTML = hovered
-    ? `${b(num(hovered.id + 1))} ${hovered.name}`
+    ? `${b(roomNumber(hovered.id))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
@@ -124,21 +121,23 @@ function hintText(): void {
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" || S.phase === "countdown"
         ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
-        : S.phase === "waiting" || S.phase === "over" || S.phase === "pick"
-          ? `TYPE THE NUMBER · OK${collect}`
-        : S.phase === "bet" && !S.bet && S.poolId === null
-          ? "OPENING THE BOOK"
-          : S.pending === "bet"
-            ? "RECORDING YOUR BET…"
-            : S.pending === "claim"
-              ? "COLLECTING…"
-              : S.phase === "bet" && !S.bet && S.credit > 0
-                ? `${b("A")} OR ${b("B")} · TYPE THE AMOUNT · ${b("OK")}`
-                : S.claim
-                  ? `COLLECT ${b("OK")}`
-                  : S.credit <= 0
-                      ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                      : `NEXT ${b("N")}`;
+        : S.phase === "waiting" || S.phase === "over"
+          ? open("CHOOSE A ROOM")
+          : S.phase === "pick"
+            ? open("CHOOSE WHO IS NEXT")
+            : S.phase === "bet" && !S.bet && S.poolId === null
+              ? "OPENING THE BOOK"
+              : S.pending === "bet"
+                ? "RECORDING YOUR BET…"
+                : S.pending === "claim"
+                  ? "COLLECTING…"
+                  : S.phase === "bet" && !S.bet && S.credit > 0
+                    ? `${b("A")} OR ${b("B")} · TYPE THE AMOUNT`
+                    : S.claim
+                      ? b("COLLECT")
+                      : S.credit <= 0
+                        ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                        : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -155,7 +154,7 @@ function press(id: string): void {
   if (/^\d$/.test(id)) {
     T.held = -1;
     if (S.phase === "bet" && !S.bet && S.pending === null) T.buf = (T.buf + id).slice(0, 6);
-    else T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
+    else T.buf = id;
   } else if (id === "clr") {
     T.buf = "";
     T.held = -1;
@@ -235,7 +234,7 @@ function placeTypedBet(): void {
   const amt = typedStake(T.buf);
   if (amt === null) {
     sfx.deny();
-    return say("Type the amount, then OK.");
+    return say("Type the amount.");
   }
   if (amt > S.credit) {
     sfx.deny();
@@ -373,7 +372,11 @@ const WALK: WalkStep[] = [
     view: () => coinBox.view("meter"),
     remote: false,
   },
-  { say: "EXPECTING A SURVIVOR? PRESS A OR B, TYPE THE AMOUNT, THEN OK.", view: () => null, remote: true },
+  {
+    say: "EXPECTING A SURVIVOR? PRESS A OR B, THEN TYPE THE AMOUNT.",
+    view: () => null,
+    remote: true,
+  },
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
