@@ -100,7 +100,7 @@ betting, humans and house bots vote for who they think will win. The winner stay
   `POST /retry-settle` runs the pending steps again.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and OK starts a new season through
-  `POST /start`.
+  `POST /start`. A failed video also ends at `over`; it does not start another season by itself.
 
 ## Video continuity
 
