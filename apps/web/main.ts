@@ -600,10 +600,8 @@ hooks.render = () => {
   renderPlaceholders();
   if (S.phase === "gate") return hintText();
   if (T.phase !== S.phase) {
-    const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && S.phase === "countdown") say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();
