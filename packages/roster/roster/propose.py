@@ -142,9 +142,9 @@ def load_cast() -> list[dict[str, Any]]:
         raw = json.loads(_CAST_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise FandomError(f"Failed to read cast {_CAST_PATH}: {exc}") from exc
-    if not isinstance(raw, list) or len(raw) != 12:
+    if not isinstance(raw, list) or len(raw) != 10:
         raise FandomError(
-            f"{_CAST_PATH.name} must be a list of 12 fighters. Got {type(raw).__name__} "
+            f"{_CAST_PATH.name} must be a list of 10 fighters. Got {type(raw).__name__} "
             f"length {len(raw) if isinstance(raw, list) else 'n/a'}."
         )
     return raw
