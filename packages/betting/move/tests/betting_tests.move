@@ -224,6 +224,50 @@ fun settling_before_betting_closes_aborts() {
     abort
 }
 
+#[test, expected_failure(abort_code = betting::EPoolNotOpen, location = betting)]
+fun settling_a_settled_pool_aborts() {
+    let (mut scenario, mut clock) = setup();
+    let pool = open(&mut scenario, &clock, 1);
+    clock.increment_for_testing(WINDOW);
+    settle(&mut scenario, &clock, pool, 0);
+    settle(&mut scenario, &clock, pool, 1);
+    abort
+}
+
+#[test, expected_failure(abort_code = betting::EPoolNotOpen, location = betting)]
+fun cancelling_a_settled_pool_aborts() {
+    let (mut scenario, mut clock) = setup();
+    let pool = open(&mut scenario, &clock, 1);
+    clock.increment_for_testing(WINDOW);
+    settle(&mut scenario, &clock, pool, 0);
+    cancel(&mut scenario, pool);
+    abort
+}
+
+#[test, expected_failure(abort_code = betting::EWrongHouse, location = betting)]
+fun an_operator_cannot_settle_another_houses_pool() {
+    let (mut scenario, mut clock) = setup();
+    let house_id = ts::most_recent_id_shared<House<TEST_USDC>>().destroy_some();
+    scenario.next_tx(ADMIN);
+    let admin = scenario.take_from_sender<AdminCap>();
+    betting::create_house<TEST_USDC>(&admin, FEE_BPS, MIN_BET, SPONSOR, scenario.ctx());
+    scenario.next_tx(ADMIN);
+    let mut other = scenario.take_shared<House<TEST_USDC>>();
+    let other_cap = other.issue_operator_cap(&admin, scenario.ctx());
+    let pool = other.open_pool(&other_cap, b"1".to_string(), clock.timestamp_ms() + WINDOW, &clock);
+    transfer::public_transfer(other_cap, ADMIN);
+    ts::return_shared(other);
+    scenario.return_to_sender(admin);
+    clock.increment_for_testing(WINDOW);
+
+    scenario.next_tx(OPERATOR);
+    let mut house = scenario.take_shared_by_id<House<TEST_USDC>>(house_id);
+    let mut pool = scenario.take_shared_by_id<Pool<TEST_USDC>>(pool);
+    let cap = scenario.take_from_sender<OperatorCap>();
+    house.settle(&cap, &mut pool, 0, &clock);
+    abort
+}
+
 #[test]
 fun cancelled_and_one_sided_pools_refund_every_stake_without_fee() {
     let (mut scenario, mut clock) = setup();
