@@ -12,7 +12,7 @@ Smallest ENS text set for a video LLM (not vision). Not product copy.
 | `status`   | `agent.horrortube.eth` on death    | yes\*    | `dead` removes the name from selection. |
 | `icon`     | roster key at import               | no       | HTTPS URL string to the CDN portrait. |
 
-\*Empty at import: `injuries` blank means unhurt; `status` blank or non-`dead` means selectable (still must be `REGISTERED`).
+\*At import: `injuries` blank means unhurt; `status` is `alive`. `dead` removes the name from selection (the name must still be `REGISTERED`). `""` is only for names written before `alive` was the default.
 
 Drop: `strength`, `intelligence`, `luck`, `role`. Do not store bets, odds, HP, or numeric combat stats on ENS.
 
@@ -32,7 +32,7 @@ Replaced after each win with the current damage the winner carries. Empty when u
 
 ### `status`
 
-Only meaningful value for selection: `dead`. Omit from the render prompt for living fighters.
+New imports store `alive`. `dead` removes the name from selection. Omit `status` from the render prompt for living fighters.
 
 ## Icon (CDN URL on ENS)
 
