@@ -18,7 +18,7 @@ import {
   type InHand,
 } from "./room-shelf.ts";
 import { tv, video } from "./room-tv.ts";
-import { boutNumber, fitFont, lines, LOW, num, reelById, VCR, wrap, type G } from "./room-state.ts";
+import { boutNumber, fitFont, lines, LOW, reelById, VCR, wrap, type G } from "./room-state.ts";
 
 let asked = 0;
 export function refreshTapes(): void {
@@ -190,7 +190,7 @@ function drawSpine(reel: Reel, t: Tape): void {
   g.font = "700 16px Silkscreen";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(num(boutNumber(t)), 19, h / 2 + 1);
+  g.fillText(boutNumber(t), 19, h / 2 + 1);
   const lw = w - 44,
     lh = h - 8;
   g.save();
@@ -247,6 +247,8 @@ function face(g: G, label: string, x: number, won: boolean): void {
   g.fillText(short, x + 60, 204);
 }
 
+const pad = (n: number): string => String(n).padStart(2, "0");
+
 function drawCover(t: Tape): void {
   const g = ctx2d(tapeCanvas),
     at = new Date(t.recordedAt);
@@ -264,7 +266,7 @@ function drawCover(t: Tape): void {
   g.textAlign = "left";
   g.fillText("HORROR TUBE", 16, 29);
   g.textAlign = "right";
-  g.fillText(`BOUT ${num(boutNumber(t))}`, VW - 16, 29);
+  g.fillText(`BOUT ${boutNumber(t)}`, VW - 16, 29);
   const [a, b] = t.fighters;
   face(g, a, 28, a === t.winner);
   face(g, b, 172, b === t.winner);
@@ -303,7 +305,7 @@ function drawCover(t: Tape): void {
   g.font = "700 12px Silkscreen";
   g.textAlign = "left";
   g.fillText(
-    `REC ${num(at.getMonth() + 1)}.${num(at.getDate())} ${num(at.getHours())}:${num(at.getMinutes())}`,
+    `REC ${pad(at.getMonth() + 1)}.${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`,
     24,
     VH - 18,
   );

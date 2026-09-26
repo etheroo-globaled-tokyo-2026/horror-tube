@@ -150,12 +150,27 @@ jobs:
       # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
       QUORUM_VOTES: "1"
       VOTE_COUNTDOWN_SECONDS: "10"
-      VOTE_TIMEOUT_SECONDS: "15"
       PAIRING_MAX_ATTEMPTS: "3"
       PAIRING_TIMEOUT_SECONDS: "30"
       BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5"
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
+      # Startup env check needs fight narration, fal and Spaces settings. CI never calls them; the keys are not real.
+      NARRATION_PROVIDER: "anthropic"
+      NARRATION_MODEL: "claude-sonnet-5"
+      ANTHROPIC_API_KEY: "ci-not-a-real-anthropic-key"
+      FAL_KEY: "ci-not-a-real-fal-key"
+      FAL_MODEL: "minimax/h3-max/text-to-video"
+      FAL_IMAGE_TO_VIDEO_MODEL: "minimax/h3-max/image-to-video"
+      FIGHT_VIDEO_SECONDS: "5"
+      FAL_VIDEO_RESOLUTION: "480P"
+      FAL_PROMPT_EXPANSION_MODE: "disabled"
+      FAL_ASPECT_RATIO: "16:9"
+      FIGHT_MEDIA_SPACES_ACCESS_KEY_ID: "ci-not-a-real-spaces-key"
+      FIGHT_MEDIA_SPACES_SECRET: "ci-not-a-real-spaces-secret"
+      FIGHT_MEDIA_SPACES_BUCKET: "ci-bucket"
+      FIGHT_MEDIA_SPACES_CDN_HOST: "ci-bucket.sfo3.cdn.digitaloceanspaces.com"
+      FIGHT_MEDIA_SPACES_ENDPOINT: "https://sfo3.digitaloceanspaces.com"
       # jason and freddy are registered under horrortube.eth so the server can
       # read each label's ENS status before listen.
       ROSTER_ENS_LABELS: "jason,freddy"
@@ -246,12 +261,26 @@ jobs:
             -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
             -e "QUORUM_VOTES=${QUORUM_VOTES}" \
             -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
-            -e "VOTE_TIMEOUT_SECONDS=${VOTE_TIMEOUT_SECONDS}" \
             -e "PAIRING_MAX_ATTEMPTS=${PAIRING_MAX_ATTEMPTS}" \
             -e "PAIRING_TIMEOUT_SECONDS=${PAIRING_TIMEOUT_SECONDS}" \
             -e "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS=${BETTING_CLOSE_AFTER_VIDEO_START_SECONDS}" \
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
+            -e "NARRATION_PROVIDER=${NARRATION_PROVIDER}" \
+            -e "NARRATION_MODEL=${NARRATION_MODEL}" \
+            -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" \
+            -e "FAL_KEY=${FAL_KEY}" \
+            -e "FAL_MODEL=${FAL_MODEL}" \
+            -e "FAL_IMAGE_TO_VIDEO_MODEL=${FAL_IMAGE_TO_VIDEO_MODEL}" \
+            -e "FIGHT_VIDEO_SECONDS=${FIGHT_VIDEO_SECONDS}" \
+            -e "FAL_VIDEO_RESOLUTION=${FAL_VIDEO_RESOLUTION}" \
+            -e "FAL_PROMPT_EXPANSION_MODE=${FAL_PROMPT_EXPANSION_MODE}" \
+            -e "FAL_ASPECT_RATIO=${FAL_ASPECT_RATIO}" \
+            -e "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID=${FIGHT_MEDIA_SPACES_ACCESS_KEY_ID}" \
+            -e "FIGHT_MEDIA_SPACES_SECRET=${FIGHT_MEDIA_SPACES_SECRET}" \
+            -e "FIGHT_MEDIA_SPACES_BUCKET=${FIGHT_MEDIA_SPACES_BUCKET}" \
+            -e "FIGHT_MEDIA_SPACES_CDN_HOST=${FIGHT_MEDIA_SPACES_CDN_HOST}" \
+            -e "FIGHT_MEDIA_SPACES_ENDPOINT=${FIGHT_MEDIA_SPACES_ENDPOINT}" \
             -e "ENS_LABEL=${SERVER_ENS_LABEL}" \
             -e "SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \

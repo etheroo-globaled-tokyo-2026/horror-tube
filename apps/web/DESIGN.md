@@ -168,7 +168,7 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The bulb casts hard shadows (`BasicShadowMap`). Ambient occlusion (`GTAOPass`) darkens the places where things
     touch. Exponential fog makes far things darker. The TV picture has no fog.
   - **Bout tapes:** the shelf holds only bout tapes. Every finished bout with a video is one VHS case (6 × 25 cm
-    spine, black plastic, lit so it stays readable), lying flat in piles, spine out. The newest tape is always on top
+    spine, black plastic), lying flat in piles, spine out. The newest tape is always on top
     of the eye-level left pile; when the piles are full, only the newest show. The spine is worn like the room: scratched plastic, a faded `--sulfur` bout number sticker, and a yellowed, stained, slightly crooked paper label with two typed lines: the winner, then V and the loser in `--blood-deep`. The spines glow only a little. The cover in your hand has a `--blood` header, both faces
     (the loser crossed out, the winner framed), who walked out, the winner's injuries, the narration, and the REC
     date. The server hides the live bout's tape until betting is over, because its cover names the winner.
@@ -180,7 +180,12 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Waiting and the next bout: the living roster and TYPE THE NUMBER · OK. Two digits show that resident's file. OK books them. On a fresh game the other fighter is drawn at random. A failed booking shows the server's reason.
+  - Waiting and `pick`: the top half loops the newest bout tape once one has aired; before that, it cycles
+    through the residents (face, name, `brief`, injuries). A typed number shows that resident instead. The bottom
+    half shows every resident's face and room number, the dead crossed out and the champion faded, under
+    THE PROGRAMME MAY BEGIN, or in `pick` the matchup (champion face, `<CHAMPION> VS`, then a `?` box that
+    becomes the typed resident's face), then TYPE A ROOM NUMBER. OK books that fighter; on a fresh game the other
+    fighter is drawn at random. A failed booking shows the server's reason.
   - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
   - Typing a number: the resident's case file: face, name, kills and damage, `brief`, injuries. Typing puts down a
     held tape, so the TV stays in view. CLR goes back.
@@ -188,8 +193,8 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
     resident, the winner, and OK to collect.
   - A tape in the VCR: the bout video with the same filter, PLAY and a play mark top left, the bout number and the
     counter at the bottom. A typed case file still shows over it.
-- **The remote:** the only thing you use for the game. Digits for a case file, or for the stake during a bet.
-  Press A or B to choose a side, type the amount, then OK. OK also collects or starts again.
+- **The remote:** the only thing you use for the game. One digit per room (rooms 1–9, then 0) for a case file, or
+  the stake during a bet. Press A or B to choose a side, type the amount, then OK. OK also collects or starts again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
 
@@ -197,7 +202,8 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
-  controls state the action (`A OR B · TYPE THE AMOUNT · OK`, `COLLECT OK`).
+  controls state the action (`A OR B · TYPE THE AMOUNT`, `COLLECT`). Copy never names the OK key; the orange
+  key is the one to press.
   Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.

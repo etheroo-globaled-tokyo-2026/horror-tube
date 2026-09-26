@@ -244,12 +244,7 @@ variable "quorum_votes" {
 }
 
 variable "vote_countdown_seconds" {
-  description = "VOTE_COUNTDOWN_SECONDS after quorum, never past the vote timeout (docs/game-loop.md). Required; no default."
-  type        = number
-}
-
-variable "vote_timeout_seconds" {
-  description = "VOTE_TIMEOUT_SECONDS: voting closes by then even without quorum (docs/game-loop.md). Required; no default."
+  description = "VOTE_COUNTDOWN_SECONDS after quorum (docs/game-loop.md). Required; no default."
   type        = number
 }
 

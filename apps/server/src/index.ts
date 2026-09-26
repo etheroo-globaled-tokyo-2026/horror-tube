@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { loadPairingConfig } from "@horror-tube/fight";
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
 import { createClient, getPool, requiredEnv } from "@horror-tube/betting";
-import { loadWorldIdEnv } from "@horror-tube/world-id";
+import { assertEnvComplete } from "./check-env.js";
 import { createBattleBettingPorts, readHouseTerms } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { migrate } from "./db/migrate.js";
@@ -34,7 +34,7 @@ console.log(
   `env: loaded [${loadRepoDotenv(repoRoot).join(", ")}]; shell values win, then the first file`,
 );
 
-loadWorldIdEnv();
+assertEnvComplete();
 
 const port = readGamePort();
 const staticDir = readStaticDir();

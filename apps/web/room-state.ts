@@ -22,8 +22,6 @@ export type WalkStep = {
 };
 export const walkRef = { n: -1 };
 
-export const num = (n: number): string => String(n).padStart(2, "0");
-
 export const T = {
   buf: "",
   betSide: -1,
@@ -45,7 +43,8 @@ export const VCR = {
 };
 export const reelById = (id: string): Tape | undefined =>
   id === "" ? undefined : VCR.tapes.find((t) => t.battleId === id);
-export const boutNumber = (tape: Tape): number => VCR.tapes.indexOf(tape) + 1;
+export const boutNumber = (tape: Tape): string =>
+  String(VCR.tapes.indexOf(tape) + 1).padStart(2, "0");
 
 export const say = (text: string, ms = 3600): void => {
   T.say = text;

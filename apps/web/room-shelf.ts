@@ -61,7 +61,9 @@ export const tinted = (ch: Character): HTMLCanvasElement => {
   const g = ctx2d(cv, { willReadFrequently: true });
   g.fillStyle = COL.soot;
   g.fillRect(0, 0, 64, 64);
-  g.drawImage(ch.icon, 0, 0, 64, 64);
+  const trim = ch.icon.naturalWidth * 0.06,
+    side = ch.icon.naturalWidth - trim * 2;
+  g.drawImage(ch.icon, trim, trim, side, side, 0, 0, 64, 64);
   const img = g.getImageData(0, 0, 64, 64),
     d = img.data,
     ramp = ch.alive ? RAMP : [COL.soot, COL.char, COL.grime].map(rgb);
