@@ -146,6 +146,33 @@ def propose_one(entry: dict[str, Any], *, wiki: str | None) -> Character:
     return sheet
 
 
+def cast_labels_from_entries(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        raise FandomError(
+            f"cast labels: expected a list of cast entries. Got {type(raw).__name__}."
+        )
+    labels: list[str] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise FandomError(
+                f"{_CAST_PATH.name} entries must be objects. Got {type(entry).__name__}."
+            )
+        label = entry.get("label")
+        if not isinstance(label, str) or label.strip() == "":
+            continue
+        cleaned = label.strip()
+        if cleaned in seen:
+            raise FandomError(f"cast labels: duplicate label {cleaned!r}")
+        seen.add(cleaned)
+        labels.append(cleaned)
+    if len(labels) != len(raw):
+        raise FandomError(
+            f"cast entry count ({len(raw)}) and label count ({len(labels)}) differ"
+        )
+    return labels
+
+
 def load_cast() -> list[dict[str, Any]]:
     try:
         raw = json.loads(_CAST_PATH.read_text(encoding="utf-8"))
@@ -156,19 +183,7 @@ def load_cast() -> list[dict[str, Any]]:
             f"{_CAST_PATH.name} must be a list of 10 fighters. Got {type(raw).__name__} "
             f"length {len(raw) if isinstance(raw, list) else 'n/a'}."
         )
-    labels = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            raise FandomError(
-                f"{_CAST_PATH.name} entries must be objects. Got {type(entry).__name__}."
-            )
-        label = entry.get("label")
-        if isinstance(label, str) and label.strip() != "":
-            labels.append(label.strip())
-    if len(labels) != len(raw):
-        raise FandomError(
-            f"cast entry count ({len(raw)}) and label count ({len(labels)}) differ"
-        )
+    cast_labels_from_entries(raw)
     return raw
 
 

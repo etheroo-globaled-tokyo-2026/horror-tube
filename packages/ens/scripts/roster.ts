@@ -100,7 +100,7 @@ export async function withRateLimitRetry<T>(
         throw error;
       }
       console.error(
-        `discover: ${opLabel} rate-limited (429), attempt ${String(attempt)}/${String(maxAttempts)}, waiting ${String(backoffMs)}ms`,
+        `rpc: ${opLabel} rate-limited (429), attempt ${String(attempt)}/${String(maxAttempts)}, waiting ${String(backoffMs)}ms`,
       );
       await sleep(backoffMs);
       backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
@@ -534,8 +534,9 @@ export async function loadCharacterSheets(
     const name = subname(label, ensLabel);
     const dnsName = dnsEncodeName(name);
     const ownerPromise = (async (): Promise<Address> => {
+      let state: { status: number | bigint; latestOwner: Address };
       try {
-        const state = await withRateLimitRetry(`getState(${label})`, async () =>
+        state = await withRateLimitRetry(`getState(${label})`, async () =>
           publicClient.readContract({
             address: subregistry,
             abi: userRegistryAbi,
@@ -543,12 +544,18 @@ export async function loadCharacterSheets(
             args: [labelId(label)],
           }),
         );
-        return getAddress(state.latestOwner);
       } catch (error) {
         throw new Error(
           `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      const status = Number(state.status);
+      if (status !== STATUS_REGISTERED) {
+        throw new Error(
+          `UserRegistry.getState(${label}) status ${String(status)} is not registered under ${ensLabel}.eth`,
+        );
+      }
+      return getAddress(state.latestOwner);
     })();
     const textPromises = CHARACTER_TEXT_KEYS.map((key) =>
       readText(publicClient, resolver, dnsName, label, key),
@@ -556,13 +563,11 @@ export async function loadCharacterSheets(
     return { label, name, ownerPromise, textPromises };
   });
 
-  const sheets: CharacterSheet[] = [];
-  for (const item of pending) {
-    const owner = await item.ownerPromise;
-    const texts = await Promise.all(item.textPromises);
-    const [display_name, look, brief, injury_places, injuries, status, icon] = texts;
-    sheets.push(
-      characterSheetFromTexts(item.label, item.name, owner, {
+  return Promise.all(
+    pending.map(async (item) => {
+      const [owner, texts] = await Promise.all([item.ownerPromise, Promise.all(item.textPromises)]);
+      const [display_name, look, brief, injury_places, injuries, status, icon] = texts;
+      return characterSheetFromTexts(item.label, item.name, owner, {
         display_name,
         look,
         brief,
@@ -570,10 +575,9 @@ export async function loadCharacterSheets(
         injuries,
         status,
         icon,
-      }),
-    );
-  }
-  return sheets;
+      });
+    }),
+  );
 }
 
 /**
@@ -584,7 +588,6 @@ export async function readRosterWithClient(
   publicClient: PublicClient,
   ensLabel: string,
   ethRegistry: Address,
-  labels: readonly string[],
 ): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
   let subregistry: Address;
   let resolver: Address;
@@ -625,7 +628,7 @@ export async function readRosterWithClient(
     ensLabel,
     subregistry,
     resolver,
-    labels,
+    castLabels(),
   );
   return { parentName: `${ensLabel}.eth`, sheets };
 }
@@ -638,13 +641,16 @@ export async function readRosterFromChain(
   ensLabel: string,
   rpcUrl: string,
   ethRegistry: Address,
-): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
-  const publicClient = createPublicClient({
+  publicClient: PublicClient = createPublicClient({
     chain: sepolia,
     transport: http(rpcUrl),
-    batch: { multicall: true },
-  });
-  return readRosterWithClient(publicClient, ensLabel, ethRegistry, castLabels());
+    // viem splits Multicall3 once calldata exceeds batchSize bytes. 0 keeps the
+    // cast's getState and text resolves in one aggregate3. The call set is the
+    // cast plus CHARACTER_TEXT_KEYS, so this is not an operator setting.
+    batch: { multicall: { batchSize: 0, wait: 0 } },
+  }),
+): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
+  return readRosterWithClient(publicClient, ensLabel, ethRegistry);
 }
 
 /** Registered subname labels only. Does not read text records. */

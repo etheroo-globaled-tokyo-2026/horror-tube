@@ -18,6 +18,7 @@ from roster.fandom import FandomError, fetch_page_lore, resolve_page
 from roster.plan import build_import_plan, build_register_plan, build_removal_plan, subname
 
 from roster.propose import (
+    cast_labels_from_entries,
     display_name_from_title,
     injury_places_json_for_label,
     load_cast,
@@ -856,6 +857,16 @@ class PagePairTests(unittest.TestCase):
                 wiki=None,
             )
         self.assertEqual(sheet["label"], "frankenstein")
+
+    def test_cast_labels_reject_a_repeated_label(self):
+        with self.assertRaises(FandomError) as caught:
+            cast_labels_from_entries(
+                [
+                    {"label": "jason", "source": "https://example.com/a"},
+                    {"label": "jason", "source": "https://example.com/b"},
+                ]
+            )
+        self.assertIn("duplicate label 'jason'", str(caught.exception))
 
     def test_cast_json_frankenstein_is_two_pages(self):
         entries = [e for e in load_cast() if "Frankenstein" in json.dumps(e)]
