@@ -45,7 +45,7 @@ def sheet_from_lore(lore: PageLore) -> Character:
         "look": first_sentence(lore.appearance),
         "brief": first_sentence(lore.powers),
         "injuries": "",
-        "status": "",
+        "status": "alive",
         "icon": "",
     }
     return parse_characters(character, source=str(lore.ref))[0]

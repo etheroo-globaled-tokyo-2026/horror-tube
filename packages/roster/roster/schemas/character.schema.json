@@ -29,8 +29,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["", "dead"],
-      "description": "Must be present. Allowed values: \"\" (selectable) or \"dead\"."
+      "enum": ["", "alive", "dead"],
+      "description": "Must be present. New imports use \"alive\". \"dead\" is not selectable. \"\" is only for names written before alive was the default."
     },
     "icon": {
       "type": "string",

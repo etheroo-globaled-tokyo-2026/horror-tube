@@ -89,14 +89,14 @@ def build_import_plan(
                 )
                 continue
             sheet = normalize_character(character)
-            sheet["status"] = ""
+            sheet["status"] = "alive"
             entry = {
                 **sheet,
                 "name": subname(label, ens_label),
                 "action": "restore_and_update",
                 "ens_action": describe_ens_action(label, ens_label, kind="import"),
                 "note": (
-                    "status cleared to empty because --on-existing=restore; "
+                    "status set to alive because --on-existing=restore; "
                     "injuries taken from the import file as supplied"
                 ),
             }
@@ -181,14 +181,14 @@ def build_register_plan(
                 )
                 continue
             sheet = normalize_character(character)
-            sheet["status"] = ""
+            sheet["status"] = "alive"
             entry = {
                 **sheet,
                 "name": subname(label, ens_label),
                 "action": "restore_and_update",
                 "ens_action": describe_ens_action(label, ens_label, kind="register"),
                 "note": (
-                    "status cleared to empty because --on-existing=restore; "
+                    "status set to alive because --on-existing=restore; "
                     "injuries taken from the input file as supplied"
                 ),
             }
