@@ -23,6 +23,7 @@ export async function claimHumanAction(args: {
   const verified = await verifyProofOfHuman({
     rpId: worldId.rpId,
     environment: worldId.environment,
+    stagingToken: worldId.stagingToken,
     action: args.action,
     signal: args.signal,
     idkitResult: args.idkitResult,

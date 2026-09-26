@@ -34,6 +34,7 @@ test(
       verifyProofOfHuman({
         rpId: worldId.rpId,
         environment: worldId.environment,
+        stagingToken: worldId.stagingToken,
         action,
         signal,
         idkitResult: forged,

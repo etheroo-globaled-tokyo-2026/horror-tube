@@ -1,15 +1,11 @@
 import { defineConfig, loadEnv } from "vite";
 
 const devProxy = (gamePort: string) => ({
-  "/auth": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/tx": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/wallet": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/world-id": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/events": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/round": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/vote": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/bet": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/health": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "^/(auth/world-id|tx|wallet|world-id/request|world-id/verify|events|round|vote|bet|health)(\\?.*)?$":
+    {
+      target: `http://127.0.0.1:${gamePort}`,
+      changeOrigin: true,
+    },
 });
 
 export default defineConfig(({ mode }) => {
@@ -18,6 +14,8 @@ export default defineConfig(({ mode }) => {
   const shared = {
     envDir: "../..",
     envPrefix: ["VITE_", "ENS_LABEL"],
+    // WARNING: pre-bundling IDKit moves it away from its .wasm, and every waiver scan then ends at NOT ELIGIBLE.
+    optimizeDeps: { exclude: ["@worldcoin/idkit-core"] },
   };
   if (gamePort === "") return shared;
   return { ...shared, server: { proxy: devProxy(gamePort) } };

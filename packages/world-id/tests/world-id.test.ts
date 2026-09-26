@@ -203,6 +203,36 @@ test("verifyProofOfHuman forwards the result unchanged to /api/v4/verify/{rp_id}
   assert.deepEqual(verified, { action, nullifier: NULLIFIER_DECIMAL });
 });
 
+test("staging verification needs a token and sends it to the portal", async () => {
+  const action = voteActionForRound("1");
+  const result = { ...v4Result(action), environment: "staging" };
+  const staging = { ...testEnv(), WORLD_ID_ENVIRONMENT: "staging" };
+  assert.throws(() => loadWorldIdEnv(staging), /WORLD_ID_STAGING_TOKEN is required/);
+  assert.equal(loadWorldIdEnv({ ...staging, WORLD_ID_STAGING_TOKEN: "tok" }).stagingToken, "tok");
+  const args = {
+    rpId: RP_ID,
+    environment: "staging" as const,
+    action,
+    signal: WALLET,
+    idkitResult: result,
+  };
+  await assert.rejects(
+    verifyProofOfHuman({ ...args, fetch: neverFetch }),
+    /WORLD_ID_STAGING_TOKEN is required/,
+  );
+  let sent: string | undefined;
+  await verifyProofOfHuman({
+    ...args,
+    stagingToken: "tok",
+    fetch: async (_url, init) => {
+      sent = init.headers["x-staging-verification-token"];
+      const body = JSON.stringify({ ...portalSuccess(action), environment: "staging" });
+      return { ok: true, status: 200, text: async () => body };
+    },
+  });
+  assert.equal(sent, "tok");
+});
+
 test("verifyProofOfHuman rejects before calling the portal on local mismatches", async () => {
   const action = voteActionForRound("1");
   const common = { rpId: RP_ID, environment: "production" as const, fetch: neverFetch };
