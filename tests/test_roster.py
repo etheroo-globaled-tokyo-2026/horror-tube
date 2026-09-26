@@ -12,7 +12,8 @@ from unittest import mock
 
 from roster import __main__ as cli
 from roster.fandom import FandomError, fetch_page_lore, resolve_page
-from roster.plan import build_import_plan, build_removal_plan
+from roster.plan import build_import_plan, build_register_plan, build_removal_plan, subname
+
 from roster.propose import propose_sheets, sheet_from_lore, sheets_payload
 from roster.validate import (
     RosterValidationError,
@@ -155,6 +156,55 @@ class ImportPlanTests(unittest.TestCase):
         self.assertIn("jason.horrortube.eth", entry["name"])
 
 
+class RegisterPlanTests(unittest.TestCase):
+    def test_ens_name_is_label_parent_eth(self):
+        self.assertEqual(subname("pinhead", "horrortube"), "pinhead.horrortube.eth")
+
+    def test_duplicate_labels_in_file_fail(self):
+        data = [_char(label="same"), _char(label="same", look="Other look.")]
+        characters = parse_characters(data, source="dupes")
+        with self.assertRaises(RosterValidationError) as ctx:
+            require_no_duplicate_labels(characters, source="dupes")
+        self.assertIn("duplicate", str(ctx.exception).lower())
+        self.assertIn("same", str(ctx.exception))
+
+    def test_missing_on_existing_when_chain_says_dead(self):
+        incoming = [_char(label="jason")]
+        chain = {"jason": _char(label="jason", status="dead")}
+        with self.assertRaises(RosterValidationError) as ctx:
+            build_register_plan(
+                incoming,
+                ens_label="horrortube",
+                existing_on_chain=chain,
+            )
+        message = str(ctx.exception)
+        self.assertIn("--on-existing", message)
+        self.assertIn("jason", message)
+        self.assertIn("dead", message.lower())
+
+    def test_missing_on_existing_when_already_registered(self):
+        incoming = [_char(label="jason")]
+        chain = {"jason": _char(label="jason", status="")}
+        with self.assertRaises(RosterValidationError) as ctx:
+            build_register_plan(
+                incoming,
+                ens_label="horrortube",
+                existing_on_chain=chain,
+            )
+        self.assertIn("already registered", str(ctx.exception).lower())
+        self.assertIn("jason", str(ctx.exception))
+
+    def test_register_plan_names_subname(self):
+        plan = build_register_plan(
+            [_char(label="fixture-one")],
+            ens_label="horrortube",
+            existing_on_chain={},
+        )
+        self.assertTrue(plan["chain_writes"])
+        self.assertEqual(plan["characters"][0]["name"], "fixture-one.horrortube.eth")
+        self.assertEqual(plan["characters"][0]["action"], "register")
+
+
 class RemovalPlanTests(unittest.TestCase):
     def test_duplicate_removal_labels_fail(self):
         with self.assertRaises(RosterValidationError) as ctx:
@@ -167,6 +217,7 @@ class RemovalPlanTests(unittest.TestCase):
         self.assertFalse(plan["chain_writes"])
         self.assertEqual(plan["labels"][0]["action"], "unregister")
         self.assertIn("unregister", plan["labels"][0]["ens_action"].lower())
+        self.assertEqual(plan["labels"][0]["name"], "fixture-one.horrortube.eth")
 
 
 class ResolvePageTests(unittest.TestCase):
@@ -281,13 +332,24 @@ class CliTests(unittest.TestCase):
     def test_remove_cli_fails_on_dupes(self):
         with tempfile.TemporaryDirectory() as tmp:
             labels = Path(tmp) / "labels.json"
-            out = Path(tmp) / "plan.json"
             labels.write_text(json.dumps(["a", "a"]), encoding="utf-8")
             with mock.patch.dict(os.environ, {"ENS_LABEL": "horrortube"}):
-                code = cli.main(
-                    ["remove", "--input", str(labels), "--out", str(out)]
-                )
+                code = cli.main(["remove", "--input", str(labels)])
             self.assertEqual(code, 1)
+
+    def test_plan_remove_cli_writes_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            labels = Path(tmp) / "labels.json"
+            out = Path(tmp) / "plan.json"
+            labels.write_text(json.dumps(["fixture-one"]), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"ENS_LABEL": "horrortube"}):
+                code = cli.main(
+                    ["plan-remove", "--input", str(labels), "--out", str(out)]
+                )
+            self.assertEqual(code, 0)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload["plan"], "remove")
+            self.assertFalse(payload["chain_writes"])
 
     def test_propose_cli_writes_bulk_json(self):
         with tempfile.TemporaryDirectory() as tmp:

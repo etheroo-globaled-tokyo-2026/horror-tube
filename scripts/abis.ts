@@ -14,6 +14,11 @@ export const ethRegistrarAbi = parseAbi([
 export const ethRegistryAbi = parseAbi([
   "function getStatus(uint256 anyId) view returns (uint8)",
   "function findOwner(string label) view returns (address)",
+  "function getSubregistry(string label) view returns (address)",
+  "function getResolver(string label) view returns (address)",
+  "function getState(uint256 anyId) view returns ((uint8 status, uint64 expiry, address latestOwner, uint256 tokenId, uint256 resource))",
+  "function setSubregistry(uint256 anyId, address registry)",
+  "function setResolver(uint256 anyId, address resolver)",
 ]);
 
 export const mockErc20Abi = parseAbi([
@@ -26,4 +31,27 @@ export const mockErc20Abi = parseAbi([
 
 export const standardRentPriceOracleAbi = parseAbi([
   "function isPaymentToken(address paymentToken) view returns (bool)",
+]);
+
+export const verifiableFactoryAbi = parseAbi([
+  "function deployProxy(address implementation, uint256 salt, bytes data) returns (address)",
+  "event ProxyDeployed(address indexed sender, address indexed proxyAddress, uint256 salt, address implementation)",
+]);
+
+export const userRegistryAbi = parseAbi([
+  "function initialize((address account, uint256 roleBitmap)[] grants)",
+  "function register(string label, address owner, address registry, address resolver, uint256 roleBitmap, uint64 expiry) returns (uint256)",
+  "function unregister(uint256 anyId)",
+  "function getStatus(uint256 anyId) view returns (uint8)",
+  "function getState(uint256 anyId) view returns ((uint8 status, uint64 expiry, address latestOwner, uint256 tokenId, uint256 resource))",
+  "function getSubregistry(string label) view returns (address)",
+  "function getResolver(string label) view returns (address)",
+  "function findOwner(string label) view returns (address)",
+]);
+
+export const permissionedResolverAbi = parseAbi([
+  "function initialize((address account, uint256 roleBitmap)[] grants, bytes[] calls)",
+  "function setText(bytes name, string key, string value)",
+  "function resolve(bytes name, bytes data) view returns (bytes)",
+  "function grantSetterRoles(bytes setter, address account) returns (bool)",
 ]);
