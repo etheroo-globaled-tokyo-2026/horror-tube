@@ -155,7 +155,7 @@ transactions.
 pnpm --filter @horror-tube/ens dashboard
 ```
 
-Then open `http://127.0.0.1:8130/`. Each GET re-reads the chain.
+Then open `http://127.0.0.1:8130/`. If that port is already taken, this process stops the listener and binds it. Each GET re-reads the chain.
 
 ## Tests
 
