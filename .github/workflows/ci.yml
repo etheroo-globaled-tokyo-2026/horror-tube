@@ -91,6 +91,7 @@ jobs:
       - run: pnpm --filter @horror-tube/fight-media build
       - run: pnpm --filter @horror-tube/fight build
       - run: pnpm --filter @horror-tube/betting build
+      - run: pnpm --filter @horror-tube/ens build
       - run: pnpm --filter @horror-tube/server test
       - run: pnpm --filter @horror-tube/server typecheck
 
@@ -137,9 +138,9 @@ jobs:
       # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
       ENS_LABEL: "ci"
       VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
-      # Runtime roster read (apps/server/src/index.ts). The server reads each
-      # label's ENS status before listen. jason and freddy are registered
-      # under horrortube.eth.
+      # Runtime roster cache (apps/server/src/index.ts). The server reads the
+      # ENS roster before listen. jason and freddy are registered under
+      # horrortube.eth.
       SERVER_ENS_LABEL: "horrortube"
       SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
       # Runtime World ID gate (apps/server/src/index.ts). CI-only values; not production secrets.
@@ -154,9 +155,9 @@ jobs:
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
       SKIP_BATTLE_SETTLEMENT: "1"
-      # jason and freddy are registered under horrortube.eth so the server can
-      # read each label's ENS status before listen.
+      # jason and freddy must be in the ENS roster the server caches before listen.
       ROSTER_ENS_LABELS: "jason,freddy"
+      ENS_ROSTER_REFRESH_MS: "60000"
       # ENS settle writes (not Sui betting).
       AGENT_PRIVATE_KEY: "0xabababababababababababababababababababababababababababababababab"
       # Sui betting (apps/server/src/battle-betting.ts). Public testnet IDs from deploy.
@@ -246,6 +247,7 @@ jobs:
             -e "ENS_LABEL=${SERVER_ENS_LABEL}" \
             -e "SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
+            -e "ENS_ROSTER_REFRESH_MS=${ENS_ROSTER_REFRESH_MS}" \
             -e "AGENT_PRIVATE_KEY=${AGENT_PRIVATE_KEY}" \
             -e "SUI_NETWORK=${SUI_NETWORK}" \
             -e "SUI_GRPC_URL=${SUI_GRPC_URL}" \

@@ -122,10 +122,10 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
   5. The remote again: `HOLD A OR B. BET ON WHO WALKS OUT.`
 - **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
   NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
-- **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (3 to 4 s on
-  the public RPC, which also rate-limits: scan log chunks one at a time and stop early; new users never see it, it loads while they read the waiver). Until it lands, the TV shows a warm
+- **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from `GET /roster`
+  (the game server keeps the ENS read in memory and refreshes it off the page-load path). Until it lands, the TV shows a warm
   test card, PLEASE STAND BY, and the hint says the TV is warming up. If the read fails, the TV says NO SIGNAL,
-  the hint shows the first lines of the real error, and the full error is in the console. No cache, no fallback cast.
+  the hint shows the first lines of the real error, and the full error is in the console. No invented cast, and the browser does not store the roster.
 - **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 

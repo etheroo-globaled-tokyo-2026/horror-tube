@@ -9,10 +9,15 @@ import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { PostgresRoundStore } from "./db/rounds.js";
 import { createPgPool } from "./db/pg-client.js";
-import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
+import { createEnsChainWritePorts } from "./ens-chain-write.js";
+import {
+  openEnsRosterCache,
+  readEnsRosterSnapshot,
+} from "./ens-roster-cache.js";
 import {
   loadRepoDotenv,
   readGamePort,
+  readRosterRefreshMs,
   readSkipBattleSettlement,
   readStaticDir,
 } from "./env.js";
@@ -22,7 +27,6 @@ import {
   readRosterEnsLabels,
 } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
-import { loadLivingCardsFromEns } from "./load-living-cards.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
@@ -36,22 +40,32 @@ const port = readGamePort();
 const staticDir = readStaticDir();
 const host = "0.0.0.0";
 const skipSettlement = readSkipBattleSettlement();
+const rosterRefreshMs = readRosterRefreshMs();
 const battleBetting = createBattleBettingPorts();
-const fightJob = createFightJobRunner({
-  loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
-});
 
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
 
-const pg = createPgPool();
-const battleQueueStore = new PostgresBattleQueueStore(pg);
-const chainWritePorts = createEnsChainWritePorts(process.env, {
-  settle: (battleId, side) => battleBetting.settle(battleId, side),
+const roster = await openEnsRosterCache({
+  refreshMs: rosterRefreshMs,
+  read: () => readEnsRosterSnapshot(process.env),
+});
+const fightJob = createFightJobRunner({
+  loadLivingCards: (subnames) => Promise.resolve(roster.livingCards(subnames)),
 });
 
+const pg = createPgPool();
+const battleQueueStore = new PostgresBattleQueueStore(pg);
+const chainWritePorts = createEnsChainWritePorts(
+  process.env,
+  {
+    settle: (battleId, side) => battleBetting.settle(battleId, side),
+  },
+  roster,
+);
+
 const ensLabels = readRosterEnsLabels();
-const ensStatuses = await readRosterEnsStatuses(ensLabels);
+const ensStatuses = roster.statuses(ensLabels);
 const game = new GameLoop({
   config: readGameLoopConfig(),
   ensLabels,
@@ -86,6 +100,7 @@ const server = createGameServer({
   game,
   sessionPepper,
   betting: bettingPublic,
+  roster,
 });
 await listenGameServer(server, {
   port,

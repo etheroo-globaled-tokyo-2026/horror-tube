@@ -306,6 +306,13 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "ENS_ROSTER_REFRESH_MS"
+        value = tostring(var.ens_roster_refresh_ms)
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "SEPOLIA_RPC_URL"
         value = var.sepolia_rpc_url
         scope = "RUN_TIME"
