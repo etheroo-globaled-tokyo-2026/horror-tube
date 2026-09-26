@@ -14,7 +14,7 @@ See `apps/web/DESIGN.md`.
 - **ENS name**: character state (subnames and text records) on Sepolia.
 - **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
 - **Smart contract**: the betting pool, a Move package on Sui testnet.
-- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a Privy embedded wallet later. Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
+- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
