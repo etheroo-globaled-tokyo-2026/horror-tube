@@ -877,7 +877,6 @@ remote.add(faceLight);
 const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 4), basic({ color: COL.bloodDeep }));
 led.position.set(0, 0.165, 0.019);
 remote.add(led);
-const keys: THREE.Mesh[] = [];
 const keyById = new Map<string, THREE.Mesh>();
 const key = (
   id: string,
@@ -902,7 +901,6 @@ const key = (
   m.position.set(x, y, 0.022);
   m.userData.keyId = id;
   remote.add(m);
-  keys.push(m);
   keyById.set(id, m);
   return m;
 };
@@ -1814,32 +1812,6 @@ function holdEnd(): void {
   pressKey("B", 0.022);
 }
 
-const ray = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-const hitAt = (e: MouseEvent): string | null => {
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  if (!remote.visible) return null;
-  const h = ray.intersectObjects(keys, false)[0];
-  const id: string | undefined = h?.object.userData.keyId;
-  return id ?? null;
-};
-const onShelf = (e: MouseEvent): THREE.Object3D | null => {
-  if (S.phase === "gate" || Z.at !== null) return null;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
-  if (tape.visible) targets.push(tape);
-  return ray.intersectObjects(targets, false)[0]?.object ?? null;
-};
-const slotOf = (o: THREE.Object3D | null): Slot | undefined => slots.find((s) => s.mesh === o);
-const onPaper = (e: MouseEvent): boolean => {
-  if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  return ray.intersectObject(paper, false).length > 0;
-};
-
 const store = <T>(fn: (s: Storage) => T): T | null => {
   try {
     return fn(localStorage);
@@ -1938,11 +1910,34 @@ const cable = new THREE.Mesh(
   lambert({ color: COL.soot }),
 );
 scene.add(cable);
-const coinPartAt = (e: MouseEvent): CoinBoxPart | null => {
-  if (coinBox === null || !coinBox.group.visible) return null;
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+type Pick =
+  | { at: "paper" }
+  | { at: "coin"; part: CoinBoxPart }
+  | { at: "shelf"; slot: Slot | undefined }
+  | { at: "key"; id: string };
+const shown = (o: THREE.Object3D | null): boolean => o === null || (o.visible && shown(o.parent));
+const within = (o: THREE.Object3D | null, root: THREE.Object3D): boolean =>
+  o !== null && (o === root || within(o.parent, root));
+const pickAt = (e: MouseEvent): Pick | null => {
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  return coinBox.partAt(ray);
+  const hit = ray
+    .intersectObject(scene, true)
+    .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
+  if (hit === undefined) return null;
+  const o = hit.object;
+  if (o === paper)
+    return S.phase === "gate" && W8.step === "read" && $("#gate").hidden ? { at: "paper" } : null;
+  if (coinBox !== null && within(o, coinBox.group))
+    return { at: "coin", part: coinBox.partAt(hit) };
+  const id: string | undefined = o.userData.keyId;
+  if (id !== undefined) return { at: "key", id };
+  if (S.phase === "gate" || Z.at !== null) return null;
+  if (o === tape) return { at: "shelf", slot: undefined };
+  const slot = slots.find((s) => s.mesh === o);
+  return slot === undefined ? null : { at: "shelf", slot };
 };
 const WALK: WalkStep[] = [
   {
@@ -2022,7 +2017,8 @@ $("#forget").addEventListener("click", () => {
 const look = new THREE.Vector2();
 let pointer: MouseEvent | null = null;
 function updateHover(): void {
-  const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
+  const pick = pointer ? pickAt(pointer) : null;
+  const hover = pick?.at === "shelf" ? (pick.slot?.id ?? -1) : -1;
   if (hover === T.hover) return;
   if (hover >= 0) sfx.slide();
   T.hover = hover;
@@ -2031,12 +2027,13 @@ function updateHover(): void {
 addEventListener("pointermove", (e) => {
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  const part = coinPartAt(e);
+  const pick = pickAt(e);
+  const part = pick?.at === "coin" ? pick.part : null;
   if (part !== Z.hover) {
     Z.hover = part;
     hintText();
   }
-  canvas.dataset.cursor = cursorAt(e, part);
+  canvas.dataset.cursor = cursorFor(pick);
 });
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -2048,33 +2045,31 @@ const PART_CURSOR = {
   lock: "grab",
   body: "press",
 } satisfies Record<CoinBoxPart, string>;
-function cursorAt(e: MouseEvent, part: CoinBoxPart | null): string {
+function cursorFor(pick: Pick | null): string {
   if (walk >= 0) return "press";
-  if (onPaper(e)) return "pen";
-  if (part !== null) return PART_CURSOR[part];
-  if (onShelf(e)) return "grab";
-  return hitAt(e) ? "press" : "";
+  if (pick === null) return "";
+  if (pick.at === "paper") return "pen";
+  if (pick.at === "coin") return PART_CURSOR[pick.part];
+  return pick.at === "shelf" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   if (walk >= 0) return walkTo(walk + 1);
-  if (onPaper(e)) return sign();
-  const part = coinPartAt(e);
-  if (Z.at !== null) return part === null ? stepBack() : useCoinPart(part);
-  if (part !== null) return zoom("meter");
-  const hit = onShelf(e);
-  if (hit) {
+  const pick = pickAt(e);
+  if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
+  if (pick === null) return;
+  if (pick.at === "paper") return sign();
+  if (pick.at === "coin") return zoom("meter");
+  if (pick.at === "shelf") {
     sfx.tape();
     T.buf = "";
     T.reveal = -1;
-    T.held = slotOf(hit)?.id ?? -1;
+    T.held = pick.slot?.id ?? -1;
     T.hover = -1;
     return hintText();
   }
-  const id = hitAt(e);
-  if (!id) return;
-  if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
-  else press(id);
+  if (pick.id === "A" || pick.id === "B") holdStart(pick.id === "B" ? 1 : 0);
+  else press(pick.id);
 });
 addEventListener("pointerup", holdEnd);
 addEventListener(
