@@ -32,6 +32,7 @@ export type GameLoopOptions = {
   config: GameLoopConfig;
   /** Sorted ENS labels; numeric RoundState ids are indexes into this list. */
   ensLabels: string[];
+  ensStatuses: string[];
   now?: () => number;
   verifyWorldId?: WorldIdVerifier;
   /**
@@ -54,9 +55,41 @@ function emptyVotes(ids: number[]): Record<number, number> {
   return votes;
 }
 
+export function isAliveFromEnsStatus(ensLabel: string, status: string): boolean {
+  if (status === "alive" || status === "") return true;
+  if (status === "dead") return false;
+  throw new Error(
+    `${ensLabel} has unknown status ${JSON.stringify(status)}. Expected alive, dead, or "".`,
+  );
+}
+
+function buildChars(ensLabels: string[], ensStatuses: string[]): CharRuntime[] {
+  if (ensStatuses.length !== ensLabels.length) {
+    throw new Error(
+      `GameLoop ensStatuses length (${String(ensStatuses.length)}) must match ensLabels (${String(ensLabels.length)}).`,
+    );
+  }
+  return ensLabels.map((ensLabel, id) => {
+    const status = ensStatuses[id];
+    if (status === undefined) {
+      throw new Error(
+        `GameLoop ensStatuses missing entry for label ${ensLabel} at index ${String(id)}.`,
+      );
+    }
+    return {
+      id,
+      ensLabel,
+      alive: isAliveFromEnsStatus(ensLabel, status),
+      kills: 0,
+      damage: 0,
+    };
+  });
+}
+
 export class GameLoop {
   readonly config: GameLoopConfig;
   readonly ensLabels: string[];
+  private readonly initialAlive: boolean[];
   private readonly now: () => number;
   private readonly verifyWorldId: WorldIdVerifier;
   private readonly randomInt: RandomInt;
@@ -114,13 +147,8 @@ export class GameLoop {
     this.battleQueueStore = options.battleQueueStore;
     this.chainWritePorts = options.chainWritePorts;
     this.skipSettlement = options.skipSettlement;
-    this.chars = options.ensLabels.map((ensLabel, id) => ({
-      id,
-      ensLabel,
-      alive: true,
-      kills: 0,
-      damage: 0,
-    }));
+    this.chars = buildChars(options.ensLabels, options.ensStatuses);
+    this.initialAlive = this.chars.map((c) => c.alive);
     this.resetVoteTallies();
   }
 
@@ -355,13 +383,21 @@ export class GameLoop {
         `resetFromOver is only allowed in over. Current phase: ${this.phase}.`,
       );
     }
-    this.chars = this.ensLabels.map((ensLabel, id) => ({
-      id,
-      ensLabel,
-      alive: true,
-      kills: 0,
-      damage: 0,
-    }));
+    this.chars = this.ensLabels.map((ensLabel, id) => {
+      const alive = this.initialAlive[id];
+      if (alive === undefined) {
+        throw new Error(
+          `resetFromOver: missing initial alive flag for ${ensLabel} at index ${String(id)}.`,
+        );
+      }
+      return {
+        id,
+        ensLabel,
+        alive,
+        kills: 0,
+        damage: 0,
+      };
+    });
     this.champion = null;
     this.round = 1;
     this.videoUrl = null;

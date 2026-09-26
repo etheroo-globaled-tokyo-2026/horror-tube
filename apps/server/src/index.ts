@@ -6,7 +6,7 @@ import { loadWorldIdEnv, readGateActions } from "@horror-tube/world-id";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { createPgPool } from "./db/pg-client.js";
-import { createEnsChainWritePorts } from "./ens-chain-write.js";
+import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
 import {
   loadRepoDotenv,
   readGamePort,
@@ -41,9 +41,12 @@ const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
 const chainWritePorts = createEnsChainWritePorts();
 
+const ensLabels = readRosterEnsLabels();
+const ensStatuses = await readRosterEnsStatuses(ensLabels);
 const game = new GameLoop({
   config: readGameLoopConfig(),
-  ensLabels: readRosterEnsLabels(),
+  ensLabels,
+  ensStatuses,
   randomInt: cryptoRandomInt,
   battleQueueStore,
   chainWritePorts,
