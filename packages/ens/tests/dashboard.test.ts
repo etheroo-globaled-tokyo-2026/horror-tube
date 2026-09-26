@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import { encodeFunctionData, type Hex } from "viem";
 
 import { userRegistryAbi } from "../scripts/abis.js";
@@ -10,13 +7,13 @@ import {
   MAX_LOG_CHUNK_BLOCKS,
   MAX_RECENT_LOG_CHUNKS,
   MIN_LOG_BLOCK,
+  DASHBOARD_PORT,
   decodeRegisterLabel,
+  parseDashboardPort,
   recentLogScanChunks,
   renderDashboardHtml,
   type CharacterSheet,
 } from "../scripts/dashboard.js";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("dashboard register calldata (unit, no network)", () => {
   it("decoding a register calldata returns the label", () => {
@@ -89,32 +86,18 @@ describe("dashboard HTML (unit, no network)", () => {
 });
 
 describe("dashboard env (unit, no network)", () => {
-  it("spawning with DASHBOARD_PORT empty exits and names the variable", async () => {
-    const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
-    const result = await new Promise<{
-      code: number | null;
-      stdout: string;
-      stderr: string;
-    }>((resolvePromise, rejectPromise) => {
-      const child = spawn(tsxBin, [join(repoRoot, "scripts", "dashboard.ts")], {
-        cwd: repoRoot,
-        env: { ...process.env, DASHBOARD_PORT: "" },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
-      });
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-      child.on("error", rejectPromise);
-      child.on("close", (code) => {
-        resolvePromise({ code, stdout, stderr });
-      });
-    });
-    assert.notEqual(result.code, 0);
-    assert.match(result.stderr, /DASHBOARD_PORT/u);
+  it("blank DASHBOARD_PORT uses the fixed port", () => {
+    assert.equal(DASHBOARD_PORT, 8130);
+    assert.equal(parseDashboardPort(undefined), 8130);
+    assert.equal(parseDashboardPort(""), 8130);
+    assert.equal(parseDashboardPort("   "), 8130);
+  });
+
+  it("DASHBOARD_PORT overrides the fixed port", () => {
+    assert.equal(parseDashboardPort("9000"), 9000);
+  });
+
+  it("a non-numeric DASHBOARD_PORT fails and names the variable", () => {
+    assert.throws(() => parseDashboardPort("nope"), /DASHBOARD_PORT/u);
   });
 });
