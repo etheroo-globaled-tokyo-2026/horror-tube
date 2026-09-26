@@ -16,6 +16,8 @@ const PlaybackStartBody = v.object({
   battleId: v.pipe(v.string(), v.trim(), v.minLength(1)),
 });
 
+const VoteBody = v.object({ pick: v.pipe(v.number(), v.integer()) });
+
 export type GameServerOptions = {
   port: number;
   host: string;
@@ -316,6 +318,33 @@ async function handleRequest(
           return;
         }
         sendState(res, opts.game.getState());
+        return;
+      }
+      if (method === "POST" && path === "/vote") {
+        const nullifier = sessionNullifier(req, res, opts.sessionPepper);
+        if (nullifier === null) return;
+        let body;
+        try {
+          body = v.safeParse(VoteBody, JSON.parse(await readBody(req)));
+        } catch {
+          sendJson(res, 400, { ok: false, error: "vote body must be JSON." });
+          return;
+        }
+        if (!body.success) {
+          sendJson(res, 400, {
+            ok: false,
+            error: "vote.pick must be the character id of one of this bout's two fighters.",
+          });
+          return;
+        }
+        try {
+          await opts.game.voteWithNullifier(nullifier, body.output.pick);
+          sendState(res, opts.game.getState());
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`POST /vote failed: ${message}`);
+          sendJson(res, err instanceof StoreWriteError ? 500 : 400, { ok: false, error: message });
+        }
         return;
       }
       if (method === "POST" && path === "/start") {

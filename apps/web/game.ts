@@ -19,6 +19,7 @@ import {
   connectRoundEvents,
   fetchRoundState,
   postStart,
+  postVote,
   SessionPostError,
   type ServerRoundState,
 } from "./round-client.ts";
@@ -108,6 +109,11 @@ export type GameState = {
   frame: number;
   log: LogEntry[];
   champion: number | null;
+  voters: number;
+  quorum: number;
+  votes: [number, number];
+  tally: [number, number] | null;
+  votedFor: number | null;
   videoUrl: string | null;
   bettingClosesAt: number | null;
   frameUrl: string | null;
@@ -144,6 +150,11 @@ export const S: GameState = {
   frame: 0,
   log: [],
   champion: null,
+  voters: 0,
+  quorum: 0,
+  votes: [0, 0],
+  tally: null,
+  votedFor: null,
   videoUrl: null,
   bettingClosesAt: null,
   frameUrl: null,
@@ -283,6 +294,10 @@ export function applyRoundState(state: ServerRoundState): void {
   S.phase = state.phase;
   S.endsAt = state.endsAt;
   S.champion = state.champion;
+  S.voters = state.voters;
+  S.quorum = state.quorum;
+  S.votes = [state.votes[0], state.votes[1]];
+  S.tally = state.tally === null ? null : [state.tally[0], state.tally[1]];
   S.fighters = state.fighters;
   S.battleId = state.battleId;
   S.poolId = state.poolId;
@@ -296,6 +311,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.bots = state.bots;
   if (state.round !== prevRound) {
     S.bet = null;
+    S.votedFor = null;
   }
   refreshTimer();
   for (const remote of state.chars) {
@@ -685,6 +701,19 @@ document.addEventListener("mouseover", (e) => {
 });
 export function pick(id: number): void {
   S.focus = id;
+  const voting = S.phase === "vote" || S.phase === "countdown";
+  if (voting && S.votedFor === null && S.fighters?.includes(id)) {
+    S.votedFor = id;
+    render();
+    postVote(id).then(applyRoundState, (cause: unknown) => {
+      S.votedFor = null;
+      note(
+        `VOTE REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`,
+        "bad",
+      );
+    });
+    return;
+  }
   render();
 }
 

@@ -6,6 +6,7 @@ import * as v from "valibot";
 
 import { MemoryRoundStore } from "../src/db/rounds.js";
 import { GameLoop } from "../src/game/loop.js";
+import type { PairingRunner } from "../src/pairing-job.js";
 import { issueSession } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import { baseUrl } from "./base-url.js";
@@ -28,7 +29,14 @@ const ErrorJson = v.object({
 
 function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): GameLoop {
   return new GameLoop({
-    config: { bettingCloseAfterVideoStartSeconds: 5, videoTimeoutSeconds: 300, settleSeconds: 8 },
+    config: {
+      quorumVotes: 2,
+      voteCountdownSeconds: 10,
+      voteTimeoutSeconds: 15,
+      bettingCloseAfterVideoStartSeconds: 5,
+      videoTimeoutSeconds: 300,
+      settleSeconds: 8,
+    },
     ensLabels: ["chucky", "freddy", "jason"],
     ensStatuses: ["alive", "alive", "alive"],
     randomInt: () => 0,
@@ -69,6 +77,11 @@ function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): Ga
       },
     },
     fightJob: async () => new Promise(() => {}),
+    pairing: (async () => ({
+      fighterASubname: "chucky",
+      fighterBSubname: "freddy",
+      rationale: "test pairing",
+    })) satisfies PairingRunner,
     houseBots: { chains: [], stakeUnits: 1n },
   });
 }
@@ -121,15 +134,16 @@ describe("session routes", () => {
     const first = await post(base, "/start", "", session);
     assert.equal(first.status, 200);
     const started = v.parse(StateJson, await first.json()).state;
-    assert.equal(started.phase, "bet");
+    assert.equal(started.phase, "vote");
     assert.deepEqual(started.fighters, [0, 1]);
+    assert.equal(started.battleId, null);
 
     const second = await post(base, "/start", "", issueSession("222", PEPPER));
     assert.equal(second.status, 409);
     const refused = v.parse(ErrorJson, await second.json());
     assert.equal(refused.code, "bout_open");
-    assert.match(refused.error, /start refused: a bout is already open \(phase=bet/u);
-    assert.deepEqual(opens, [started.battleId]);
+    assert.match(refused.error, /start refused: a bout is already open \(phase=vote/u);
+    assert.deepEqual(opens, []);
   });
 
   it("POST /start answers 500 start_failed naming the failure and stays waiting", async () => {

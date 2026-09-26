@@ -7,6 +7,7 @@ import {
   fetchRoundState,
   postPlaybackStart,
   postStart,
+  postVote,
   type ServerRoundState,
 } from "../round-client.ts";
 import { WALLET_SESSION_KEY, type SessionStore } from "../wallet.ts";
@@ -45,6 +46,10 @@ const baseState: ServerRoundState = {
   phase: "waiting",
   endsAt: null,
   champion: null,
+  voters: 0,
+  quorum: 2,
+  votes: [0, 0],
+  tally: null,
   fighters: null,
   battleId: null,
   poolId: null,
@@ -72,6 +77,7 @@ function respond(t: TestContext, status: number, json: string, seen: RequestInit
 
 describe("session posts", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
+    await assert.rejects(() => postVote(0, memoryStore(null)), /World ID session is required/u);
     await assert.rejects(() => postStart(memoryStore(null)), /World ID session is required/u);
     await assert.rejects(
       () => postPlaybackStart("battle-1", memoryStore(null)),

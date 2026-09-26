@@ -86,7 +86,9 @@ function hintText(): void {
                   : W8.step === "done"
                     ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
-      : S.phase === "waiting"
+      : S.phase === "vote" || S.phase === "countdown"
+        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
+        : S.phase === "waiting"
         ? S.startError === null
           ? "STARTING THE PROGRAMME"
           : `THE PROGRAMME DID NOT START · TRY AGAIN ${b("OK")}`

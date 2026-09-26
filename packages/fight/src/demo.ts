@@ -12,7 +12,6 @@ import {
 } from "./env.js";
 import { generateFightVideo } from "./fal-video.js";
 import { narrateFight } from "./narrate.js";
-import { cryptoRandomInt } from "./rotation.js";
 import {
   livingCardSchema,
   type FightInput,
@@ -172,12 +171,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   loadRepoEnv();
   const { narrationConfig, falConfig } = loadDemoConfigs(process.env);
 
-  const narrated = await narrateFight(
-    input,
-    narrationConfig,
-    undefined,
-    cryptoRandomInt,
-  );
+  const narrated = await narrateFight(input, narrationConfig);
   const video = await generateFightVideo(narrated.turn, falConfig);
   process.stdout.write(
     [

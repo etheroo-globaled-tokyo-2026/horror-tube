@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { loadPairingConfig } from "@horror-tube/fight";
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
 import { createClient, getPool, requiredEnv } from "@horror-tube/betting";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
@@ -18,6 +19,7 @@ import { readGameLoopConfig, readRosterEnsLabels } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
 import { createHouseBotChains, readHouseBotStakeUnits } from "./house-bot-chain.js";
 import { loadLivingCardsFromEns } from "./load-living-cards.js";
+import { createPairingRunner } from "./pairing-job.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import {
   recordPools,
@@ -45,6 +47,10 @@ const houseBots = {
 };
 const fightJob = createFightJobRunner({
   loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
+});
+const pairing = createPairingRunner({
+  loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
+  pairing: loadPairingConfig(process.env),
 });
 
 await assertDatabaseReady();
@@ -74,6 +80,7 @@ const game = new GameLoop({
   chainWritePorts,
   battleBetting,
   fightJob,
+  pairing,
   houseBots,
 });
 

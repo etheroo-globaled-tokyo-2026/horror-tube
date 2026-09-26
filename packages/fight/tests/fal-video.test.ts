@@ -11,7 +11,7 @@ import {
   resolveFalSubscribeModel,
   type FalVideoConfig,
 } from "../src/env.js";
-import { validTurn } from "./fixtures.js";
+import { validModelTurn } from "./fixtures.js";
 import { ARENA_VIDEO_PROMPT_PREFIX, videoPromptFromTurn } from "../src/render.js";
 
 const falCfg: FalVideoConfig = {
@@ -26,7 +26,7 @@ const falCfg: FalVideoConfig = {
 
 describe("buildFalInput", () => {
   it("sends prompt plus required fal fields and never ENS lines or rationale", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const input = buildFalInput(turn, falCfg);
     assert.equal(input.prompt, videoPromptFromTurn(turn));
     assert.equal(input.prompt.startsWith(ARENA_VIDEO_PROMPT_PREFIX), true);
@@ -46,7 +46,7 @@ describe("buildFalInput", () => {
   });
 
   it("attaches image_url for the next fight and omits aspect_ratio", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const frameUrl =
       "https://cdn.example/frames/previous.jpg";
     const input = buildFalInput(turn, falCfg, { priorFrameUrl: frameUrl });
@@ -74,7 +74,7 @@ describe("buildFalInput", () => {
 
 describe("generateFightVideo", () => {
   it("returns video.url from a saved fal response shape", async () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const result = await generateFightVideo(turn, falCfg, {
       subscribe: async () => ({
         data: {
@@ -96,7 +96,7 @@ describe("generateFightVideo", () => {
   });
 
   it("subscribes to the image-to-video model with image_url when seeded", async () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const frameUrl = "https://cdn.example/frames/seed.jpg";
     let subscribedModel = "";
     let subscribedInput: FalVideoInput | undefined;
@@ -127,7 +127,7 @@ describe("generateFightVideo", () => {
   it("stops and surfaces the underlying fal failure", async () => {
     await assert.rejects(
       () =>
-        generateFightVideo(validTurn(), falCfg, {
+        generateFightVideo(validModelTurn(), falCfg, {
           subscribe: async () => {
             throw new Error("fal queue exploded: 401");
           },
@@ -139,7 +139,7 @@ describe("generateFightVideo", () => {
   it("surfaces fal ApiError status and body when message is empty", async () => {
     await assert.rejects(
       () =>
-        generateFightVideo(validTurn(), falCfg, {
+        generateFightVideo(validModelTurn(), falCfg, {
           subscribe: async () => {
             throw new ApiError({
               message: "",
@@ -155,7 +155,7 @@ describe("generateFightVideo", () => {
   it("fails when the fal response has no video.url", async () => {
     await assert.rejects(
       () =>
-        generateFightVideo(validTurn(), falCfg, {
+        generateFightVideo(validModelTurn(), falCfg, {
           subscribe: async () => ({
             data: { video: { url: "" } },
             requestId: "req-2",

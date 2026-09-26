@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { assertTurnContractText, narrateFight } from "../src/narrate.js";
 import { renderEnsLines } from "../src/render.js";
-import { sampleFightInput, validModelTurn, validTurn } from "./fixtures.js";
+import { sampleFightInput, validModelTurn } from "./fixtures.js";
 import type { NarrationConfig } from "../src/env.js";
 
 const narrationCfg: NarrationConfig = {
@@ -13,12 +13,9 @@ const narrationCfg: NarrationConfig = {
   apiKey: "sk-test",
 };
 
-const pickFirst = () => 0;
-const pickLast = (maxExclusive: number) => maxExclusive - 1;
-
 describe("assertTurnContractText", () => {
   it("accepts loser line then winner line with nothing after", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const [loser, winner] = renderEnsLines(turn);
     assert.doesNotThrow(() =>
       assertTurnContractText(`${loser}\n${winner}`, turn),
@@ -26,7 +23,7 @@ describe("assertTurnContractText", () => {
   });
 
   it("rejects when the winner line is not last", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const [loser, winner] = renderEnsLines(turn);
     assert.throws(
       () => assertTurnContractText(`${winner}\n${loser}`, turn),
@@ -35,7 +32,7 @@ describe("assertTurnContractText", () => {
   });
 
   it("rejects extra trailing lines after the ENS pair", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     const [loser, winner] = renderEnsLines(turn);
     assert.throws(
       () => assertTurnContractText(`${loser}\n${winner}\nextra`, turn),
@@ -44,7 +41,7 @@ describe("assertTurnContractText", () => {
   });
 
   it("rejects look/brief/icon field updates in the ENS lines", () => {
-    const turn = validTurn();
+    const turn = validModelTurn();
     assert.throws(
       () =>
         assertTurnContractText(
@@ -57,7 +54,7 @@ describe("assertTurnContractText", () => {
 });
 
 describe("narrateFight", () => {
-  it("validates structured provider output and sets next opponent from rotation", async () => {
+  it("validates structured provider output and tells the model not to name a next opponent", async () => {
     const modelTurn = validModelTurn();
     let systemPrompt = "";
     const result = await narrateFight(
@@ -69,12 +66,9 @@ describe("narrateFight", () => {
           return modelTurn;
         },
       },
-      pickFirst,
     );
     assert.equal(result.turn.winner_subname, "jason");
     assert.deepEqual(result.ensLines, renderEnsLines(result.turn));
-    assert.equal(result.nextOpponentSubname, "leatherface");
-    assert.equal(result.turn.next_opponent_subname, "leatherface");
     assert.equal(result.rationale, modelTurn.rationale);
     assert.match(
       systemPrompt,
@@ -83,19 +77,6 @@ describe("narrateFight", () => {
     assert.match(systemPrompt, /Do not invent a different location/);
     assert.match(systemPrompt, /opposite sides/);
     assert.match(systemPrompt, /Do not name a next opponent/);
-  });
-
-  it("ignores any model-supplied next opponent and uses the injected random pick", async () => {
-    const result = await narrateFight(
-      sampleFightInput(),
-      narrationCfg,
-      {
-        complete: async () => validModelTurn(),
-      },
-      pickLast,
-    );
-    assert.equal(result.nextOpponentSubname, "chucky");
-    assert.equal(result.turn.next_opponent_subname, "chucky");
   });
 
   it("rejects a bad structured turn from the provider", async () => {
@@ -111,7 +92,6 @@ describe("narrateFight", () => {
                 winner_subname: "freddy",
               }),
           },
-          pickFirst,
         ),
       /both die|same/i,
     );

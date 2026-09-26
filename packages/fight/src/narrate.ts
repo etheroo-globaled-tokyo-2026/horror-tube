@@ -10,17 +10,7 @@ import {
   renderEnsLines,
   videoPromptFromTurn,
 } from "./render.js";
-import {
-  nextRotationPair,
-  rosterAfterFight,
-  type RandomInt,
-} from "./rotation.js";
-import {
-  narrationModelTurnSchema,
-  type FightInput,
-  type NarrationModelTurn,
-  type NarrationTurn,
-} from "./types.js";
+import { narrationModelTurnSchema, type FightInput, type NarrationModelTurn } from "./types.js";
 import { validateFightInput, validateNarrationTurn } from "./validate.js";
 
 export type { NarrationModelTurn };
@@ -103,16 +93,15 @@ export type NarrationProviderClient = {
 };
 
 export type NarrationResult = {
-  turn: NarrationTurn;
+  turn: NarrationModelTurn;
   ensLines: [string, string];
-  nextOpponentSubname: string;
   rationale: string;
   videoPrompt: string;
 };
 
 export function assertTurnContractText(
   text: string,
-  turn: NarrationTurn,
+  turn: NarrationModelTurn,
 ): void {
   const expected = renderEnsLines(turn);
   const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
@@ -143,7 +132,6 @@ export async function narrateFight(
   input: FightInput,
   config: NarrationConfig,
   client: NarrationProviderClient = providerClient(config),
-  randomInt: RandomInt,
 ): Promise<NarrationResult> {
   validateFightInput(input);
   const system = buildSystemPrompt(config.fightVideoSeconds);
@@ -164,28 +152,13 @@ export async function narrateFight(
     );
   }
   validateNarrationTurn(modelTurn, input);
-  const after = rosterAfterFight(
-    [input.fighterA, input.fighterB],
-    input.eligibleOpponents,
-    modelTurn.loser_subname,
-    modelTurn.winner_subname,
-  );
-  const next = nextRotationPair(
-    after,
-    modelTurn.winner_subname,
-    randomInt,
-  );
-  const turn: NarrationTurn = {
-    ...modelTurn,
-    next_opponent_subname: next.challengerSubname,
-  };
+  const turn: NarrationModelTurn = modelTurn;
   const ensLines = renderEnsLines(turn);
   assertEnsLinesLegal(ensLines);
   assertTurnContractText(`${ensLines[0]}\n${ensLines[1]}`, turn);
   return {
     turn,
     ensLines,
-    nextOpponentSubname: turn.next_opponent_subname,
     rationale: turn.rationale,
     videoPrompt: videoPromptFromTurn(turn),
   };
@@ -271,7 +244,7 @@ function buildSystemPrompt(fightVideoSeconds: number): string {
     "The winner may take visible damage. Winner injuries must be a JSON array of phrases that also appear in the shot list (carried injuries plus any new damage).",
     "Each shot needs: character looks, a timed beat (time_range), action, camera move, and style.",
     "No readable on-screen text. No extra people.",
-    "Do not name a next opponent. The application picks the next living challenger at random after this fight.",
+    "Do not name a next opponent. The application pairs the next bout separately.",
     "Return only the structured fields. Application code will render ENS lines.",
   ].join(" ");
 }
