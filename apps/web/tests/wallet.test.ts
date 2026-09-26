@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { bcs } from "@mysten/sui/bcs";
+import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
+
 import {
+  USDC_TYPE,
   WALLET_SESSION_KEY,
   type SessionStore,
   fromUsdcUnits,
   getGameWallet,
   openGameWallet,
   toUsdcUnits,
+  usdcDeposit,
   usdcTransfer,
 } from "../wallet.ts";
 
@@ -83,5 +88,26 @@ describe("Shinami game wallet", () => {
       data.commands.map((command) => command.$kind),
       ["$Intent", "TransferObjects"],
     );
+  });
+
+  it("deposits USDC into the recipient's address balance with send_funds", () => {
+    const to = "0x" + "ab".repeat(32);
+    const data = usdcDeposit(to, 5_000_000n).getData();
+    const calls = data.commands.flatMap((command) =>
+      command.MoveCall === undefined ? [] : [command.MoveCall],
+    );
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.ok(call);
+    assert.equal(
+      `${normalizeSuiAddress(call.package)}::${call.module}::${call.function}`,
+      `${normalizeSuiAddress("0x2")}::coin::send_funds`,
+    );
+    assert.deepEqual(call.typeArguments.map(normalizeStructTag), [normalizeStructTag(USDC_TYPE)]);
+    const recipient = call.arguments[1];
+    assert.ok(recipient?.$kind === "Input");
+    const input = data.inputs[recipient.Input];
+    assert.ok(input?.$kind === "Pure");
+    assert.equal(normalizeSuiAddress(bcs.Address.parse(fromBase64(input.Pure.bytes))), to);
   });
 });

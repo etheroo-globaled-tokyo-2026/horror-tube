@@ -14,7 +14,7 @@ import {
   getUsdcBalance,
   sendUsdc,
   toUsdcUnits,
-  usdcTransfer,
+  usdcDeposit,
 } from "./wallet.ts";
 
 export const COINS = [5, 10, 20] as const;
@@ -507,7 +507,7 @@ export function createCoinBox(
       );
     setStatus("INSERTING");
     const result = await dAppKit.signAndExecuteTransaction({
-      transaction: usdcTransfer(wallet.address, toUsdcUnits(dollars)),
+      transaction: usdcDeposit(wallet.address, toUsdcUnits(dollars)),
     });
     if (result.$kind === "FailedTransaction")
       throw new Error(result.FailedTransaction.status.error?.message ?? "Deposit failed");
