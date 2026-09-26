@@ -19,7 +19,9 @@ See `design/DESIGN.md`.
 ## Flow
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+. The user can use a browser wallet.
+   This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `design/DESIGN.md`.
 2. **Connect wallet**: `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
+   Open: this step is still a full-screen panel. It must move into the room too.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)
