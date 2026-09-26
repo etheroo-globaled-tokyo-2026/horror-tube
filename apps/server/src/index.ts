@@ -15,11 +15,13 @@ import {
   readStaticDir,
   requiredEnv,
 } from "./env.js";
+import { createFightJobRunner } from "./fight-job.js";
 import {
   readGameLoopConfig,
   readRosterEnsLabels,
 } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
+import { loadLivingCardsFromEns } from "./load-living-cards.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
@@ -35,6 +37,9 @@ const staticDir = readStaticDir();
 const host = "0.0.0.0";
 const skipSettlement = readSkipBattleSettlement();
 const battleBetting = createBattleBettingPorts();
+const fightJob = createFightJobRunner({
+  loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
+});
 
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
@@ -50,6 +55,7 @@ const game = new GameLoop({
   battleQueueStore,
   chainWritePorts,
   battleBetting,
+  fightJob,
   skipSettlement,
 });
 
