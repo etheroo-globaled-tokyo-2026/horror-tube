@@ -2,9 +2,10 @@
   "name": "@horror-tube/ens",
   "private": true,
   "scripts": {
-    "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts tests/permissions.test.ts",
+    "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts tests/permissions.test.ts tests/setter-roles.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "tsx scripts/register-eth-label.ts check",
+    "roles": "tsx scripts/read-setter-roles.ts",
     "register": "tsx scripts/register-eth-label.ts",
     "subnames": "tsx scripts/character-subnames.ts",
     "dashboard": "tsx scripts/dashboard.ts"
