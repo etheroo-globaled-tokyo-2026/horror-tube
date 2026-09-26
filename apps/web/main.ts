@@ -68,6 +68,13 @@ scene.add(camera);
 function size() {
   renderer.setSize(Math.round(innerWidth / 1.6), Math.round(innerHeight / 1.6), false);
   camera.aspect = innerWidth / innerHeight;
+  const wide = 16 / 9;
+  camera.fov =
+    camera.aspect >= wide
+      ? 50
+      : THREE.MathUtils.radToDeg(
+          2 * Math.atan((Math.tan(THREE.MathUtils.degToRad(25)) * wide) / camera.aspect),
+        );
   camera.updateProjectionMatrix();
 }
 addEventListener("resize", size);
