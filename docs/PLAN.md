@@ -16,9 +16,9 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                   |
 | Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                  |
 | Betting contract             | Built on Sepolia: `BattleBetting` (`docs/battle-betting.md`). The game does not call it yet; bets are simulated in `game.ts`. A Sui port is being scoped. |
-| Game server                  | Not built. The contract for it is in `docs/game-loop.md`.                                                                                                 |
-| Story LLM and video pipeline | Not built. One demo clip plays for every fight.                                                                                                           |
-| ENS writes after a fight     | Not built. Deaths and damage stay in the browser.                                                                                                         |
+| Game server                  | Built (`apps/server`). Vote→bet→fight→settle holding loop; battle-result queue schema and settle state machine land with #60. |
+| Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                  |
+| ENS writes after a fight     | Queued in Postgres (`battle_results`); writes after betting-closed + playback-finished. Live resolver txs still inject ports. |
 
 ## Art direction
 
@@ -27,7 +27,7 @@ See `apps/web/DESIGN.md`.
 ## Components
 
 - **ENS name**: character state (subnames and text records) on Sepolia. The web game reads its characters from here.
-- **Database**: holds lore, battle results, and damage. Not built. The host is open.
+- **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons/rounds/votes and the battle-result queue (`battle_results`). Not Durable Objects.
 - **Smart contract**: `BattleBetting` on Eth Sepolia takes ETH bets and settles from ENS. Built; see [battle-betting.md](battle-betting.md). Moving the betting pool to a Move package on Sui testnet is being scoped.
 - **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
