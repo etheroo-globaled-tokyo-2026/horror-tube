@@ -43,7 +43,7 @@ Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every
 | `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
 | `spaces_bucket_name` | globally unique name |
 
-The Managed Postgres firewall is hardcoded to `0.0.0.0/0` in `database.tf` (public because hackathon developers are not on one IP). It is not a tfvars setting.
+The Managed Postgres firewall is hardcoded public in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`, covering all IPv4) because hackathon developers are not on one IP. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
 
 There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
 

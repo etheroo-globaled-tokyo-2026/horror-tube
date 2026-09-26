@@ -14,9 +14,16 @@ resource "digitalocean_database_cluster" "battle_state" {
 resource "digitalocean_database_firewall" "battle_state" {
   cluster_id = digitalocean_database_cluster.battle_state.id
 
-  # Public (0.0.0.0/0) because hackathon developers are not on one IP.
+  # Public because hackathon developers are not on one IP.
+  # DigitalOcean rejects 0.0.0.0/0 ("subnet mask should not be 0"); these two
+  # /1 rules cover all IPv4.
   rule {
     type  = "ip_addr"
-    value = "0.0.0.0/0"
+    value = "0.0.0.0/1"
+  }
+
+  rule {
+    type  = "ip_addr"
+    value = "128.0.0.0/1"
   }
 }
