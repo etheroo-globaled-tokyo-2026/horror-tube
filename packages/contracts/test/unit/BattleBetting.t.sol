@@ -26,9 +26,13 @@ contract BattleBettingTest is Test {
         betting = new BattleBetting(admin, operator, treasury, FEE_BPS, MIN_BET, ens, "horrortube");
     }
 
-    function _open() internal returns (uint256) {
+    function _open(string memory fighterA, string memory fighterB) internal returns (uint256) {
         vm.prank(operator);
-        return betting.openBattle("jason", "freddy", uint64(block.timestamp) + BETTING_WINDOW);
+        return betting.openBattle(fighterA, fighterB, uint64(block.timestamp) + BETTING_WINDOW);
+    }
+
+    function _open() internal returns (uint256) {
+        return _open("jason", "freddy");
     }
 
     function _bet(address bettor, uint256 battleId, uint8 fighter, uint256 amount) internal {
@@ -81,7 +85,7 @@ contract BattleBettingTest is Test {
 
     function test_openBattleNumbersBattlesAndStoresThem() public {
         uint256 first = _open();
-        uint256 second = _open();
+        uint256 second = _open("michael", "chucky");
 
         assertEq(first, 1);
         assertEq(second, 2);
@@ -126,6 +130,43 @@ contract BattleBettingTest is Test {
         vm.stopPrank();
     }
 
+    function test_openBattleRefusesADeadOrUnreadableFighter() public {
+        uint64 closesAt = uint64(block.timestamp) + BETTING_WINDOW;
+        _kill("freddy");
+        vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSelector(BattleBetting.FighterAlreadyDead.selector, "freddy"));
+        betting.openBattle("jason", "freddy", closesAt);
+
+        bytes32 michael = betting.fighterNode("michael");
+        ens.setFails(michael);
+        vm.prank(operator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                BattleBetting.EnsLookupFailed.selector,
+                1,
+                "michael",
+                abi.encodeWithSelector(StandInUniversalResolver.StandInLookupFailed.selector, michael)
+            )
+        );
+        betting.openBattle("jason", "michael", closesAt);
+    }
+
+    function test_fighterCanOnlyBeInOneUnsettledBattle() public {
+        uint256 first = _open();
+        vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSelector(BattleBetting.FighterInOpenBattle.selector, "jason", first));
+        betting.openBattle("michael", "jason", uint64(block.timestamp) + BETTING_WINDOW);
+
+        vm.prank(operator);
+        betting.cancelBattle(first);
+        uint256 second = _open("michael", "jason");
+        assertEq(betting.openBattleOf(betting.fighterNode("jason")), second);
+
+        _settleWithLoser(second, "michael");
+        assertEq(betting.openBattleOf(betting.fighterNode("jason")), 0);
+        _open("jason", "chucky");
+    }
+
     function test_placeBetAddsUpStakesPerFighter() public {
         uint256 id = _open();
         _bet(alice, id, 0, 0.01 ether);
@@ -146,7 +187,7 @@ contract BattleBettingTest is Test {
 
     function test_placeBetRejectsInvalidBets() public {
         uint256 id = _open();
-        uint256 cancelled = _open();
+        uint256 cancelled = _open("michael", "chucky");
         vm.prank(operator);
         betting.cancelBattle(cancelled);
         uint64 closesAt = betting.getBattle(id).closesAt;
@@ -211,7 +252,7 @@ contract BattleBettingTest is Test {
 
     function test_settleMakesTheLivingFighterTheWinner() public {
         uint256 first = _open();
-        uint256 second = _open();
+        uint256 second = _open("michael", "chucky");
         _closeBetting(second);
 
         _kill("jason");
@@ -220,8 +261,7 @@ contract BattleBettingTest is Test {
         assertEq(betting.getBattle(first).winner, 1);
         assertEq(uint8(betting.getBattle(first).status), uint8(BattleBetting.Status.Settled));
 
-        ens.setStatus(betting.fighterNode("jason"), "");
-        _kill("freddy");
+        _kill("chucky");
         betting.settleBattle(second);
         assertEq(betting.getBattle(second).winner, 0);
 
@@ -283,11 +323,12 @@ contract BattleBettingTest is Test {
     function test_settledBattleRefundsWhenOneFighterHadNoBackers() public {
         uint256 onlyWinnerBacked = _open();
         _bet(alice, onlyWinnerBacked, 0, 0.03 ether);
-        uint256 onlyLoserBacked = _open();
+        uint256 onlyLoserBacked = _open("michael", "chucky");
         _bet(bob, onlyLoserBacked, 1, 0.02 ether);
 
         _closeBetting(onlyLoserBacked);
         _kill("freddy");
+        _kill("chucky");
         betting.settleBattle(onlyWinnerBacked);
         betting.settleBattle(onlyLoserBacked);
 
@@ -300,7 +341,7 @@ contract BattleBettingTest is Test {
         uint256 opened = _open();
         vm.prank(admin);
         betting.setFeeBps(1000);
-        uint256 openedAfter = _open();
+        uint256 openedAfter = _open("michael", "chucky");
         _bet(alice, opened, 0, 0.01 ether);
         _bet(bob, opened, 1, 0.01 ether);
         _bet(alice, openedAfter, 0, 0.01 ether);
@@ -308,6 +349,7 @@ contract BattleBettingTest is Test {
 
         _closeBetting(openedAfter);
         _kill("freddy");
+        _kill("chucky");
         betting.settleBattle(opened);
         betting.settleBattle(openedAfter);
 

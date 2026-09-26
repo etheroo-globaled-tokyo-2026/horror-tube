@@ -30,8 +30,12 @@ contract E2eBattleBetting is Script {
         console.log("feeBps", betting.feeBps());
         console.log("minBet", minBet);
 
+        // Fresh fighter labels per run, so a run that dies midway can't block the next one.
+        string memory run = vm.toString(block.timestamp);
         vm.startBroadcast(key);
-        uint256 battleId = betting.openBattle("e2e-a", "e2e-b", uint64(block.timestamp + 1 hours));
+        uint256 battleId = betting.openBattle(
+            string.concat("e2e-", run, "-a"), string.concat("e2e-", run, "-b"), uint64(block.timestamp + 1 hours)
+        );
         betting.placeBet{value: minBet}(battleId, 0);
         betting.placeBet{value: 2 * minBet}(battleId, 1);
         betting.cancelBattle(battleId);

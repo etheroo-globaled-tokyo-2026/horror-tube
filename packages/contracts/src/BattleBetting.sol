@@ -60,6 +60,9 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
     mapping(uint256 battleId => Battle) private _battles;
     mapping(uint256 battleId => mapping(address bettor => uint256[2] stakes)) private _stakes;
     mapping(uint256 battleId => mapping(address bettor => bool)) public claimed;
+    /// Settlement reads a fighter's current ENS status, which only describes one fight, so a
+    /// fighter may be in one unsettled battle at a time.
+    mapping(bytes32 fighterNode => uint256 battleId) public openBattleOf;
 
     event BattleOpened(uint256 indexed battleId, string fighterA, string fighterB, uint64 closesAt, uint16 feeBps);
     event BetPlaced(uint256 indexed battleId, address indexed bettor, uint8 fighter, uint256 amount);
@@ -76,6 +79,8 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
     error ZeroMinBet();
     error InvalidLabel(string label);
     error SameFighters(string fighter);
+    error FighterAlreadyDead(string fighter);
+    error FighterInOpenBattle(string fighter, uint256 battleId);
     error ClosesAtNotInFuture(uint64 closesAt, uint256 blockTimestamp);
     error BattleNotOpen(uint256 battleId, Status status);
     error BettingClosed(uint256 battleId, uint64 closesAt);
@@ -125,6 +130,8 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
         if (closesAt <= block.timestamp) revert ClosesAtNotInFuture(closesAt, block.timestamp);
 
         battleId = nextBattleId++;
+        _reserveFighter(battleId, fighterA);
+        _reserveFighter(battleId, fighterB);
         Battle storage battle = _battles[battleId];
         battle.fighters[0] = fighterA;
         battle.fighters[1] = fighterB;
@@ -160,11 +167,14 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
         battle.status = Status.Settled;
         battle.winner = winner;
         accruedFees += fee;
+        _releaseFighters(battle);
         emit BattleSettled(battleId, winner, fee);
     }
 
     function cancelBattle(uint256 battleId) external onlyRole(OPERATOR_ROLE) {
-        _requireOpen(battleId).status = Status.Cancelled;
+        Battle storage battle = _requireOpen(battleId);
+        battle.status = Status.Cancelled;
+        _releaseFighters(battle);
         emit BattleCancelled(battleId);
     }
 
@@ -244,6 +254,20 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
         } catch (bytes memory reason) {
             revert EnsLookupFailed(battleId, fighter, reason);
         }
+    }
+
+    /// A fighter who already reads `dead` would hand the other side a known win.
+    function _reserveFighter(uint256 battleId, string calldata fighter) private {
+        bytes32 node = fighterNode(fighter);
+        uint256 current = openBattleOf[node];
+        if (current != 0) revert FighterInOpenBattle(fighter, current);
+        if (_isDead(battleId, fighter)) revert FighterAlreadyDead(fighter);
+        openBattleOf[node] = battleId;
+    }
+
+    function _releaseFighters(Battle storage battle) private {
+        delete openBattleOf[fighterNode(battle.fighters[0])];
+        delete openBattleOf[fighterNode(battle.fighters[1])];
     }
 
     function _requireOpen(uint256 battleId) private view returns (Battle storage battle) {
