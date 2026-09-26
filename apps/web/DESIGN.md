@@ -57,6 +57,9 @@ reads the meter:
 - Winnings: `game.ts` reads the wallet's tickets on every phase change and on every update during settle, because
   the server announces settle before the Sui pool is settled. Tickets in open pools wait. `YOU LOST` counts only the
   stake lost in this round's pool (`RoundState.poolId`), and the result and the claim reset when voting starts.
+- One money move at a time: a bet or a collect sets `S.pending` before it is sent and clears it when it lands or
+  fails. Meanwhile A/B and OK do nothing, and the TV and the hint say `PLACING YOUR BET…` or `COLLECTING…`. Bets,
+  claims and winnings reads run in order, never side by side.
 - The coin: the live game bets in the repo's own test USDC (`packages/test-usdc`, 6 decimals, no value), not Circle's
   testnet USDC. The web has no coin type of its own: it uses `coinType` from `GET /betting` (the server's
   `SUI_USDC_TYPE`) for the meter, deposits and withdrawals, and the coin box does not mount if that call fails.

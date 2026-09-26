@@ -12,7 +12,7 @@ import {
 import { normalizeSuiObjectId } from "@mysten/sui/utils";
 import * as v from "valibot";
 
-import type { Phase } from "./game.ts";
+import type { GameState, Phase } from "./game.ts";
 import { runKind, type GameWallet } from "./wallet.ts";
 
 const BettingIds = v.object({
@@ -57,6 +57,17 @@ export const placeBet = (
 ): Promise<string> => runKind(wallet, betTx(ids, poolId, side, units), fetchImpl);
 
 export type Claim = { tickets: Ticket[]; units: bigint; lost: bigint };
+
+export type BetGuard = Pick<GameState, "phase" | "poolId" | "error" | "bet" | "pending">;
+
+export const bookOpen = (round: Pick<GameState, "phase" | "poolId" | "error">): boolean =>
+  round.phase === "bet" && round.poolId !== null && round.error === null;
+
+export const canBet = (state: BetGuard): boolean =>
+  bookOpen(state) && state.bet === null && state.pending === null;
+
+export const canCollect = (state: Pick<GameState, "claim" | "pending">): boolean =>
+  state.claim > 0 && state.pending === null;
 
 export const winningsDue = (prev: Phase, next: Phase): boolean =>
   next !== prev || next === "settle";

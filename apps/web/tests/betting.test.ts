@@ -8,7 +8,16 @@ import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import * as v from "valibot";
 
-import { fetchBettingIds, placeBet, tally, toContractIds, winningsDue } from "../betting.ts";
+import {
+  canBet,
+  canCollect,
+  fetchBettingIds,
+  placeBet,
+  tally,
+  toContractIds,
+  winningsDue,
+  type BetGuard,
+} from "../betting.ts";
 import { formatPoolOdds } from "../odds.ts";
 import type { GameWallet } from "../wallet.ts";
 
@@ -239,5 +248,26 @@ describe("winnings", () => {
     assert.equal(winningsDue("settle", "settle"), true);
     assert.equal(winningsDue("settle", "vote"), true);
     assert.equal(winningsDue("bet", "bet"), false);
+  });
+});
+
+describe("bet and collect guards", () => {
+  const open: BetGuard = { phase: "bet", poolId: POOL, error: null, bet: null, pending: null };
+
+  it("takes one bet at a time, only while the book is open", () => {
+    assert.equal(canBet(open), true);
+    assert.equal(canBet({ ...open, pending: "bet" }), false);
+    assert.equal(canBet({ ...open, pending: "claim" }), false);
+    assert.equal(canBet({ ...open, bet: { side: 0, amt: 1 } }), false);
+    assert.equal(canBet({ ...open, poolId: null }), false);
+    assert.equal(canBet({ ...open, phase: "fight" }), false);
+    assert.equal(canBet({ ...open, error: "Video was not ready" }), false);
+  });
+
+  it("collects once, only when something is owed", () => {
+    assert.equal(canCollect({ claim: 3, pending: null }), true);
+    assert.equal(canCollect({ claim: 3, pending: "claim" }), false);
+    assert.equal(canCollect({ claim: 3, pending: "bet" }), false);
+    assert.equal(canCollect({ claim: 0, pending: null }), false);
   });
 });
