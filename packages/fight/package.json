@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "demo": "tsx src/demo.ts",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -28,7 +29,8 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@fal-ai/client": "^1.9.1",
     "@google/genai": "^1.46.0",
-    "@horror-tube/fight-media": "workspace:*"
+    "@horror-tube/fight-media": "workspace:*",
+    "dotenv": "^18.0.3"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
