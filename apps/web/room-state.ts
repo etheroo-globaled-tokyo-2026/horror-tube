@@ -53,8 +53,9 @@ export type Waiver = {
   ink: number;
   qrUri: string;
   fail: string;
+  down: string;
 };
-export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "" };
+export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "", down: "" };
 
 export type G = CanvasRenderingContext2D;
 

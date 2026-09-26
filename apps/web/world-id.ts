@@ -1,6 +1,8 @@
 import { IDKit, proofOfHuman, type IDKitResult } from "@worldcoin/idkit-core";
 import * as v from "valibot";
 
+import { requestFailure } from "./waiver-entry.ts";
+
 const AppIdString = v.pipe(v.string(), v.startsWith("app_"));
 
 const EnterRoomIdkitContext = v.object({
@@ -30,9 +32,7 @@ async function postWorldId<TSchema extends v.GenericSchema>(
 ): Promise<v.InferOutput<TSchema>> {
   const res = await fetch(path, { ...init, method: "POST" });
   const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`POST ${path} failed: HTTP ${String(res.status)} body=${text}`);
-  }
+  if (!res.ok) throw requestFailure(path, res.status, text);
   let parsed;
   try {
     parsed = v.safeParse(schema, JSON.parse(text));
