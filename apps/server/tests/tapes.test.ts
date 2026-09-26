@@ -20,6 +20,7 @@ const TapeSchema = v.object({
   rationale: v.string(),
   videoUrl: v.string(),
   recordedAt: v.number(),
+  statusTx: v.nullable(v.string()),
 });
 const TapesOk = v.object({ tapes: v.array(TapeSchema) });
 const TapesErr = v.object({ ok: v.literal(false), error: v.string() });
@@ -197,6 +198,7 @@ describe("GET /tapes", () => {
     assert.deepEqual(tape?.fighters, ["jason", "freddy"]);
     assert.equal(tape?.winner, "jason");
     assert.equal(tape?.videoUrl, "https://cdn.example/videos/finished.mp4");
+    assert.equal(tape?.statusTx, "0xstat");
   });
 
   it("returns 500 naming battle_results when the store read fails", async () => {
