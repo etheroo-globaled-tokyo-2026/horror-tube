@@ -22,7 +22,7 @@ See `apps/web/DESIGN.md`.
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
    This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
 2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
-   Deposits go through the coin box (see `apps/web/DESIGN.md`). Demo: the backend sends testnet SUI (gas) and the first USDC, one time per World ID nullifier.
+   Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Demo: the backend sends testnet SUI (gas) and the first USDC, one time per World ID nullifier.
    Open: this step is still a full-screen panel. It must move into the room too.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.

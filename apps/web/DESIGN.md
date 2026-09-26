@@ -136,6 +136,10 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
 - Keys: `D` the coin slot, `P` the sticker, `W` the coin return. Stakes are 1, 3 and 5 USDC.
+- **Gas today:** the paying wallet needs testnet SUI for a deposit, and the in-game wallet needs SUI for the coin
+  return. Errors stay in a panel ("THE BOX SPAT IT OUT") until closed.
+- **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
+  Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
 - The coin return needs a little SUI for gas in the in-game wallet. Until the faucet exists it says the return is
   jammed.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
