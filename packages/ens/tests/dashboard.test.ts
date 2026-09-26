@@ -117,3 +117,4 @@ describe("dashboard env (unit, no network)", () => {
     assert.throws(() => parseListenerPids("nope\n", 1), /lsof/u);
   });
 });
+
