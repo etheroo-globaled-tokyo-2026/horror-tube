@@ -6,7 +6,15 @@ import { fileURLToPath } from "node:url";
 
 import type { PutFightVideoInput } from "@horror-tube/fight-media";
 
-import { fightInputFromRotation, runFightTurn } from "../src/index.js";
+import {
+  buildShotList,
+  fightInputFromRotation,
+  RotoscopeError,
+  runFightTurn,
+  type FightTurnDeps,
+  type RotoscopeConfig,
+  type RotoscopeShotList,
+} from "../src/index.js";
 import {
   fighterA,
   fighterB,
@@ -16,12 +24,12 @@ import {
   validModelTurn,
 } from "./fixtures.js";
 
-const fixturePath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "fixtures",
-  "fal-h3-max-response.json",
-);
+const saved = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "fal-h3-max-response.json"),
+    "utf8",
+  ),
+) as { video: { url: string }; expanded_prompt: string };
 
 const fightMediaConfig = {
   accessKeyId: "AKIATEST",
@@ -49,113 +57,181 @@ const narrationConfig = {
   apiKey: "sk-test",
 };
 
+const rotoscopeConfig: RotoscopeConfig = {
+  url: "http://127.0.0.1:8765",
+  timeoutMs: 660_000,
+};
+
+const FILM = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+const DEMON = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0xde]);
+const DRAWN = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0xd7]);
+const FRAME = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+/** Fakes for every outside call, effects off. Records downloads, frame extracts and uploads. */
+function fakeRun(overrides: FightTurnDeps = {}) {
+  const downloads: string[] = [];
+  const extracted: Uint8Array[] = [];
+  const puts: PutFightVideoInput[] = [];
+  const deps: FightTurnDeps = {
+    narrationConfig,
+    falConfig,
+    videoEffects: { demonSound: false, rotoscope: null },
+    narration: { complete: async () => validModelTurn() },
+    fal: { subscribe: async () => ({ data: saved, requestId: "fixture-req" }) },
+    fetch: async (url) => {
+      downloads.push(url);
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        arrayBuffer: async () => FILM.slice().buffer,
+      };
+    },
+    fightMediaConfig,
+    putObject: async (input) => {
+      puts.push(input);
+    },
+    extractLastFrame: async (mp4) => {
+      extracted.push(mp4);
+      return FRAME;
+    },
+    randomInt: () => 0,
+    log: () => {},
+    ...overrides,
+  };
+  return {
+    run: () => runFightTurn(sampleFightInput(), {}, deps),
+    downloads,
+    extracted,
+    puts,
+    uploaded: (contentType: string) =>
+      puts.find((p) => p.ContentType === contentType),
+  };
+}
+
 describe("runFightTurn", () => {
-  it("narrates, downloads fal bytes, uploads video and frame, returns CDN URLs", async () => {
-    const turn = validModelTurn();
-    const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-      video: { url: string };
-      expanded_prompt: string;
-    };
-    const mp4Bytes = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
-    const frameBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
-    let downloadedUrl: string | undefined;
-    const puts: PutFightVideoInput[] = [];
+  it("with both effects off, uploads fal's video and its last frame and returns CDN URLs", async () => {
+    const fake = fakeRun();
+    const result = await fake.run();
 
-    const result = await runFightTurn(sampleFightInput(), {}, {
-      narrationConfig,
-      falConfig,
-      narration: { complete: async () => turn },
-      fal: {
-        subscribe: async () => ({
-          data: saved,
-          requestId: "fixture-req",
-        }),
-      },
-      fetch: async (url) => {
-        downloadedUrl = url;
-        return {
-          ok: true,
-          status: 200,
-          statusText: "OK",
-          arrayBuffer: async () =>
-            mp4Bytes.buffer.slice(
-              mp4Bytes.byteOffset,
-              mp4Bytes.byteOffset + mp4Bytes.byteLength,
-            ),
-        };
-      },
-      fightMediaConfig,
-      putObject: async (input) => {
-        puts.push(input);
-      },
-      extractLastFrame: async () => frameBytes,
-      randomInt: () => 0,
-    });
-
-    assert.equal(downloadedUrl, saved.video.url);
-    assert.equal(puts.length, 2);
-    const videoPut = puts.find((p) => p.ContentType === "video/mp4");
-    const framePut = puts.find((p) => p.ContentType === "image/jpeg");
+    assert.deepEqual(fake.downloads, [saved.video.url]);
+    assert.equal(fake.puts.length, 2);
+    const videoPut = fake.uploaded("video/mp4");
+    const framePut = fake.uploaded("image/jpeg");
     assert.ok(videoPut !== undefined);
     assert.ok(framePut !== undefined);
     assert.equal(videoPut.Bucket, fightMediaConfig.bucket);
     assert.match(videoPut.Key, /^videos\/[0-9a-f-]+\.mp4$/u);
     assert.match(framePut.Key, /^frames\/[0-9a-f-]+\.jpg$/u);
-    assert.deepEqual(videoPut.Body, mp4Bytes);
-    assert.deepEqual(framePut.Body, frameBytes);
-    assert.equal(
-      result.videoUrl,
-      `https://${fightMediaConfig.cdnHost}/${videoPut.Key}`,
-    );
-    assert.equal(
-      result.frameUrl,
-      `https://${fightMediaConfig.cdnHost}/${framePut.Key}`,
-    );
+    assert.deepEqual(videoPut.Body, FILM);
+    assert.deepEqual(framePut.Body, FRAME);
+    assert.equal(result.videoStyle, "film");
+    assert.equal(result.videoUrl, `https://${fightMediaConfig.cdnHost}/${videoPut.Key}`);
+    assert.equal(result.frameUrl, `https://${fightMediaConfig.cdnHost}/${framePut.Key}`);
     assert.notEqual(result.videoUrl, saved.video.url);
     assert.equal(result.expandedPrompt, saved.expanded_prompt);
     assert.equal(result.ensLines[0], "freddy|status=dead");
     assert.equal(result.nextOpponentSubname, "leatherface");
-    assert.equal(result.rationale, turn.rationale);
-    assert.equal(result.videoPrompt.includes(turn.rationale), false);
+    assert.equal(result.rationale, validModelTurn().rationale);
+    assert.equal(result.videoPrompt.includes(result.rationale), false);
     assert.equal(result.videoPrompt.includes("status=dead"), false);
   });
 
+  it("with DEMON_SOUND=1, uploads the demon-sound video and seeds the next bout from fal's footage", async () => {
+    const demonInputs: Uint8Array[] = [];
+    const fake = fakeRun({
+      videoEffects: { demonSound: true, rotoscope: null },
+      applyDemonSound: async (mp4) => {
+        demonInputs.push(mp4);
+        return DEMON;
+      },
+    });
+    const result = await fake.run();
+
+    assert.deepEqual(demonInputs, [FILM]);
+    assert.deepEqual(fake.extracted, [FILM]);
+    assert.deepEqual(fake.uploaded("video/mp4")?.Body, DEMON);
+    assert.equal(result.videoStyle, "film");
+  });
+
+  it("with ROTOSCOPE=1, sends fal's video and the narrated shot list to the service and uploads the drawing", async () => {
+    const calls: { mp4: Uint8Array; shotList: RotoscopeShotList; config: RotoscopeConfig }[] = [];
+    const fake = fakeRun({
+      videoEffects: { demonSound: false, rotoscope: rotoscopeConfig },
+      rotoscopeVideo: async (mp4, shotList, config) => {
+        calls.push({ mp4, shotList, config });
+        return { video: DRAWN, frames: 75, seconds: 40 };
+      },
+    });
+    const result = await fake.run();
+
+    assert.deepEqual(calls, [
+      {
+        mp4: FILM,
+        shotList: buildShotList(validModelTurn().shots, sampleFightInput()),
+        config: rotoscopeConfig,
+      },
+    ]);
+    assert.deepEqual(fake.extracted, [FILM]);
+    assert.deepEqual(fake.uploaded("video/mp4")?.Body, DRAWN);
+    assert.equal(result.videoStyle, "rotoscope");
+  });
+
+  it("fails the turn and uploads nothing when the rotoscope service fails", async () => {
+    const fake = fakeRun({
+      videoEffects: { demonSound: false, rotoscope: rotoscopeConfig },
+      rotoscopeVideo: async () => {
+        throw new RotoscopeError(
+          "rotoscope service answered HTTP 500 for http://127.0.0.1:8765/v1/rotoscope: segmenter failed {}",
+          { status: 500, serviceError: { error: "segmenter failed", detail: {} } },
+        );
+      },
+    });
+
+    await assert.rejects(fake.run, (err: unknown) => {
+      assert.ok(err instanceof RotoscopeError);
+      assert.match(err.message, /segmenter failed/);
+      return true;
+    });
+    assert.equal(fake.puts.length, 0);
+  });
+
+  it("with ROTOSCOPE=1, fails before fal runs when a shot's time range can't be read", async () => {
+    let falCalls = 0;
+    const shots = validModelTurn().shots.map((shot, i) =>
+      i === 0 ? { ...shot, time_range: "the opening" } : shot,
+    );
+    const fake = fakeRun({
+      videoEffects: { demonSound: false, rotoscope: rotoscopeConfig },
+      narration: { complete: async () => validModelTurn({ shots }) },
+      fal: {
+        subscribe: async () => {
+          falCalls += 1;
+          return { data: saved, requestId: "fixture-req" };
+        },
+      },
+    });
+
+    await assert.rejects(fake.run, /time_range "the opening" is not seconds/);
+    assert.equal(falCalls, 0);
+  });
+
   it("seeds the next fal request with image_url and the image-to-video model", async () => {
-    const turn = validModelTurn();
     const priorFrameUrl =
       "https://horror-tube-fight-media-test.sgp1.cdn.digitaloceanspaces.com/frames/prior.jpg";
     let subscribedModel = "";
     let subscribedInput: Record<string, unknown> | undefined;
-
-    await runFightTurn(sampleFightInput(), {}, {
-      narrationConfig,
-      falConfig,
+    const fake = fakeRun({
       priorFrameUrl,
-      narration: { complete: async () => turn },
       fal: {
         subscribe: async (model, opts) => {
           subscribedModel = model;
           subscribedInput = opts.input;
-          return {
-            data: {
-              video: { url: "https://v3b.fal.media/files/b/example/fight.mp4" },
-              expanded_prompt: "x",
-            },
-            requestId: "i2v-req",
-          };
+          return { data: saved, requestId: "i2v-req" };
         },
       },
-      fetch: async () => ({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-      }),
-      fightMediaConfig,
-      putObject: async () => {},
-      extractLastFrame: async () => new Uint8Array([0xff, 0xd8]),
-      randomInt: () => 0,
     });
+    await fake.run();
 
     assert.equal(subscribedModel, "minimax/h3-max/image-to-video");
     assert.equal(subscribedInput?.image_url, priorFrameUrl);
@@ -163,76 +239,29 @@ describe("runFightTurn", () => {
   });
 
   it("does not return the fal URL when Spaces upload fails", async () => {
-    const turn = validModelTurn();
-    const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-      video: { url: string };
-      expanded_prompt: string;
-    };
-
-    await assert.rejects(
-      () =>
-        runFightTurn(sampleFightInput(), {}, {
-          narrationConfig,
-          falConfig,
-          narration: { complete: async () => turn },
-          fal: {
-            subscribe: async () => ({
-              data: saved,
-              requestId: "fixture-req",
-            }),
-          },
-          fetch: async () => ({
-            ok: true,
-            status: 200,
-            statusText: "OK",
-            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-          }),
-          fightMediaConfig,
-          putObject: async () => {
-            throw new Error("AccessDenied: simulated Spaces failure");
-          },
-          randomInt: () => 0,
-        }),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /Spaces put_object failed/u);
-        assert.equal(err.message.includes(saved.video.url), false);
-        return true;
+    const fake = fakeRun({
+      putObject: async () => {
+        throw new Error("AccessDenied: simulated Spaces failure");
       },
-    );
+    });
+
+    await assert.rejects(fake.run, (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.match(err.message, /Spaces put_object failed/u);
+      assert.equal(err.message.includes(saved.video.url), false);
+      return true;
+    });
   });
 
-  it("fails closed when last-frame extract fails after the video uploaded", async () => {
-    const turn = validModelTurn();
-    await assert.rejects(
-      () =>
-        runFightTurn(sampleFightInput(), {}, {
-          narrationConfig,
-          falConfig,
-          narration: { complete: async () => turn },
-          fal: {
-            subscribe: async () => ({
-              data: {
-                video: { url: "https://v3b.fal.media/files/b/example/fight.mp4" },
-              },
-              requestId: "fixture-req",
-            }),
-          },
-          fetch: async () => ({
-            ok: true,
-            status: 200,
-            statusText: "OK",
-            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-          }),
-          fightMediaConfig,
-          putObject: async () => {},
-          extractLastFrame: async () => {
-            throw new Error("ffmpeg exited 1 while extracting");
-          },
-          randomInt: () => 0,
-        }),
-      /ffmpeg exited 1/,
-    );
+  it("fails closed and uploads nothing when last-frame extract fails", async () => {
+    const fake = fakeRun({
+      extractLastFrame: async () => {
+        throw new Error("ffmpeg exited 1 while extracting");
+      },
+    });
+
+    await assert.rejects(fake.run, /ffmpeg exited 1/);
+    assert.equal(fake.puts.length, 0);
   });
 });
 

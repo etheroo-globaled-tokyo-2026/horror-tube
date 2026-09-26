@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').cpSync('src/assets', 'dist/assets', { recursive: true })\"",
     "demo": "tsx src/demo.ts",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"

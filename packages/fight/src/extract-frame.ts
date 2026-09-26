@@ -9,6 +9,9 @@ export type RunFfmpeg = (
   args: readonly string[],
 ) => Promise<{ code: number; stderr: string }>;
 
+/** Longest one ffmpeg run may take before it is killed. */
+const FFMPEG_TIMEOUT_MS = 120_000;
+
 /** Spawn system ffmpeg. Injectable in tests so CI never skips around a missing binary. */
 export async function defaultRunFfmpeg(
   args: readonly string[],
@@ -16,6 +19,7 @@ export async function defaultRunFfmpeg(
   return new Promise((resolve, reject) => {
     const child = spawn("ffmpeg", [...args], {
       stdio: ["ignore", "ignore", "pipe"],
+      timeout: FFMPEG_TIMEOUT_MS,
     });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer | string) => {
@@ -24,7 +28,15 @@ export async function defaultRunFfmpeg(
     child.on("error", (err) => {
       reject(err);
     });
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
+      if (signal !== null) {
+        reject(
+          new Error(
+            `ffmpeg was stopped by ${signal} (runs are killed after ${String(FFMPEG_TIMEOUT_MS)} ms): ${stderr.trim()}`,
+          ),
+        );
+        return;
+      }
       resolve({ code: code ?? 1, stderr });
     });
   });
@@ -69,7 +81,7 @@ export async function extractLastFrameJpeg(
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       throw new FightError(
-        `ffmpeg failed to start while extracting the last fight frame: ${detail}. Refusing to seed the next video without a frame.`,
+        `ffmpeg failed while extracting the last fight frame: ${detail}. Refusing to seed the next video without a frame.`,
         { cause },
       );
     }
