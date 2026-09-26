@@ -13,6 +13,10 @@ import {
   type RandomInt,
 } from "@horror-tube/fight/rotation";
 
+import {
+  stakeWeiForUnits,
+  type BattleBettingPorts,
+} from "../battle-betting.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import {
@@ -41,6 +45,8 @@ export type GameLoopOptions = {
   randomInt?: RandomInt;
   battleQueueStore: BattleQueueStore;
   chainWritePorts: ChainWritePorts;
+  /** Sepolia BattleBetting openBattle / placeBet. Required — no in-memory-only bet path. */
+  battleBetting: BattleBettingPorts;
   skipSettlement: boolean;
 };
 
@@ -62,6 +68,7 @@ export class GameLoop {
   private readonly randomInt: RandomInt;
   private readonly battleQueueStore: BattleQueueStore;
   private readonly chainWritePorts: ChainWritePorts;
+  private readonly battleBetting: BattleBettingPorts;
   private readonly skipSettlement: boolean;
   private readonly listeners = new Set<Listener>();
 
@@ -77,6 +84,8 @@ export class GameLoop {
   private nullifiers = new Set<string>();
   private fighters: [number, number] | null = null;
   private pool: [number, number] = [0, 0];
+  /** On-chain BattleBetting id while this bout's betting window is open. */
+  private onChainBattleId: bigint | null = null;
   private winner: 0 | 1 | null = null;
   private videoUrl: string | null = null;
   /** Last-frame CDN URL for the next bout's image-to-video seed. */
@@ -113,6 +122,7 @@ export class GameLoop {
       });
     this.battleQueueStore = options.battleQueueStore;
     this.chainWritePorts = options.chainWritePorts;
+    this.battleBetting = options.battleBetting;
     this.skipSettlement = options.skipSettlement;
     this.chars = options.ensLabels.map((ensLabel, id) => ({
       id,
@@ -169,7 +179,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "countdown" && this.endsAt !== null && now >= this.endsAt) {
-      this.closeVoting(now);
+      await this.closeVoting(now);
       return;
     }
     if (this.phase === "bet") {
@@ -193,7 +203,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
-      this.afterSettle();
+      await this.afterSettle();
     }
   }
 
@@ -252,7 +262,12 @@ export class GameLoop {
     this.emit();
   }
 
-  bet(side: 0 | 1, amount: number): void {
+  /**
+   * Place a stake on fighter 0 or 1. Calls BattleBetting.placeBet, then mirrors
+   * the stake units into RoundState.pool. Bets are optional for the bout; this
+   * only runs when a player posts. No house/robot seed.
+   */
+  async bet(side: 0 | 1, amount: number): Promise<void> {
     if (this.phase !== "bet") {
       throw new Error(
         `bet is only allowed in the bet phase. Current phase: ${this.phase}.`,
@@ -261,11 +276,20 @@ export class GameLoop {
     if (side !== 0 && side !== 1) {
       throw new Error(`bet side must be 0 or 1. Got: ${String(side)}.`);
     }
-    if (!(amount > 0) || !Number.isFinite(amount)) {
+    if (this.onChainBattleId === null) {
       throw new Error(
-        `bet amount must be a finite number > 0. Got: ${String(amount)}.`,
+        "bet requires an open BattleBetting battle. openBattle did not run for this bout.",
       );
     }
+    const valueWei = await stakeWeiForUnits(this.battleBetting, amount);
+    const hash = await this.battleBetting.placeBet(
+      this.onChainBattleId,
+      side,
+      valueWei,
+    );
+    console.log(
+      `BattleBetting.placeBet battleId=${String(this.onChainBattleId)} side=${String(side)} units=${String(amount)} wei=${String(valueWei)} tx=${hash}`,
+    );
     this.pool[side] += amount;
     this.emit();
   }
@@ -403,7 +427,7 @@ export class GameLoop {
     this.voters = 0;
   }
 
-  private closeVoting(now: number): void {
+  private async closeVoting(now: number): Promise<void> {
     // Stage 1 only: top two by votes. Stage 2+ pairs via enterBetFromRotation
     // after settle (no challenger ballot).
     if (this.champion !== null) {
@@ -426,6 +450,7 @@ export class GameLoop {
     this.videoDurationMs = null;
     this.error = null;
     this.pool = [0, 0];
+    this.onChainBattleId = null;
     this.queuedAgentResultId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
@@ -433,6 +458,7 @@ export class GameLoop {
     this.phase = "bet";
     this.betOpenedAt = now;
     this.endsAt = null;
+    await this.openOnChainBattle(now);
     this.emit();
   }
 
@@ -578,7 +604,7 @@ export class GameLoop {
     }
   }
 
-  private afterSettle(): void {
+  private async afterSettle(): Promise<void> {
     if (this.error !== null) {
       return;
     }
@@ -592,6 +618,7 @@ export class GameLoop {
     this.round += 1;
     this.winner = null;
     this.pool = [0, 0];
+    this.onChainBattleId = null;
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
@@ -606,14 +633,17 @@ export class GameLoop {
         "afterSettle: champion is required before starting the next bout via rotation.",
       );
     }
-    this.enterBetFromRotation(this.champion, this.now());
+    await this.enterBetFromRotation(this.champion, this.now());
   }
 
   /**
    * Stage 2+ bout start: champion vs random living non-winner.
    * Consumes nextRotationPair so narration cannot name a different opponent.
    */
-  private enterBetFromRotation(championId: number, now: number): void {
+  private async enterBetFromRotation(
+    championId: number,
+    now: number,
+  ): Promise<void> {
     const championLabel = this.ensLabels[championId];
     if (championLabel === undefined) {
       throw new Error(
@@ -642,13 +672,46 @@ export class GameLoop {
     this.fighters = [championId, challengerId];
     this.videoUrl = null;
     this.error = null;
+    this.onChainBattleId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
     this.holdingCopyApplied = false;
     this.phase = "bet";
     this.betOpenedAt = now;
     this.endsAt = null;
+    await this.openOnChainBattle(now);
     this.emit();
+  }
+
+  /**
+   * Operator openBattle for the current fighter pair. closesAt is a far upper
+   * bound; the game still ends betting via closeBetting when the video path does.
+   */
+  private async openOnChainBattle(now: number): Promise<void> {
+    if (this.fighters === null) {
+      throw new Error("openOnChainBattle requires fighters.");
+    }
+    const fighterA = this.ensLabels[this.fighters[0]];
+    const fighterB = this.ensLabels[this.fighters[1]];
+    if (fighterA === undefined || fighterB === undefined) {
+      throw new Error(
+        `openOnChainBattle: missing ENS label for fighters ${JSON.stringify(this.fighters)}.`,
+      );
+    }
+    const closesAtUnix = BigInt(
+      Math.floor(now / 1000) +
+        this.config.videoTimeoutSeconds +
+        this.config.betMinSeconds +
+        120,
+    );
+    this.onChainBattleId = await this.battleBetting.openBattle(
+      fighterA,
+      fighterB,
+      closesAtUnix,
+    );
+    console.log(
+      `BattleBetting.openBattle battleId=${String(this.onChainBattleId)} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
+    );
   }
 
   private enterVote(): void {
