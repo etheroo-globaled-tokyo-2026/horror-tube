@@ -109,7 +109,8 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 | `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID` | laptop | Publisher; holds `AdminCap`; funds the e2e wallet |
 | `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID` | server | Operator |
 | `SUI_E2E_OPERATOR_CAP_ID` | laptop | Operator cap held by the admin, so e2e runs never contend with the server |
-| `SHINAMI_ACCESS_KEY`, `WALLET_SECRET_PEPPER` | server, e2e | Exist on main |
+| `SHINAMI_ACCESS_KEY`, `WALLET_SECRET_PEPPER` | server | Exist on main. The key needs Gas Station, Wallet Services and Node Service |
+| `SUI_E2E_WALLET_SECRET` | e2e | Random secret for the e2e's own Shinami wallet; not the players' pepper |
 
 ## What you set up
 
@@ -131,7 +132,7 @@ coin instead: `packages/test-usdc`, module `test_usdc::usdc`. It has no value.
   with `coin::send_funds` (where `/tx` spends from). Max 1,000 USDC per call.
 - `pnpm test-usdc:deploy` publishes it and prints `TEST_USDC_TYPE` and `TEST_USDC_FAUCET_ID`.
   `pnpm test-usdc:mint <address> <units>` mints base units to that address balance and prints its
-  new balance. `pnpm test-usdc:accounts <count> <usdc-each> <sui-each>` (e.g. `20 500 0.5`) creates
+  new balance. `pnpm test-usdc:accounts <count> <usdc-min> <usdc-max> <sui-each>` (e.g. `20 500 2000 0.03`, a random whole amount each) creates
   keypairs, saves them to the gitignored `packages/test-usdc/accounts.json`, and in one transaction
   gives each the admin's SUI and freshly minted test USDC. The CLIs load `@horror-tube/betting` from
   `dist`, so run `pnpm --filter @horror-tube/betting build` first.

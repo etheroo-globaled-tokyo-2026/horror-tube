@@ -8,7 +8,7 @@ import { succeeded } from "../execute.js";
 
 export async function gaslessWallet(client: SuiGrpcClient, walletId: string) {
   const key = requiredEnv("SHINAMI_ACCESS_KEY");
-  const secret = createHmac("sha256", requiredEnv("WALLET_SECRET_PEPPER"))
+  const secret = createHmac("sha256", requiredEnv("SUI_E2E_WALLET_SECRET"))
     .update(`cli:${walletId}`)
     .digest("hex");
   const signer = new ShinamiWalletSigner(
