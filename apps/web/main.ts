@@ -38,6 +38,7 @@ import {
   waiverHooks,
 } from "./room-waiver.ts";
 import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, vidMode } from "./room-tv.ts";
+import { renderPlaceholders } from "./placeholders.ts";
 import { keyById, led, remote } from "./room-remote.ts";
 import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
 
@@ -598,6 +599,7 @@ function muteKey(): void {
 $("#mute").addEventListener("click", muteKey);
 $("#mute").textContent = isMuted() ? "SOUND OFF · M" : "SOUND ON · M";
 hooks.render = () => {
+  renderPlaceholders();
   if (S.phase === "gate") return hintText();
   if (T.phase !== S.phase) {
     const was = T.phase;
