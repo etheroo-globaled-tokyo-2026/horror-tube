@@ -13,6 +13,20 @@ pnpm dev
 
 Fill `.env` first. The comment above each variable says how. `ENS_LABEL` and `VITE_SEPOLIA_RPC_URL` are required. A blank value stops the page and names the variable.
 
+### Local round
+
+The game server only connects to Postgres over verified TLS. On a laptop, use a local database, not production:
+
+```bash
+pnpm db:local   # postgres:16 in Docker on 127.0.0.1 with a throwaway CA; --reset recreates it
+```
+
+1. Put the two printed lines (`DATABASE_URL`, `DATABASE_CA_CERT`) in `.env.local`. The server and Vite read `.env.local` over `.env`, so `.env` keeps its production values.
+2. Run `pnpm dev`.
+3. Open `http://localhost:8123` and `http://127.0.0.1:8123`: two origins, so two players. `PORT=<port> pnpm dev` changes the port if 8123 is taken.
+
+Local rounds still write fight results to the shared ENS roster.
+
 ## Docs
 
 | File                            | What it is                                                           |

@@ -16,3 +16,4 @@ terraform/terraform.tfvars
 docs
 tools
 scripts
+.local-db
