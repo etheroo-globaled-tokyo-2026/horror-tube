@@ -1,11 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import pg from "pg";
 
-import { readDatabaseUrl } from "./database-url.js";
-
-const { Client } = pg;
+import { createPgClient } from "./pg-client.js";
 
 export function migrationsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -34,12 +31,11 @@ export type MigrateResult = {
 
 /**
  * Applies pending *.sql files under migrations/ against DATABASE_URL.
- * Creates schema_migrations if needed. No default URL — fails via readDatabaseUrl.
+ * Creates schema_migrations if needed. TLS verifies with DATABASE_CA_CERT.
  */
 export async function migrate(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<MigrateResult> {
-  const databaseUrl = readDatabaseUrl(env);
   const files = await listMigrationFiles();
   if (files.length === 0) {
     throw new Error(
@@ -47,7 +43,7 @@ export async function migrate(
     );
   }
 
-  const client = new Client({ connectionString: databaseUrl });
+  const client = createPgClient(env);
   await client.connect();
   const applied: string[] = [];
   const skipped: string[] = [];

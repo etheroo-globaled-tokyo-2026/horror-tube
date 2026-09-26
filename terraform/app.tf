@@ -55,6 +55,13 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "DATABASE_CA_CERT"
+        value = var.database_ca_cert
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
         key   = "SPACES_ACCESS_KEY_ID"
         value = var.spaces_access_key_id
         scope = "RUN_TIME"

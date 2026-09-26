@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { loadWorldIdEnv } from "@horror-tube/world-id";
+import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
 import {
   readGameLoopConfig,
@@ -24,6 +25,9 @@ const game = new GameLoop({
   config: readGameLoopConfig(),
   ensLabels: readRosterEnsLabels(),
 });
+
+await assertDatabaseReady();
+console.log("database: verified TLS connection ok");
 
 let wallet;
 try {

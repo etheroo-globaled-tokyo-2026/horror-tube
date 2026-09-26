@@ -161,6 +161,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `ENS_LABEL` | `TF_VAR_ens_label` | BUILD_TIME; from `.env` |
 | `VITE_SEPOLIA_RPC_URL` | `TF_VAR_vite_sepolia_rpc_url` | BUILD_TIME; from `.env` |
 | `DATABASE_URL` | *(none)* | set from `battle_state.uri` in Terraform |
+| `DATABASE_CA_CERT` | `TF_VAR_database_ca_cert` | from `.env` (DigitalOcean project CA PEM / API base64) |
 | `SPACES_ACCESS_KEY_ID` | `TF_VAR_spaces_access_key_id` | from `.env` |
 | `SPACES_SECRET` | `TF_VAR_spaces_secret` | from `.env` |
 | `SPACES_BUCKET` | `TF_VAR_spaces_bucket` | from `.env` |
@@ -210,6 +211,7 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
+  : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
   : "${SUI_USDC_TYPE:?SUI_USDC_TYPE is required. See .env.example.}"
@@ -217,6 +219,7 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
   export TF_VAR_vite_sepolia_rpc_url="$VITE_SEPOLIA_RPC_URL"
+  export TF_VAR_database_ca_cert="$DATABASE_CA_CERT"
   export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
   export TF_VAR_spaces_secret="$SPACES_SECRET"
   export TF_VAR_spaces_bucket="$SPACES_BUCKET"

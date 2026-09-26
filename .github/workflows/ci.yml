@@ -130,11 +130,58 @@ jobs:
           --build-arg "ENS_LABEL=${ENS_LABEL}"
           --build-arg "VITE_SEPOLIA_RPC_URL=${VITE_SEPOLIA_RPC_URL}"
           -t horror-tube:ci .
-      - name: Run container and check health + ffmpeg + index
+      - name: Run Postgres with TLS and check health + ffmpeg + index
         run: |
           set -euo pipefail
-          cid="$(docker run -d \
+          net="horror-tube-ci-$$"
+          docker network create "$net"
+          docker volume create ht-pg-certs
+          docker run --rm -v ht-pg-certs:/certs alpine:3.20 sh -c '
+            set -euo pipefail
+            apk add --no-cache openssl >/dev/null
+            openssl req -x509 -newkey rsa:2048 -nodes \
+              -keyout /certs/ca.key -out /certs/ca.crt \
+              -days 1 -subj "/CN=horror-tube-ci-ca"
+            openssl req -newkey rsa:2048 -nodes \
+              -keyout /certs/server.key -out /certs/server.csr \
+              -subj "/CN=ht-pg" \
+              -addext "subjectAltName=DNS:ht-pg,DNS:localhost"
+            openssl x509 -req -in /certs/server.csr \
+              -CA /certs/ca.crt -CAkey /certs/ca.key -CAcreateserial \
+              -out /certs/server.crt -days 1 -copy_extensions copy
+            # postgres alpine runs as uid 70
+            chown -R 70:70 /certs
+            chmod 600 /certs/server.key /certs/ca.key
+            chmod 644 /certs/server.crt /certs/ca.crt
+          '
+          pg_cid="$(docker run -d --name ht-pg --network "$net" \
+            -e POSTGRES_PASSWORD=ci \
+            -e POSTGRES_USER=ci \
+            -e POSTGRES_DB=ci \
+            -v ht-pg-certs:/certs:ro \
+            postgres:16-alpine \
+            -c ssl=on \
+            -c ssl_cert_file=/certs/server.crt \
+            -c ssl_key_file=/certs/server.key)"
+          for i in $(seq 1 60); do
+            if docker exec "$pg_cid" pg_isready -U ci -d ci >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "postgres not ready" >&2
+              docker logs "$pg_cid" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          DATABASE_URL="postgres://ci:ci@ht-pg:5432/ci"
+          DATABASE_CA_CERT="$(docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
+            cat /certs/ca.crt | base64 -w0 2>/dev/null || docker run --rm -v ht-pg-certs:/certs:ro alpine:3.20 \
+            cat /certs/ca.crt | base64 | tr -d '\n')"
+          cid="$(docker run -d --network "$net" \
             -e "GAME_PORT=${GAME_PORT}" \
+            -e "DATABASE_URL=${DATABASE_URL}" \
+            -e "DATABASE_CA_CERT=${DATABASE_CA_CERT}" \
             -e "WORLD_ID_APP_ID=${WORLD_ID_APP_ID}" \
             -e "WORLD_ID_RP_ID=${WORLD_ID_RP_ID}" \
             -e "WORLD_ID_SIGNING_KEY=${WORLD_ID_SIGNING_KEY}" \
@@ -145,16 +192,23 @@ jobs:
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
-            -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
-          cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
+            -p "${GAME_PORT}:${GAME_PORT}" \
+            horror-tube:ci)"
+          cleanup() {
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+            docker rm -f "$pg_cid" >/dev/null 2>&1 || true
+            docker network rm "$net" >/dev/null 2>&1 || true
+            docker volume rm ht-pg-certs >/dev/null 2>&1 || true
+          }
           trap cleanup EXIT
-          for i in $(seq 1 30); do
+          for i in $(seq 1 45); do
             if curl -fsS "http://127.0.0.1:${GAME_PORT}/health" | grep -q '"ok":true'; then
               break
             fi
-            if [ "$i" -eq 30 ]; then
-              echo "health check failed after 30 attempts" >&2
+            if [ "$i" -eq 45 ]; then
+              echo "health check failed after 45 attempts" >&2
               docker logs "$cid" >&2
+              docker logs "$pg_cid" >&2
               exit 1
             fi
             sleep 1
