@@ -40,6 +40,7 @@ Checked in under `packages/roster/roster/schemas/`:
 | ---------- | ----------------------------------------------------------------------------- |
 | `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                           |
 | `display_name` | Non-empty human-readable name; never defaulted from `label`               |
+| `injury_places` | JSON array of at least one place this character can be injured. `propose` reads `injury_places.json` (issues #11, #12, #13) and fails if the label is missing |
 | `look`     | Non-empty string                                                              |
 | `brief`    | Non-empty string                                                              |
 | `injuries` | String containing a JSON array of non-empty strings; use `"[]"` when unhurt. **Missing key is an error** |
@@ -97,7 +98,7 @@ Writes a normalized import plan. Does not submit a transaction.
 Ensures the parent has a UserRegistry subregistry and PermissionedResolver
 (deployed via pin `VerifiableFactory` if missing), reads chain status/text for
 each label, then registers and writes `display_name` / `look` / `brief` /
-`injuries` / `status` / `icon` via `setText`.
+`injury_places` / `injuries` / `status` / `icon` via `setText`.
 
 ```bash
 python3 -m roster register --input /tmp/one-character.json
@@ -183,7 +184,7 @@ for each. Use `plan-remove` if you only want the JSON plan.
 ## Character sheet dashboard
 
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
-and shows `display_name` / `look` / `brief` / `injuries` / `status` / `icon`. Needs
+and shows `display_name` / `look` / `brief` / `injury_places` / `injuries` / `status` / `icon`. Needs
 `ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
 in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
 transactions.

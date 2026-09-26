@@ -9,7 +9,8 @@ Smallest ENS text set for a video LLM (not vision). Not product copy.
 | `display_name` | roster key at import           | yes      | Human-readable character name shown to people. |
 | `look`     | roster key at import               | yes      | Visible body, costume, silhouette. One sentence. |
 | `brief`    | roster key at import               | yes      | One short lore line the fight can act on. |
-| `injuries` | `agent.horrortube.eth` after fight | yes\*    | LLM-written carried damage for the next clip. |
+| `injury_places` | roster key at import          | yes      | JSON list of places this character can be injured. |
+| `injuries` | `agent.horrortube.eth` after fight | yes\*    | JSON list of damage the character is carrying now. |
 | `status`   | `agent.horrortube.eth` on death    | yes\*    | `dead` removes the name from selection. |
 | `icon`     | roster key at import               | no       | HTTPS URL string to the CDN portrait. |
 
@@ -27,9 +28,13 @@ Camera-ready body, costume, silhouette when healthy. No stats.
 
 One action-usable lore line. Not a biography.
 
+### `injury_places`
+
+JSON array of at least one place damage can land. Each item is descriptive text or a short label. The lists for the three roster batches are in `packages/roster/roster/injury_places.json`, taken from issues #11, #12, and #13. This is not current damage. `propose` uses that file for a known label and fails if the label is missing. It does not invent a place.
+
 ### `injuries`
 
-Replaced after each win with a JSON array of the current damage the winner carries. `[]` means unhurt. Each array item is one non-empty injury description or short label. The injury writer is an LLM that does not look at an image. On loss set `status` = `dead`; do not add death to `injuries`.
+Replaced after each win with a JSON array of the current damage the winner carries. `[]` means unhurt. Each array item is one non-empty injury description or short label, and it should name one of `injury_places` when that list is the reason the blow landed. The injury writer is an LLM that does not look at an image. On loss set `status` = `dead`; do not add death to `injuries`.
 
 ### `status`
 
@@ -49,6 +54,9 @@ No ENSv2 Sepolia millisecond measurement was found. An April 2024 ENS forum samp
 name: <display_name>
 look: <look>
 brief: <brief>
+injury_places:
+- <place>
+- <place>
 injuries: none
 ```
 
@@ -64,5 +72,5 @@ Omit `status` when the name is already known living. Never send dropped RPG keys
 
 ## Permission split
 
-- Roster key: `display_name`, `look`, `brief`, `icon`. Cannot set `status` or `injuries`.
-- Agent: `status`, `injuries` only. Cannot rewrite `display_name`, `look`, or `brief`.
+- Roster key: `display_name`, `look`, `brief`, `injury_places`, `icon`. Cannot set `status` or `injuries`.
+- Agent: `status`, `injuries` only. Cannot rewrite `display_name`, `look`, `brief`, or `injury_places`.

@@ -31,7 +31,7 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
-import { parseInjuries, readRosterFromChain } from "./dashboard.js";
+import { parseInjuries, parseInjuryPlaces, readRosterFromChain } from "./dashboard.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
@@ -50,6 +50,7 @@ const TEXT_KEYS = [
   "display_name",
   "look",
   "brief",
+  "injury_places",
   "injuries",
   "status",
   "icon",
@@ -77,6 +78,7 @@ type CharacterSheet = {
   display_name: string;
   look: string;
   brief: string;
+  injury_places: string;
   injuries: string;
   status: string;
   icon: string;
@@ -574,6 +576,11 @@ async function main(): Promise<void> {
       if (displayName === undefined || displayName.trim() === "") {
         fail(`${label}: display_name is missing or blank.`);
       }
+      const rawPlaces = texts.injury_places;
+      if (rawPlaces === undefined) {
+        fail(`${label}: injury_places text record was not read.`);
+      }
+      parseInjuryPlaces(label, rawPlaces);
       const rawInjuries = texts.injuries;
       if (rawInjuries === undefined) {
         fail(`${label}: injuries text record was not read.`);
@@ -584,6 +591,7 @@ async function main(): Promise<void> {
         display_name: displayName,
         look: texts.look ?? "",
         brief: texts.brief ?? "",
+        injury_places: rawPlaces,
         injuries: rawInjuries,
         status: texts.status ?? "",
         icon: texts.icon ?? "",
@@ -650,6 +658,7 @@ async function main(): Promise<void> {
         typeof entry.display_name !== "string" ||
         typeof entry.look !== "string" ||
         typeof entry.brief !== "string" ||
+        typeof entry.injury_places !== "string" ||
         typeof entry.injuries !== "string" ||
         typeof entry.status !== "string" ||
         typeof entry.icon !== "string"
@@ -659,6 +668,7 @@ async function main(): Promise<void> {
       if (entry.display_name.trim() === "") {
         fail(`Plan entry ${entry.label} has blank display_name.`);
       }
+      parseInjuryPlaces(entry.label, entry.injury_places);
       parseInjuries(entry.label, entry.injuries);
       const id = labelId(entry.label);
       let status: number;
@@ -852,6 +862,7 @@ async function main(): Promise<void> {
         display_name: sheet.display_name,
         look: sheet.look,
         brief: sheet.brief,
+        injury_places: JSON.stringify(sheet.injury_places),
         injuries: JSON.stringify(sheet.injuries),
         status: sheet.status,
         icon: sheet.icon,

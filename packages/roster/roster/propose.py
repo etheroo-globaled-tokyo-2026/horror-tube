@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any, Sequence
 
 from roster.fandom import FandomError, PageLore
@@ -18,6 +20,7 @@ from roster.validate import (
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _NON_LABEL_RE = re.compile(r"[^a-z0-9]+")
 _LEADING_ARTICLES = frozenset({"a", "an", "the"})
+_INJURY_PLACES_PATH = Path(__file__).resolve().parent / "injury_places.json"
 
 
 def display_name_from_title(title: str) -> str:
@@ -46,13 +49,40 @@ def first_sentence(text: str) -> str:
     return sentence
 
 
-def sheet_from_lore(lore: PageLore) -> Character:
+def injury_places_json_for_label(label: str) -> str:
+    """Places this label can be injured, from roster issues #11, #12, and #13."""
+    try:
+        catalog = json.loads(_INJURY_PLACES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FandomError(
+            f"Failed to read injury places {_INJURY_PLACES_PATH}: {exc}"
+        ) from exc
+    if not isinstance(catalog, dict) or label not in catalog:
+        raise FandomError(
+            f"No injury_places for label {label!r}. "
+            "Places come from roster issues #11, #12, and #13 "
+            f"in {_INJURY_PLACES_PATH.name}. Refusing to invent them."
+        )
+    places = catalog[label]
+    if not isinstance(places, list) or len(places) < 1:
+        raise FandomError(
+            f"injury_places for label {label!r} in {_INJURY_PLACES_PATH.name} "
+            "must be a non-empty list."
+        )
+    return json.dumps(places, ensure_ascii=False)
+
+
+def sheet_from_lore(lore: PageLore, *, injury_places: str | None = None) -> Character:
     """Map page sections into the roster character schema. Does not invent text."""
+    label = label_from_title(lore.title)
+    if injury_places is None:
+        injury_places = injury_places_json_for_label(label)
     character: dict[str, Any] = {
-        "label": label_from_title(lore.title),
+        "label": label,
         "display_name": display_name_from_title(lore.title),
         "look": first_sentence(lore.appearance),
         "brief": first_sentence(lore.powers),
+        "injury_places": injury_places,
         "injuries": "[]",
         "status": "alive",
         "icon": "",

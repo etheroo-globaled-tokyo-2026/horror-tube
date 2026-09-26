@@ -80,6 +80,7 @@ describe("dashboard HTML (unit, no network)", () => {
       owner,
       look: `<script>alert("x")</script>`,
       brief: `He said "boo" & left`,
+      injury_places: ["pins", "skull"],
       injuries: [],
       status: "alive",
       icon: "",
@@ -103,6 +104,7 @@ describe("dashboard HTML (unit, no network)", () => {
       owner: "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02",
       look: "A clown.",
       brief: "Stalks silently.",
+      injury_places: ["bag of weapons", "healing"],
       injuries: ["ripped left sleeve", "slower swing"],
       status: "alive",
       icon: "",
@@ -124,6 +126,7 @@ describe("dashboard HTML (unit, no network)", () => {
       display_name: "Pinhead",
       look: "Pale figure.",
       brief: "Summons chains.",
+      injury_places: '["pins"]',
       injuries: "scar on cheek",
       status: "alive",
       icon: "",
@@ -147,6 +150,16 @@ describe("dashboard HTML (unit, no network)", () => {
           { ...texts, display_name: " ", injuries: "[]" },
         ),
       /pinhead.*display_name/u,
+    );
+    assert.throws(
+      () =>
+        characterSheetFromTexts(
+          "pinhead",
+          "pinhead.horrortube.eth",
+          owner,
+          { ...texts, injuries: "[]", injury_places: "[]" },
+        ),
+      /pinhead.*injury_places/u,
     );
   });
 });

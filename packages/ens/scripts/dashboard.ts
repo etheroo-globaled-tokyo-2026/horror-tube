@@ -95,6 +95,7 @@ export type CharacterSheet = {
   owner: string;
   look: string;
   brief: string;
+  injury_places: string[];
   injuries: string[];
   status: string;
   icon: string;
@@ -104,33 +105,53 @@ type CharacterTexts = {
   display_name: string;
   look: string;
   brief: string;
+  injury_places: string;
   injuries: string;
   status: string;
   icon: string;
 };
 
-export function parseInjuries(label: string, raw: string): string[] {
+export function parseStringList(
+  label: string,
+  key: string,
+  raw: string,
+  minimum: number,
+): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
     throw new Error(
-      `${label}: injuries must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}: ${error instanceof Error ? error.message : String(error)}`,
+      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   if (!Array.isArray(parsed)) {
     throw new Error(
-      `${label}: injuries must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}`,
+      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}`,
     );
   }
-  return parsed.map((item, index) => {
+  const items = parsed.map((item, index) => {
     if (typeof item !== "string" || item.trim() === "") {
       throw new Error(
-        `${label}: injuries[${String(index)}] must be a non-empty string. Got ${JSON.stringify(raw)}`,
+        `${label}: ${key}[${String(index)}] must be a non-empty string. Got ${JSON.stringify(raw)}`,
       );
     }
     return item.trim();
   });
+  if (items.length < minimum) {
+    throw new Error(
+      `${label}: ${key} must contain at least ${String(minimum)} entry. Got ${JSON.stringify(raw)}`,
+    );
+  }
+  return items;
+}
+
+export function parseInjuries(label: string, raw: string): string[] {
+  return parseStringList(label, "injuries", raw, 0);
+}
+
+export function parseInjuryPlaces(label: string, raw: string): string[] {
+  return parseStringList(label, "injury_places", raw, 1);
 }
 
 export function characterSheetFromTexts(
@@ -149,6 +170,7 @@ export function characterSheetFromTexts(
     owner,
     look: texts.look,
     brief: texts.brief,
+    injury_places: parseInjuryPlaces(label, texts.injury_places),
     injuries: parseInjuries(label, texts.injuries),
     status: texts.status,
     icon: texts.icon,
@@ -410,6 +432,7 @@ export function renderDashboardHtml(
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
+        `<dt>injury places</dt><dd>${renderInjuriesHtml(sheet.injury_places)}</dd>`,
         `<dt>injuries</dt><dd>${renderInjuriesHtml(sheet.injuries)}</dd>`,
         `<dt>status</dt><dd class="status">${escapeHtml(sheet.status === "" ? "(empty)" : sheet.status)}</dd>`,
         `<dt>icon</dt><dd class="icon">${renderIconHtml(sheet.icon)}</dd>`,
@@ -691,6 +714,12 @@ async function loadCharacterSheets(
     );
     const look = await readText(publicClient, resolver, dnsName, "look");
     const brief = await readText(publicClient, resolver, dnsName, "brief");
+    const injury_places = await readText(
+      publicClient,
+      resolver,
+      dnsName,
+      "injury_places",
+    );
     const injuries = await readText(publicClient, resolver, dnsName, "injuries");
     const status = await readText(publicClient, resolver, dnsName, "status");
     const icon = await readText(publicClient, resolver, dnsName, "icon");
@@ -699,6 +728,7 @@ async function loadCharacterSheets(
         display_name,
         look,
         brief,
+        injury_places,
         injuries,
         status,
         icon,
