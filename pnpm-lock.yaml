@@ -58,6 +58,8 @@ importers:
         specifier: ^7.1.0
         version: 7.3.6(@types/node@26.6.2)(tsx@4.23.15)
 
+  packages/contracts: {}
+
   packages/ens:
     dependencies:
       viem:
