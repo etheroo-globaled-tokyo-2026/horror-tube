@@ -9,13 +9,13 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------------- | -------------------------------------------------------------------- |
 | `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote. |
 | `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                   |
-| `wallet.js`             | The burner wallet: `getWalletClient()` (viem from esm.sh).           |
+| `wallet.ts`             | The burner wallet: `getWalletClient()`. Vite serves the TypeScript.  |
 | `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).      |
 | `ht.css`                | Tokens, plus the World ID and wallet gate styles.                    |
 | `system.html`           | The specimen page for the tokens.                                    |
 | `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.          |
 
-Run `python3 -m http.server 8766` in `design/` and open `http://localhost:8766/`.
+Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
 ## The flow (game.js)
 
@@ -26,9 +26,10 @@ winners **claim**) → vote again, until one is left.
 
 Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, Frankenstein wins, to match the video.
 
+
 ## The wallet
 
-Bets must not open a wallet popup. `wallet.js` makes a burner wallet: a viem private key in `localStorage`
+Bets must not open a wallet popup. `wallet.ts` makes a burner wallet: a viem private key in `localStorage`
 (`horror-tube.burner-key`), on Sepolia. It signs with no prompt. The rest of the game only calls
 `getWalletClient()`, which returns a viem wallet client (with public actions). Only that function changes when we move
 to Privy. Bets and claims in `game.js` are still simulated; there is no contract yet.
@@ -58,6 +59,22 @@ Option for later: send winnings to a payout address that the user owns.
 | MetaMask Advanced Permissions (ERC-7715) | No popups after one grant, but the user needs the MetaMask extension.  |
 | Base Account sub-accounts                | No popups within a spend limit, Sepolia listed. A second new service.  |
 | Dynamic, Turnkey, thirdweb, Coinbase CDP | They also work with no popups. Privy fits our World ID login best.     |
+
+## Onboarding: the waiver
+
+Onboarding happens in the room, not on a form page. It takes from Buckshot Roulette (you sign a waiver) and Paratopic
+(hard cuts, no loading screens).
+
+- **Read:** the camera looks down at a paper waiver on the table, below the TV. The TV shows static. No remote yet.
+- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
+- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the wallet step.
+- **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
+  NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
+- **Returning user:** a verified user skips the waiver and starts at the wallet step.
+- **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
+- The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
+
+Not done yet: the wallet step is still the old full-screen panel. Vote and bet stay on the remote.
 
 ## The room
 

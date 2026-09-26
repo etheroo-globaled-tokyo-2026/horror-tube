@@ -1,0 +1,20 @@
+{
+  "name": "@horror-tube/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 8123 --strictPort",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "0.186.1",
+    "viem": "^2.56.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2",
+    "vite": "^7.1.0"
+  }
+}

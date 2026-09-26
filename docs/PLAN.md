@@ -7,21 +7,23 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit) and **ENS** (ENSv2).
 
 ## Art direction
 
-See `design/DESIGN.md`.
+See `apps/web/DESIGN.md`.
 
 ## Components
 
 - **ENS name**: character state (subnames and text records) on Sepolia.
 - **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
 - **Smart contract**: the betting pool.
-- **Wallet**: a burner wallet in the browser now (`design/wallet.js`), a Privy embedded wallet later. No wallet popups. See "The wallet" in `design/DESIGN.md`.
+- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a Privy embedded wallet later. No wallet popups. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
+   This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
 2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
    Default until we decide: if the wallet is empty, the backend sends it test ETH, one time per World ID nullifier.
+   Open: this step is still a full-screen panel. It must move into the room too.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)
