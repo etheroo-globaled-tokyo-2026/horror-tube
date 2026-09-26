@@ -866,10 +866,15 @@ export function drawTV(): void {
       else if (S.bet && S.result < 0) text(`YOU LOST ${usd(S.bet.amt)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
-      const l = living();
-      text("END OF PROGRAMMING", 200, 34);
+      const l = living(),
+        endedByFailure = !!S.error;
+      text(endedByFailure ? "SIGNAL LOST" : "END OF PROGRAMMING", 200, 34);
       text(
-        l[0] ? `${l[0].name} is the last one left.` : "Nobody is left.",
+        endedByFailure
+          ? "The tape jammed before anyone bled."
+          : l[0]
+            ? `${l[0].name} is the last one left.`
+            : "Nobody is left.",
         250,
         28,
         COL.bone,
