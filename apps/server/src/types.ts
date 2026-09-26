@@ -1,21 +1,12 @@
 /** Shared game-loop contract from docs/game-loop.md. No runtime round is fabricated here. */
 
-export type Phase = "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
+export type Phase = "bet" | "fight" | "settle" | "over";
 
 export type RoundState = {
   round: number;
   phase: Phase;
-  endsAt: number | null; // ms timestamp; null while vote waits or bet waits for video
-  champion: number | null; // character id; null in stage 1
-  slots: 1 | 2; // picks per voter this round
-  voters: number; // humans who voted (quorum check)
-  quorum: number;
-  votes: Record<number, number>;
-  /**
-   * Stage-1 tally as stored in Postgres `tallies`, set before phase becomes bet.
-   * Null until that write succeeds. Ranked: most votes, then earliest reachedAt.
-   */
-  tally: { id: number; votes: number; reachedAt: number }[] | null;
+  endsAt: number | null; // ms timestamp; null while bet waits for video
+  champion: number | null; // character id; null during the fresh bout
   fighters: [number, number] | null;
   /** Sui pool battle id (UUID). Null outside the bet/fight/settle window. */
   battleId: string | null;
@@ -27,7 +18,7 @@ export type RoundState = {
   videoUrl: string | null;
   /** ms epoch when a room reported the fight video playing (POST /playback-start). */
   videoStartedAt: number | null;
-  /** ms epoch: videoStartedAt + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS. Bets and votes at or after it are rejected. */
+  /** ms epoch: videoStartedAt + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS. Bets at or after it are rejected. */
   bettingClosesAt: number | null;
   /**
    * CDN URL of the most recent fight's last frame under frames/.

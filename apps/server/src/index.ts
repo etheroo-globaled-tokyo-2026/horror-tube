@@ -57,6 +57,10 @@ const game = new GameLoop({
   battleBetting,
   fightJob,
 });
+await game.startFreshBout();
+console.log(
+  `game: fresh bout opened fighters=${JSON.stringify(game.getState().fighters)}`,
+);
 
 const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
@@ -111,5 +115,5 @@ setInterval(() => {
 console.log(
   `horror-tube server listening on http://${host}:${String(port)}` +
     (staticDir === undefined ? " (API only; no STATIC_DIR)" : ` (static: ${staticDir})`) +
-    ` · game loop quorum=${String(game.config.quorumVotes)} roster=${String(game.ensLabels.length)}`,
+    ` · game loop roster=${String(game.ensLabels.length)}`,
 );

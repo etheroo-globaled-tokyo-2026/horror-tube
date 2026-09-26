@@ -22,7 +22,7 @@ export type GameServerOptions = {
   wallet?: WalletHandler;
   worldId?: WorldIdHandlerDeps;
   game?: GameLoop;
-  /** HMAC pepper for the waiver session. Required for POST /vote. */
+  /** HMAC pepper for the waiver session. Required for POST /playback-start. */
   sessionPepper?: string;
   /** Public Sui betting IDs for GET /betting. */
   betting?: {
@@ -311,39 +311,6 @@ async function handleRequest(
           return;
         }
         sendState(res, opts.game.getState());
-        return;
-      }
-      if (method === "POST" && path === "/vote") {
-        const nullifier = sessionNullifier(req, res, opts.sessionPepper);
-        if (nullifier === null) return;
-        const raw = await readBody(req);
-        let body: { picks?: unknown };
-        try {
-          body = JSON.parse(raw) as { picks?: unknown };
-        } catch {
-          sendJson(res, 400, { ok: false, error: "vote body must be JSON." });
-          return;
-        }
-        if (!Array.isArray(body.picks)) {
-          sendJson(res, 400, {
-            ok: false,
-            error: "vote.picks must be an array of character ids.",
-          });
-          return;
-        }
-        const picks = body.picks.map((p) => Number(p));
-        if (picks.some((p) => !Number.isInteger(p))) {
-          sendJson(res, 400, { ok: false, error: "vote.picks must be integers." });
-          return;
-        }
-        try {
-          await opts.game.voteWithNullifier(nullifier, picks);
-          sendState(res, opts.game.getState());
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          if (err instanceof StoreWriteError) console.error(`POST /vote failed: ${message}`);
-          sendJson(res, err instanceof StoreWriteError ? 500 : 400, { ok: false, error: message });
-        }
         return;
       }
       if (method === "GET" && path === "/betting") {

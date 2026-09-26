@@ -150,7 +150,7 @@ Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every
 | `github_branch` | `main` (override with `-var='github_branch=…'` for a one-off deploy of another branch; do not commit a non-main value) |
 | `instance_size_slug` | `apps-s-1vcpu-1gb` (from [App Platform pricing — Current Plans](https://docs.digitalocean.com/products/app-platform/details/pricing/); Node 22 + ffmpeg) |
 | `game_port` | `8080` |
-| `quorum_votes` / timings | see `docs/game-loop.md` (prod quorum 2, countdown 15, betting close after video start 5, video timeout 300, settle 8) |
+| timings | see `docs/game-loop.md` (betting close after video start 5, video timeout 300, settle 8) |
 
 The Managed Postgres firewall keeps the hardcoded public IPv4 rules in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`) so hackathon laptops can reach Postgres, and adds a rule of type `app` whose value is the App Platform app id so the game service is a trusted source. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
 
