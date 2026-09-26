@@ -410,7 +410,7 @@ SUI_MIN_BET=
 # Shinami Gas Station gas owner, printed by pnpm betting:gas-owner. Read by pnpm betting:deploy
 SUI_BET_SPONSOR=
 # 1password: op://Private/Horror Tube Sui admin/private key
-# Publisher. Holds AdminCap and UpgradeCap. Funds the e2e wallet. Laptop only.
+# Publisher. Holds AdminCap (deploy makes the package immutable). Funds the e2e wallet. Laptop only.
 SUI_ADMIN_PRIVATE_KEY=
 # Printed by pnpm betting:deploy
 SUI_ADMIN_CAP_ID=
@@ -487,7 +487,10 @@ const build = z
 
 console.log(`Publishing from ${admin.toSuiAddress()}…`);
 const publish = new Transaction();
-publish.transferObjects([publish.publish(build)], admin.toSuiAddress());
+publish.moveCall({
+  target: "0x2::package::make_immutable",
+  arguments: [publish.publish(build)],
+});
 const published = await execute(client, admin, publish);
 const packageId = publishedPackageId(published);
 const adminCap = createdId(published, "::betting::AdminCap");
