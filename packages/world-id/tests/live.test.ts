@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { hashSignal } from "@worldcoin/idkit-core/hashing";
 
-import { loadWorldIdEnv, verifyProofOfHuman, voteActionForRound } from "../src/index.js";
+import { loadWorldIdEnv, stakeActionForBattle, verifyProofOfHuman } from "../src/index.js";
 
 const live = process.env.WORLD_ID_LIVE_TEST === "1";
 
@@ -12,7 +12,7 @@ test(
   { skip: live ? false : "set WORLD_ID_LIVE_TEST=1 and World ID vars from .env to run" },
   async () => {
     const worldId = loadWorldIdEnv();
-    const action = voteActionForRound(`live-${String(Date.now())}`);
+    const action = stakeActionForBattle(`live-${String(Date.now())}`);
     const signal = "0x1111111111111111111111111111111111111111";
     const forged = {
       protocol_version: "4.0",
