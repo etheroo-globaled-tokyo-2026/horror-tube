@@ -3,7 +3,16 @@ import { S, type Character } from "./game.ts";
 import { ctx2d, rgb } from "./sprites.ts";
 import { COL, RAMP } from "./room-palette.ts";
 import {
-  basic, box, lambert, lit, metalTex, pixel, r, rough, tex, veneer,
+  basic,
+  box,
+  lambert,
+  lit,
+  metalTex,
+  pixel,
+  r,
+  rough,
+  tex,
+  veneer,
 } from "./room-materials.ts";
 import { camera, renderer, scene, textTex } from "./room-render.ts";
 import { LOW, num, T, W8, wrap, Z, walkRef, type G } from "./room-state.ts";
@@ -246,7 +255,14 @@ export const tinted = (ch: Character): HTMLCanvasElement => {
   tints.set(key, cv);
   return cv;
 };
-export const paperLabel = (g: G, x: number, y: number, w: number, h: number, alive: boolean): void => {
+export const paperLabel = (
+  g: G,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  alive: boolean,
+): void => {
   g.fillStyle = alive ? COL.bone : COL.grime;
   g.fillRect(x, y, w, h);
   if (!alive) return;
@@ -334,4 +350,3 @@ export function updateTape(now: number): void {
   tape.position.set(-0.34, -0.48 + TAPE.up * 0.48, -0.62);
   tape.rotation.y = 0.26 + Math.PI * (1 - flip) * (1 - flip);
 }
-

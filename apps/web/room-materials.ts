@@ -64,7 +64,14 @@ export const veneer =
     grain(g, w, 0, h, lines, h / 6);
   };
 export const TEAK = veneer(COL.rustDeep, [COL.grime, COL.grime, COL.rust]);
-export const planks = (g: G, w: number, h: number, size: number, base: string, lines: string[]): void => {
+export const planks = (
+  g: G,
+  w: number,
+  h: number,
+  size: number,
+  base: string,
+  lines: string[],
+): void => {
   g.fillStyle = base;
   g.fillRect(0, 0, w, h);
   for (let y = 0; y < h; y += size) {
@@ -136,7 +143,12 @@ export const wallTex = tex(
   },
   [4, 1],
 );
-export const floorTex = tex(128, 128, (g, w, h) => planks(g, w, h, 16, COL.char, [COL.soot]), [3, 3]);
+export const floorTex = tex(
+  128,
+  128,
+  (g, w, h) => planks(g, w, h, 16, COL.char, [COL.soot]),
+  [3, 3],
+);
 export const label = (
   text: string,
   bg: string,
@@ -174,8 +186,12 @@ export const shade = (root: THREE.Object3D): void =>
   });
 export const lit = (map: THREE.Texture): THREE.MeshLambertMaterial =>
   lambert({ map, emissiveMap: map, emissive: COL.bone, emissiveIntensity: 0.4 });
-export const box = (w: number, h: number, d: number, m: THREE.Material | THREE.Material[]): THREE.Mesh =>
-  new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+export const box = (
+  w: number,
+  h: number,
+  d: number,
+  m: THREE.Material | THREE.Material[],
+): THREE.Mesh => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
 export const cyl = (rt: number, rb: number, h: number, m: THREE.Material, seg = 16): THREE.Mesh =>
   new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m);
 
@@ -205,4 +221,3 @@ export const leg = (
   const tip = foot.clone().lerp(top, 0.08);
   parent.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
 };
-

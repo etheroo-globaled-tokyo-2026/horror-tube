@@ -1,12 +1,20 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
-import {
-  S, char, face, usd, film, living, mmss, odds, replaying,
-} from "./game.ts";
+import { S, char, face, usd, film, living, mmss, odds, replaying } from "./game.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { COL, RAMP } from "./room-palette.ts";
 import {
-  TEAK, TV_Y, basic, box, cyl, label, lambert, r, rough, tex, speckle,
+  TEAK,
+  TV_Y,
+  basic,
+  box,
+  cyl,
+  label,
+  lambert,
+  r,
+  rough,
+  tex,
+  speckle,
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
@@ -109,93 +117,97 @@ export const mask = new THREE.Mesh(
   [ivory, ivory],
 );
 export const MASK = { x: -0.505, y: -0.395, w: 1.01, h: 0.79, px: 600 };
-export const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), (g, w, h) => {
-  const wr = seeded(13),
-    at = (x: number, y: number): [number, number] => [
-      (x - MASK.x) * MASK.px,
-      (MASK.y + MASK.h - y) * MASK.px,
-    ];
-  g.fillStyle = COL.bone;
-  g.fillRect(0, 0, w, h);
-  g.globalAlpha = 0.5;
-  g.fillStyle = COL.sulfur;
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = COL.rust;
-  for (let y = 0; y < h; y++) {
-    g.globalAlpha = 0.28 * (1 - y / h) ** 2;
-    g.fillRect(0, y, w, 1);
-  }
-  g.globalAlpha = 1;
-  for (let i = 0; i < 10; i++) blotch(g, wr, wr() * w, wr() * h, 30 + wr() * 70, COL.rust, 0.07);
-  const [hx, hy] = at(-0.47, 0.315);
-  const hw = 0.82 * MASK.px,
-    hh = 0.63 * MASK.px;
-  for (const [lw, a, c] of [
-    [22, 0.12, COL.grime],
-    [12, 0.22, COL.grime],
-    [5, 0.45, COL.soot],
-  ] as const) {
-    g.globalAlpha = a;
-    g.strokeStyle = c;
-    g.lineWidth = lw;
+export const maskTex = tex(
+  Math.round(MASK.w * MASK.px),
+  Math.round(MASK.h * MASK.px),
+  (g, w, h) => {
+    const wr = seeded(13),
+      at = (x: number, y: number): [number, number] => [
+        (x - MASK.x) * MASK.px,
+        (MASK.y + MASK.h - y) * MASK.px,
+      ];
+    g.fillStyle = COL.bone;
+    g.fillRect(0, 0, w, h);
+    g.globalAlpha = 0.5;
+    g.fillStyle = COL.sulfur;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = COL.rust;
+    for (let y = 0; y < h; y++) {
+      g.globalAlpha = 0.28 * (1 - y / h) ** 2;
+      g.fillRect(0, y, w, 1);
+    }
+    g.globalAlpha = 1;
+    for (let i = 0; i < 10; i++) blotch(g, wr, wr() * w, wr() * h, 30 + wr() * 70, COL.rust, 0.07);
+    const [hx, hy] = at(-0.47, 0.315);
+    const hw = 0.82 * MASK.px,
+      hh = 0.63 * MASK.px;
+    for (const [lw, a, c] of [
+      [22, 0.12, COL.grime],
+      [12, 0.22, COL.grime],
+      [5, 0.45, COL.soot],
+    ] as const) {
+      g.globalAlpha = a;
+      g.strokeStyle = c;
+      g.lineWidth = lw;
+      g.beginPath();
+      rounded(g, hx, hy, hw, hh, 0.08 * MASK.px);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    for (let i = 0; i < 4; i++)
+      drip(g, wr, 30 + wr() * (w - 60), 0, 40 + wr() * 90, 4, COL.rustDeep, 0.35);
+    for (const [x, y] of [
+      [16, 16],
+      [w - 16, 16],
+      [16, h - 16],
+      [w - 16, h - 16],
+    ])
+      screw(g, wr, x, y, 7, COL.grime, COL.rustDeep);
+    crack(g, wr, hx + 6, hy + hh - 10, 90, 2.4, COL.soot);
+    crack(g, wr, hx + hw - 8, hy + 10, 60, -0.7, COL.soot);
+    scratches(g, wr, [0, 0, w, h], 90, COL.grime, 0.35);
+    scratches(g, wr, [hx, hy + hh + 6, hw, h - hy - hh - 12], 40, COL.soot, 0.4);
+    burn(g, hx + hw * 0.72, hy + hh + 34, 7, COL.soot, COL.rustDeep);
+    burn(g, hx + hw * 0.8, hy + hh + 46, 5, COL.soot, COL.rustDeep);
+    g.globalAlpha = 0.3;
+    g.fillStyle = COL.bloodDeep;
+    for (let f = 0; f < 4; f++) {
+      const fx = w - 34 + f * 7;
+      for (let y = 0; y < 150 + f * 20; y++)
+        g.fillRect(fx + Math.sin(y * 0.05 + f) * 2, 190 + y, 4 - y / 90, 1);
+    }
+    g.globalAlpha = 1;
+    const [gx, gy] = at(0.37, 0.35);
+    const gw = 0.12 * MASK.px,
+      gh = 0.7 * MASK.px,
+      grilleH = 0.36 * MASK.px;
+    g.fillStyle = COL.soot;
     g.beginPath();
-    rounded(g, hx, hy, hw, hh, 0.08 * MASK.px);
-    g.stroke();
-  }
-  g.globalAlpha = 1;
-  for (let i = 0; i < 4; i++)
-    drip(g, wr, 30 + wr() * (w - 60), 0, 40 + wr() * 90, 4, COL.rustDeep, 0.35);
-  for (const [x, y] of [
-    [16, 16],
-    [w - 16, 16],
-    [16, h - 16],
-    [w - 16, h - 16],
-  ])
-    screw(g, wr, x, y, 7, COL.grime, COL.rustDeep);
-  crack(g, wr, hx + 6, hy + hh - 10, 90, 2.4, COL.soot);
-  crack(g, wr, hx + hw - 8, hy + 10, 60, -0.7, COL.soot);
-  scratches(g, wr, [0, 0, w, h], 90, COL.grime, 0.35);
-  scratches(g, wr, [hx, hy + hh + 6, hw, h - hy - hh - 12], 40, COL.soot, 0.4);
-  burn(g, hx + hw * 0.72, hy + hh + 34, 7, COL.soot, COL.rustDeep);
-  burn(g, hx + hw * 0.8, hy + hh + 46, 5, COL.soot, COL.rustDeep);
-  g.globalAlpha = 0.3;
-  g.fillStyle = COL.bloodDeep;
-  for (let f = 0; f < 4; f++) {
-    const fx = w - 34 + f * 7;
-    for (let y = 0; y < 150 + f * 20; y++)
-      g.fillRect(fx + Math.sin(y * 0.05 + f) * 2, 190 + y, 4 - y / 90, 1);
-  }
-  g.globalAlpha = 1;
-  const [gx, gy] = at(0.37, 0.35);
-  const gw = 0.12 * MASK.px,
-    gh = 0.7 * MASK.px,
-    grilleH = 0.36 * MASK.px;
-  g.fillStyle = COL.soot;
-  g.beginPath();
-  rounded(g, gx, gy, gw, gh, 8);
-  g.fill();
-  g.fillStyle = COL.grime;
-  for (let y = gy + 8; y < gy + grilleH; y += 8)
-    for (let x = gx + 7 + ((y / 8) % 2) * 4; x < gx + gw - 6; x += 8) g.fillRect(x, y, 3, 3);
-  for (let x = gx + 6; x < gx + gw - 4; x += 6)
-    g.fillRect(x, gy + grilleH + 10, 2, gh - grilleH - 18);
-  g.save();
-  g.translate(hx + 90, hy + hh + 26);
-  g.scale(0.8, 0.8);
-  g.rotate(-0.06);
-  g.fillStyle = COL.bone;
-  g.fillRect(-80, -15, 160, 30);
-  g.globalAlpha = 0.45;
-  g.fillStyle = COL.sulfur;
-  g.fillRect(-80, -15, 160, 30);
-  g.globalAlpha = 1;
-  g.fillStyle = COL.soot;
-  g.font = "18px DotGothic16";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText("DON'T TURN IT OFF", 0, 1);
-  g.restore();
-});
+    rounded(g, gx, gy, gw, gh, 8);
+    g.fill();
+    g.fillStyle = COL.grime;
+    for (let y = gy + 8; y < gy + grilleH; y += 8)
+      for (let x = gx + 7 + ((y / 8) % 2) * 4; x < gx + gw - 6; x += 8) g.fillRect(x, y, 3, 3);
+    for (let x = gx + 6; x < gx + gw - 4; x += 6)
+      g.fillRect(x, gy + grilleH + 10, 2, gh - grilleH - 18);
+    g.save();
+    g.translate(hx + 90, hy + hh + 26);
+    g.scale(0.8, 0.8);
+    g.rotate(-0.06);
+    g.fillStyle = COL.bone;
+    g.fillRect(-80, -15, 160, 30);
+    g.globalAlpha = 0.45;
+    g.fillStyle = COL.sulfur;
+    g.fillRect(-80, -15, 160, 30);
+    g.globalAlpha = 1;
+    g.fillStyle = COL.soot;
+    g.font = "18px DotGothic16";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText("DON'T TURN IT OFF", 0, 1);
+    g.restore();
+  },
+);
 maskTex.wrapS = maskTex.wrapT = THREE.ClampToEdgeWrapping;
 maskTex.repeat.set(1 / MASK.w, 1 / MASK.h);
 maskTex.offset.set(-MASK.x / MASK.w, -MASK.y / MASK.h);
@@ -421,7 +433,12 @@ export function syncVideo(): void {
     void video.play();
   });
 }
-export function crop(sw0: number, sh0: number, dw: number, dh: number): [number, number, number, number] {
+export function crop(
+  sw0: number,
+  sh0: number,
+  dw: number,
+  dh: number,
+): [number, number, number, number] {
   let sw = sw0,
     sh = sw0 / (dw / dh);
   if (sh > sh0) {
@@ -526,7 +543,7 @@ export function drawGuide(now: number): void {
   g.fillText(S.cast ? "GOOD NIGHT." : "TONIGHT'S RESIDENTS", 16, top + 23);
   g.textAlign = "right";
   g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
-  S.chars.forEach((ch, i) => {
+  S.chars.forEach((ch) => {
     if (
       (S.phase === "vote" || S.phase === "countdown") &&
       S.champion !== null &&
@@ -869,4 +886,3 @@ export function drawTV(): void {
   g.fillRect(0, 0, W, H);
   tvTex.needsUpdate = true;
 }
-

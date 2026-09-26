@@ -51,7 +51,10 @@ bulbLight.shadow.bias = -0.004;
 bulbLight.shadow.camera.near = 0.05;
 bulbLight.shadow.camera.far = 8;
 scene.add(bulbLight);
-export const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), basic({ color: COL.sulfur }));
+export const bulb = new THREE.Mesh(
+  new THREE.SphereGeometry(0.05, 8, 6),
+  basic({ color: COL.sulfur }),
+);
 bulb.position.copy(bulbLight.position);
 scene.add(bulb);
 export const halo = new THREE.Points(
@@ -154,4 +157,3 @@ export const drift = (t: number): void => {
   }
   p.needsUpdate = true;
 };
-

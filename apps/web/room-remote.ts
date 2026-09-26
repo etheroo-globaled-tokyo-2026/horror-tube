@@ -13,7 +13,10 @@ remote.add(shell);
 export const faceLight = new THREE.PointLight(0xffd6a0, 0.25, 0.8, 2);
 faceLight.position.set(0.05, 0.05, 0.3);
 remote.add(faceLight);
-export const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 4), basic({ color: COL.bloodDeep }));
+export const led = new THREE.Mesh(
+  new THREE.SphereGeometry(0.006, 6, 4),
+  basic({ color: COL.bloodDeep }),
+);
 led.position.set(0, 0.165, 0.019);
 remote.add(led);
 export const keyById = new Map<string, THREE.Mesh>();
@@ -71,4 +74,3 @@ pad.forEach((row, ri) =>
     );
   }),
 );
-
