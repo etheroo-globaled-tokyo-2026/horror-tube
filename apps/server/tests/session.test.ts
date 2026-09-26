@@ -32,7 +32,6 @@ function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): Ga
     config: {
       quorumVotes: 2,
       voteCountdownSeconds: 10,
-      voteTimeoutSeconds: 15,
       bettingCloseAfterVideoStartSeconds: 5,
       videoTimeoutSeconds: 300,
       settleSeconds: 8,
