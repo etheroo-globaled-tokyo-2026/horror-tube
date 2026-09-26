@@ -85,6 +85,8 @@ fills the challenger slot from rotation after settle.
   after it succeeds does the round set the betting-closed signal and enter
   `fight`. A failed close stays on `RoundState.error`, keeps betting-closed
   unset, and retries every 2s.
+- During `bet` the server reads the Sui pool totals every 2s into `RoundState.pool`.
+  Tabs never poll Sui.
 - The Sui pool's `closes_at_ms` from `openPool` is only an upper bound the chain
   requires, not a guess of when the video starts.
 - Winners share the pool in proportion to their bets.

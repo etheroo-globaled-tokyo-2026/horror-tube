@@ -1,6 +1,7 @@
 {
   "name": "horror-tube",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "turbo run dev",
     "test": "turbo run test",

@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { extractLastFrameJpeg } from "../src/extract-frame.js";
+
+const JPEG_START_OF_IMAGE = [0xff, 0xd8];
 
 describe("extractLastFrameJpeg", () => {
   it("returns JPEG bytes from an injectable ffmpeg that writes the output path", async () => {
     const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
     const frame = await extractLastFrameJpeg(new Uint8Array([1, 2, 3, 4]), async (args) => {
-      const outPath = args[args.length - 1];
-      assert.equal(typeof outPath, "string");
-      const { writeFile } = await import("node:fs/promises");
-      await writeFile(outPath as string, jpeg);
+      const outPath = args.at(-1);
+      assert.ok(outPath !== undefined);
+      await writeFile(outPath, jpeg);
       return { code: 0, stderr: "" };
     });
     assert.deepEqual(frame, jpeg);
@@ -35,16 +40,9 @@ describe("extractLastFrameJpeg", () => {
   });
 });
 
-// Real ffmpeg path: only registered when the binary is on PATH. No it.skip —
-// a missing binary simply means this block is not defined, so CI stays green
-// without a skipped "pass". Environments with ffmpeg fail if extract is broken.
-import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-const ffmpegProbe = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
-if (ffmpegProbe.status === 0) {
+const systemFfmpegOnPath =
+  spawnSync("ffmpeg", ["-version"], { encoding: "utf8" }).status === 0;
+if (systemFfmpegOnPath) {
   describe("extractLastFrameJpeg with system ffmpeg", () => {
     it("extracts a JPEG from a tiny generated mp4", async () => {
       const dir = await mkdtemp(join(tmpdir(), "horror-tube-ffmpeg-fixture-"));
@@ -71,10 +69,7 @@ if (ffmpegProbe.status === 0) {
         );
         const mp4 = await readFile(mp4Path);
         const jpeg = await extractLastFrameJpeg(mp4);
-        assert.ok(jpeg.byteLength > 0);
-        // JPEG SOI marker
-        assert.equal(jpeg[0], 0xff);
-        assert.equal(jpeg[1], 0xd8);
+        assert.deepEqual([...jpeg.subarray(0, 2)], JPEG_START_OF_IMAGE);
       } finally {
         await rm(dir, { recursive: true, force: true });
       }

@@ -15,7 +15,6 @@ import {
 } from "../src/game/config.js";
 import { MemoryRoundStore } from "../src/db/rounds.js";
 import { GameLoop, StoreWriteError } from "../src/game/loop.js";
-import { refuseUnverifiedWorldId } from "../src/game/world-id.js";
 import type { RoundState } from "../src/types.js";
 
 const baseConfig = {
@@ -31,7 +30,6 @@ const labels = ["alpha", "bravo", "charlie", "delta"];
 const allAliveStatuses = (ensLabels: string[]): string[] =>
   ensLabels.map(() => "alive");
 
-/** Pin challenger to the first living non-winner. */
 const pickFirst = () => 0;
 
 function trackingPorts(calls: string[]): ChainWritePorts {
@@ -89,7 +87,6 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
   };
 }
 
-/** Stage-1 vote [0, 1] ranks alpha then bravo; outcome 0 is an alpha win. */
 function agentInsertForAlphaWin(
   overrides: Partial<BattleQueueInsert> = {},
 ): BattleQueueInsert {
@@ -133,6 +130,10 @@ function sampleAgentInsert(
   };
 }
 
+function fightJobThatNeverFinishes(): Promise<FightJobResult> {
+  return new Promise(() => {});
+}
+
 function unusedSettleDeps() {
   const calls: string[] = [];
   const betCalls: string[] = [];
@@ -141,14 +142,12 @@ function unusedSettleDeps() {
     roundStore: new MemoryRoundStore(),
     chainWritePorts: trackingPorts(calls),
     battleBetting: trackingBattleBetting(betCalls),
-    // Hang so tests that drive setOutcome/setVideoReady themselves are not raced.
-    fightJob: async () => new Promise(() => {}),
+    fightJob: fightJobThatNeverFinishes,
     calls,
     betCalls,
   };
 }
 
-/** A room reports the live bout's video playing. */
 async function startPlayback(loop: GameLoop): Promise<void> {
   const battleId = loop.getState().battleId;
   assert.ok(battleId, "startPlayback needs a live battleId");
@@ -226,31 +225,6 @@ describe("game loop config", () => {
   });
 });
 
-describe("World ID vote gate", () => {
-  it("refuses unverified votes by default", async () => {
-    await assert.rejects(
-      () => refuseUnverifiedWorldId({}),
-      /World ID verification is not available/u,
-    );
-    const settle = unusedSettleDeps();
-    const loop = new GameLoop({
-      config: baseConfig,
-      ensLabels: labels,
-      ensStatuses: allAliveStatuses(labels),
-      randomInt: pickFirst,
-      battleQueueStore: settle.battleQueueStore,
-      roundStore: new MemoryRoundStore(),
-      chainWritePorts: settle.chainWritePorts,
-      battleBetting: settle.battleBetting,
-      fightJob: settle.fightJob,
-    });
-    await assert.rejects(
-      () => loop.vote({ fake: true }, [0, 1]),
-      /World ID verification is not available/u,
-    );
-  });
-});
-
 describe("GameLoop ENS status", () => {
   it("starts dead labels not alive and rejects votes for them", async () => {
     const settle = unusedSettleDeps();
@@ -263,11 +237,11 @@ describe("GameLoop ENS status", () => {
       roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
-      verifyWorldId: async () => ({ nullifier: "dead-vote" }),
+      fightJob: settle.fightJob,
     });
     assert.equal(loop.getState().chars[1]?.alive, false);
     await assert.rejects(
-      () => loop.vote({}, [1, 0]),
+      () => loop.voteWithNullifier("dead-vote", [1, 0]),
       /Character 1 is dead and cannot receive votes/u,
     );
   });
@@ -283,6 +257,7 @@ describe("GameLoop ENS status", () => {
       roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
     });
     assert.equal(loop.getState().chars[0]?.alive, true);
   });
@@ -300,6 +275,7 @@ describe("GameLoop ENS status", () => {
           roundStore: new MemoryRoundStore(),
           chainWritePorts: settle.chainWritePorts,
           battleBetting: settle.battleBetting,
+          fightJob: settle.fightJob,
         }),
       /bravo.*ghost|ghost.*bravo/u,
     );
@@ -326,10 +302,9 @@ describe("GameLoop ENS status", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "reset-dead" }),
     });
     assert.equal(loop.getState().chars[2]?.alive, false);
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("reset-dead", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "reset-over" }));
@@ -360,7 +335,6 @@ describe("GameLoop ENS status", () => {
 describe("GameLoop phases", () => {
   it("waits in vote until quorum, then countdown, then bet→fight→settle→next bet via rotation", async () => {
     let now = 1_000_000;
-    let nullifierSeq = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
@@ -379,10 +353,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => {
-        nullifierSeq += 1;
-        return { nullifier: `n-${String(nullifierSeq)}` };
-      },
     });
 
     assert.equal(loop.getState().phase, "vote");
@@ -390,11 +360,11 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().slots, 2);
     assert.equal(loop.getState().champion, null);
 
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("n-1", [0, 1]);
     assert.equal(loop.getState().phase, "vote");
     assert.equal(loop.getState().voters, 1);
 
-    await loop.vote({}, [1, 2]);
+    await loop.voteWithNullifier("n-2", [1, 2]);
     assert.equal(loop.getState().phase, "countdown");
     assert.equal(loop.getState().endsAt, now + 5_000);
 
@@ -402,7 +372,6 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
     assert.ok(loop.getState().fighters);
-    // votes: 0→1, 1→2, 2→1 → top are 1 then 0
     assert.deepEqual(loop.getState().fighters, [1, 0]);
     assert.ok(
       settle.betCalls.some((c) => c.startsWith("open:bravo,alpha,")),
@@ -449,13 +418,10 @@ describe("GameLoop phases", () => {
 
     now += 3_000;
     await loop.tick(now);
-    // Stage 2+: no challenger ballot — next bout opens from nextRotationPair.
     assert.equal(loop.getState().phase, "bet");
     assert.equal(loop.getState().round, 2);
     assert.equal(loop.getState().champion, 1);
-    // Living non-winners in id order: charlie(2), delta(3). pickFirst → charlie.
     assert.deepEqual(loop.getState().fighters, [1, 2]);
-    // Previous last frame stays on the round for the next image-to-video job.
     assert.equal(loop.getState().videoUrl, null);
     assert.equal(
       loop.getState().frameUrl,
@@ -465,7 +431,6 @@ describe("GameLoop phases", () => {
 
   it("fills RoundState.pool from readPoolTotals during bet", async () => {
     let now = 0;
-    let nullifierSeq = 0;
     const settle = unusedSettleDeps();
     settle.battleBetting.readPoolTotals = async (battleId) => {
       settle.betCalls.push(`read:${battleId}`);
@@ -488,14 +453,10 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => {
-        nullifierSeq += 1;
-        return { nullifier: `n-${String(nullifierSeq)}` };
-      },
     });
 
-    await loop.vote({}, [0, 1]);
-    await loop.vote({}, [1, 2]);
+    await loop.voteWithNullifier("n-1", [0, 1]);
+    await loop.voteWithNullifier("n-2", [1, 2]);
     now += 5_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -511,7 +472,6 @@ describe("GameLoop phases", () => {
     );
     assert.deepEqual(loop.getState().pool, [50_000, 25_000]);
 
-    // Interval gate: another tick under 2s does not re-read.
     const readsBefore = settle.betCalls.filter((c) => c.startsWith("read:")).length;
     now += 500;
     await loop.tick(now);
@@ -523,7 +483,6 @@ describe("GameLoop phases", () => {
 
   it("keeps a failed pool settle on the round with the battle id and resumes at settle", async () => {
     let now = 0;
-    let n = 0;
     let settleFails = true;
     const settle = unusedSettleDeps();
     settle.chainWritePorts.settleBattle = async (battleId) => {
@@ -550,12 +509,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => {
-        n += 1;
-        return { nullifier: `settle-call-${String(n)}` };
-      },
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("settle-call-1", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "settle-on" }));
@@ -624,10 +579,9 @@ describe("GameLoop phases", () => {
       roundStore: new MemoryRoundStore(),
       chainWritePorts: ports,
       battleBetting: trackingBattleBetting([]),
-      fightJob: async () => new Promise(() => {}),
-      verifyWorldId: async () => ({ nullifier: "ens-fail" }),
+      fightJob: fightJobThatNeverFinishes,
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("ens-fail", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "fail-status" }));
@@ -679,9 +633,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "mismatch" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("mismatch", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await loop.attachAgentResult(sampleAgentInsert({ id: "wrong-winner" }));
@@ -721,9 +674,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "no-agent" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("no-agent", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     loop.setOutcome(0, 0);
@@ -756,12 +708,10 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "same" }),
     });
-    await loop.vote({}, [0, 1]);
-    await assert.rejects(() => loop.vote({}, [2, 3]), /already voted/u);
+    await loop.voteWithNullifier("same", [0, 1]);
+    await assert.rejects(() => loop.voteWithNullifier("same", [2, 3]), /already voted/u);
 
-    let n = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
       config: {
@@ -780,12 +730,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
-      verifyWorldId: async () => {
-        n += 1;
-        return { nullifier: `uniq-${String(n)}` };
-      },
     });
-    await loop2.vote({}, [0, 1]);
+    await loop2.voteWithNullifier("uniq-1", [0, 1]);
     now += 1_000;
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
@@ -801,7 +747,6 @@ describe("GameLoop phases", () => {
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
     assert.equal(loop2.getState().champion, 0);
-    // Winner alpha(0); living non-winners charlie,delta (bravo dead) → pickFirst → charlie(2)
     assert.deepEqual(loop2.getState().fighters, [0, 2]);
     assert.equal(loop2.getState().chars[1]?.alive, false);
     assert.deepEqual(settle2.calls, ["injuries", "status", "settle:99"]);
@@ -826,9 +771,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
-      verifyWorldId: async () => ({ nullifier: "y" }),
     });
-    await loop2.vote({}, [0, 1]);
+    await loop2.voteWithNullifier("y", [0, 1]);
     now += 1_000;
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
@@ -863,9 +807,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "z" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("z", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "no-random" }));
@@ -903,9 +846,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "fail-video" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("fail-video", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -957,9 +899,8 @@ describe("GameLoop phases", () => {
           frameUrl: "https://cdn.example/frames/job.jpg",
         };
       },
-      verifyWorldId: async () => ({ nullifier: "job-ok" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("job-ok", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -1002,9 +943,8 @@ describe("GameLoop phases", () => {
       fightJob: async () => {
         throw new Error("FAL_KEY is required. Set it in .env. See .env.example.");
       },
-      verifyWorldId: async () => ({ nullifier: "job-fail" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("job-fail", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await flushFightJob();
@@ -1024,7 +964,6 @@ describe("GameLoop phases", () => {
     const settle = unusedSettleDeps();
     const requests: FightJobRequest[] = [];
     const pending: Array<(result: FightJobResult) => void> = [];
-    let n = 0;
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
@@ -1039,12 +978,8 @@ describe("GameLoop phases", () => {
         requests.push(request);
         return new Promise((resolve) => pending.push(resolve));
       },
-      verifyWorldId: async () => {
-        n += 1;
-        return { nullifier: `late-${String(n)}` };
-      },
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("late-1", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     now += baseConfig.videoTimeoutSeconds * 1_000;
@@ -1052,7 +987,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "over");
 
     loop.resetFromOver();
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("late-2", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -1147,9 +1082,8 @@ describe("GameLoop phases", () => {
           frameUrl: "https://cdn.example/frames/r2.jpg",
         };
       },
-      verifyWorldId: async () => ({ nullifier: "prior-frame" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("prior-frame", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     await flushFightJob();
@@ -1194,9 +1128,8 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => ({ nullifier: "timeout-video" }),
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("timeout-video", [0, 1]);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -1211,13 +1144,11 @@ describe("GameLoop phases", () => {
 describe("betting cutoff", () => {
   const VIDEO_MS = 8_000;
 
-  /** Stage-1 bout in bet with the agent result attached and the video ready. */
   async function readyBout(
     overrides: { battleBetting?: BattleBettingPorts; battleQueueStore?: MemoryBattleQueueStore } = {},
   ) {
     const clock = { now: 1_000_000 };
     const settle = unusedSettleDeps();
-    let n = 0;
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
@@ -1229,12 +1160,8 @@ describe("betting cutoff", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: overrides.battleBetting ?? settle.battleBetting,
       fightJob: settle.fightJob,
-      verifyWorldId: async () => {
-        n += 1;
-        return { nullifier: `cutoff-${String(n)}` };
-      },
     });
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("cutoff-1", [0, 1]);
     clock.now += 1_000;
     await loop.tick(clock.now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "cutoff-row" }));
@@ -1322,10 +1249,10 @@ describe("betting cutoff", () => {
     const battleId = loop.getState().battleId;
     await assert.rejects(
       () => startPlayback(loop),
-      (err: unknown) =>
-        err instanceof StoreWriteError &&
-        err.message.includes(`battle ${String(battleId)}`) &&
-        err.message.includes("disk full"),
+      (cause: unknown) =>
+        cause instanceof StoreWriteError &&
+        cause.message.includes(`battle ${String(battleId)}`) &&
+        cause.message.includes("disk full"),
     );
     assert.equal(loop.getState().bettingClosesAt, null);
     clock.now += 60_000;
@@ -1422,8 +1349,8 @@ describe("stored vote and tally", () => {
     const { loop } = tallyLoop(store);
     await assert.rejects(
       () => loop.voteWithNullifier("1", [0, 1]),
-      (err: unknown) =>
-        err instanceof StoreWriteError && /Vote insert failed for round 1 .*disk full.*not counted/u.test(err.message),
+      (cause: unknown) =>
+        cause instanceof StoreWriteError && /Vote insert failed for round 1 .*disk full.*not counted/u.test(cause.message),
     );
     assert.equal(loop.getState().voters, 0);
     assert.deepEqual(loop.getState().votes[0], 0);

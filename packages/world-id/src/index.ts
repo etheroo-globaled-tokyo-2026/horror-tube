@@ -13,6 +13,7 @@ export {
   WORLD_ID_VERIFY_URL_BASE,
   parseProofOfHumanResult,
   verifyProofOfHuman,
+  type IdkitResultJson,
   type ProofOfHumanResult,
   type VerifiedHuman,
   type VerifyFetch,

@@ -1,6 +1,5 @@
 import { FightError } from "./env.js";
 
-/** Minimal fetch shape so tests can stub the HTTP boundary without a real network. */
 export type FetchLike = (
   url: string,
 ) => Promise<{
@@ -10,10 +9,6 @@ export type FetchLike = (
   arrayBuffer(): Promise<ArrayBuffer>;
 }>;
 
-/**
- * Download fight mp4 bytes from a generator URL (fal). Fails closed on blank URL,
- * transport errors, non-OK HTTP, or an empty body — never returns placeholder bytes.
- */
 export async function downloadFightVideoBytes(
   url: string,
   fetchImpl: FetchLike = globalThis.fetch,

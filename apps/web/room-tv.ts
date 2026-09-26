@@ -419,7 +419,7 @@ small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" = "";
 let reportedBattleId: string | null = null;
-// The server's betting deadline starts from this report, so only a real `playing` event sends it.
+// WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
   if (vidMode !== "live" || S.phase !== "bet" || battleId === null) return;
@@ -427,10 +427,10 @@ video.addEventListener("playing", () => {
   reportedBattleId = battleId;
   postPlaybackStart(battleId)
     .then(applyRoundState)
-    .catch((error: unknown) => {
+    .catch((cause: unknown) => {
       reportedBattleId = null;
       note(
-        `PLAYBACK START NOT RECORDED. ${error instanceof Error ? error.message : String(error)}`,
+        `PLAYBACK START NOT RECORDED. ${cause instanceof Error ? cause.message : String(cause)}`,
         "bad",
       );
     });
@@ -449,7 +449,6 @@ export function syncVideo(): void {
     video.src = url;
     lastVideoUrl = url;
   }
-  // Betting stays open for the first seconds of playback, so the bout plays from bet on.
   const mode = S.phase === "fight" || S.phase === "bet" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;

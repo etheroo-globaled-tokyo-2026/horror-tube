@@ -9,13 +9,10 @@ import {
 import type { BattleQueueInsert } from "@horror-tube/fight/battle-queue";
 
 export type FightJobRequest = {
-  /** Battle ID (UUID) that keys the battle's Sui pool. */
   battleId: string;
   fighterASubname: string;
   fighterBSubname: string;
-  /** Living roster labels (GameLoop holding copy). Includes both fighters. */
   livingSubnames: string[];
-  /** Prior bout last-frame CDN URL; null/omit for text-to-video. */
   priorFrameUrl: string | null;
   round: number;
 };
@@ -147,11 +144,6 @@ export function fightJobResultFromTurn(
   };
 }
 
-/**
- * Builds the production fight runner. Loads living cards, calls runFightTurn,
- * and maps the result for GameLoop. Missing FAL/narration/Spaces env fails when
- * the job runs (named by those loaders). No demo-fight fallback.
- */
 export function createFightJobRunner(deps: {
   loadLivingCards: LoadLivingCards;
   runTurn?: RunFightTurnFn;

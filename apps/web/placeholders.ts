@@ -1,4 +1,3 @@
-// Placeholder vote and bet screens. The final UI replaces these roots: delete [data-placeholder].
 import { $, S, applyRoundState, submitBet } from "./game.ts";
 import {
   placeholderView,
@@ -87,8 +86,8 @@ function buildVote(view: VoteView): void {
         S.cast = "submitted";
         applyRoundState(state);
       })
-      .catch((error: unknown) => {
-        failure.vote = `VOTE REJECTED. ${error instanceof Error ? error.message : String(error)}`;
+      .catch((cause: unknown) => {
+        failure.vote = `VOTE REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`;
         renderPlaceholders();
       });
   });
@@ -126,8 +125,8 @@ function buildBet(view: BetView): void {
     const side = sides.querySelector<HTMLInputElement>("input:checked")?.value === "1" ? 1 : 0;
     failure.bet = "";
     renderPlaceholders();
-    submitBet(side, Number(stake.value)).catch((error: unknown) => {
-      failure.bet = `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`;
+    submitBet(side, Number(stake.value)).catch((cause: unknown) => {
+      failure.bet = `BET REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`;
       renderPlaceholders();
     });
   });
@@ -138,7 +137,6 @@ function buildBet(view: BetView): void {
   });
 }
 
-/** Server phase picks the screen; a screen holding a rejection stays up until dismissed. */
 export function renderPlaceholders(): void {
   const view = placeholderView(S);
   const vote = view?.screen === "vote" ? view : null;

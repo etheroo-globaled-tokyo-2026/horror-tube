@@ -65,7 +65,7 @@ export function validateNarrationTurn(
     throw new FightError("winner_injuries must be a JSON array of strings.");
   }
   for (const injury of turn.winner_injuries) {
-    if (typeof injury !== "string" || injury.trim() === "") {
+    if (injury.trim() === "") {
       throw new FightError(
         `winner_injuries items must be non-empty strings. Got: ${JSON.stringify(injury)}`,
       );
@@ -76,7 +76,7 @@ export function validateNarrationTurn(
       );
     }
   }
-  if (typeof turn.rationale !== "string" || turn.rationale.trim() === "") {
+  if (turn.rationale.trim() === "") {
     throw new FightError("rationale must be a non-empty string.");
   }
 }
@@ -89,7 +89,7 @@ function assertShot(shot: Shot): void {
     "camera",
     "style",
   ] as const) {
-    if (typeof shot[key] !== "string" || shot[key].trim() === "") {
+    if (shot[key].trim() === "") {
       throw new FightError(`shot.${key} must be a non-empty string.`);
     }
   }

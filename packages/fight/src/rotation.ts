@@ -1,25 +1,17 @@
 import { randomInt as nodeCryptoRandomInt } from "node:crypto";
 
-/** Minimal roster row for winner-stays pairing. */
 export type RosterEntry = {
   subname: string;
   status: "alive" | "dead";
 };
 
 export type RotationPair = {
-  /** Previous fight winner; stays on. */
   championSubname: string;
-  /** Random living roster character who is not the champion. */
   challengerSubname: string;
 };
 
-/**
- * Returns an integer in `[0, maxExclusive)`.
- * Callers inject this so tests can pin the challenger without `Math.random()`.
- */
 export type RandomInt = (maxExclusive: number) => number;
 
-/** Production random source for pairing. Tests inject their own. */
 export function cryptoRandomInt(maxExclusive: number): number {
   if (!Number.isInteger(maxExclusive) || maxExclusive <= 0) {
     throw new Error(
@@ -29,11 +21,6 @@ export function cryptoRandomInt(maxExclusive: number): number {
   return nodeCryptoRandomInt(0, maxExclusive);
 }
 
-/**
- * Next video-continuity pair: previous winner plus a random living character
- * who is not the winner. Dead characters are never chosen. Not the voter
- * challenger ballot. Does not fall back to sequential roster order.
- */
 export function nextRotationPair(
   roster: readonly RosterEntry[],
   winnerSubname: string,
@@ -94,10 +81,6 @@ export function nextRotationPair(
   };
 }
 
-/**
- * Roster after this bout's loser is dead and the winner stays alive.
- * Used to pick the following bout's random challenger.
- */
 export function rosterAfterFight(
   fighters: readonly { subname: string }[],
   otherLiving: readonly { subname: string }[],

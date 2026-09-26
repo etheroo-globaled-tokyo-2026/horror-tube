@@ -12,7 +12,7 @@ describe("validateFightInput", () => {
 
   it("rejects a fighter who is not alive", () => {
     const input = sampleFightInput();
-    (input.fighterA as { status: string }).status = "dead";
+    Object.assign(input.fighterA, { status: "dead" });
     assert.throws(() => validateFightInput(input), /status=alive|alive/);
   });
 });

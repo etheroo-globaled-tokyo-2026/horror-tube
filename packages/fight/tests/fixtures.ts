@@ -1,39 +1,44 @@
-import type { FightInput, NarrationModelTurn, NarrationTurn } from "../src/types.js";
+import type {
+  FightInput,
+  LivingCard,
+  NarrationModelTurn,
+  NarrationTurn,
+} from "../src/types.js";
 
-export const fighterA = {
+export const fighterA: LivingCard = {
   subname: "freddy",
   display_name: "Freddy Krueger",
   look: "Burned man in a striped sweater and bladed glove.",
   brief: "Dream demon who kills in sleep.",
-  injuries: [] as string[],
-  status: "alive" as const,
+  injuries: [],
+  status: "alive",
 };
 
-export const fighterB = {
+export const fighterB: LivingCard = {
   subname: "jason",
   display_name: "Jason Voorhees",
   look: "Huge figure in a hockey mask with a machete.",
   brief: "Camp killer who never stops walking.",
-  injuries: ["cracked mask"] as string[],
-  status: "alive" as const,
+  injuries: ["cracked mask"],
+  status: "alive",
 };
 
-export const livingOpponent = {
+export const livingOpponent: LivingCard = {
   subname: "leatherface",
   display_name: "Leatherface",
   look: "Giant in a skin mask swinging a chainsaw.",
   brief: "Cannibal family enforcer.",
-  injuries: [] as string[],
-  status: "alive" as const,
+  injuries: [],
+  status: "alive",
 };
 
-export const otherLiving = {
+export const otherLiving: LivingCard = {
   subname: "chucky",
   display_name: "Chucky",
   look: "Scarred doll in overalls with a kitchen knife.",
   brief: "Possessed doll who talks while he stabs.",
-  injuries: [] as string[],
-  status: "alive" as const,
+  injuries: [],
+  status: "alive",
 };
 
 export function sampleFightInput(): FightInput {

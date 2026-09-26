@@ -5,8 +5,13 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { PutFightVideoInput } from "@horror-tube/fight-media";
+import { z } from "zod";
 
-import { fightInputFromRotation, runFightTurn } from "../src/index.js";
+import {
+  fightInputFromRotation,
+  runFightTurn,
+  type FalVideoInput,
+} from "../src/index.js";
 import {
   fighterA,
   fighterB,
@@ -22,6 +27,17 @@ const fixturePath = join(
   "fixtures",
   "fal-h3-max-response.json",
 );
+
+const savedFalResponseSchema = z.object({
+  video: z.object({ url: z.string() }),
+  expanded_prompt: z.string(),
+});
+
+function readSavedFalResponse() {
+  return savedFalResponseSchema.parse(
+    JSON.parse(readFileSync(fixturePath, "utf8")),
+  );
+}
 
 const fightMediaConfig = {
   accessKeyId: "AKIATEST",
@@ -52,10 +68,7 @@ const narrationConfig = {
 describe("runFightTurn", () => {
   it("narrates, downloads fal bytes, uploads video and frame, returns CDN URLs", async () => {
     const turn = validModelTurn();
-    const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-      video: { url: string };
-      expanded_prompt: string;
-    };
+    const saved = readSavedFalResponse();
     const mp4Bytes = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
     const frameBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
     let downloadedUrl: string | undefined;
@@ -125,7 +138,7 @@ describe("runFightTurn", () => {
     const priorFrameUrl =
       "https://horror-tube-fight-media-test.sgp1.cdn.digitaloceanspaces.com/frames/prior.jpg";
     let subscribedModel = "";
-    let subscribedInput: Record<string, unknown> | undefined;
+    let subscribedInput: FalVideoInput | undefined;
 
     await runFightTurn(sampleFightInput(), {}, {
       narrationConfig,
@@ -158,16 +171,14 @@ describe("runFightTurn", () => {
     });
 
     assert.equal(subscribedModel, "minimax/h3-max/image-to-video");
-    assert.equal(subscribedInput?.image_url, priorFrameUrl);
-    assert.equal(subscribedInput?.aspect_ratio, undefined);
+    assert.ok(subscribedInput !== undefined && "image_url" in subscribedInput);
+    assert.equal(subscribedInput.image_url, priorFrameUrl);
+    assert.equal("aspect_ratio" in subscribedInput, false);
   });
 
   it("does not return the fal URL when Spaces upload fails", async () => {
     const turn = validModelTurn();
-    const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-      video: { url: string };
-      expanded_prompt: string;
-    };
+    const saved = readSavedFalResponse();
 
     await assert.rejects(
       () =>
@@ -193,10 +204,10 @@ describe("runFightTurn", () => {
           },
           randomInt: () => 0,
         }),
-      (err: unknown) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /Spaces put_object failed/u);
-        assert.equal(err.message.includes(saved.video.url), false);
+      (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(cause.message, /Spaces put_object failed/u);
+        assert.equal(cause.message.includes(saved.video.url), false);
         return true;
       },
     );
@@ -241,7 +252,6 @@ describe("fightInputFromRotation", () => {
     const living = [fighterA, fighterB, livingOpponent, otherLiving];
     const input = fightInputFromRotation(living, "jason", () => 0);
     assert.equal(input.fighterA.subname, "jason");
-    // Living non-winners in order: freddy, leatherface, chucky
     assert.equal(input.fighterB.subname, "freddy");
     assert.deepEqual(
       input.eligibleOpponents.map((c) => c.subname),
