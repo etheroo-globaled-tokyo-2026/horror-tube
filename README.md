@@ -11,8 +11,8 @@ cp .env.example .env
 pnpm dev
 ```
 
-Fill `.env` first. The comment above each variable says how. The web game needs `ENS_LABEL` and
-`VITE_SEPOLIA_RPC_URL`.
+Fill `.env` first. The comment above each variable says how. The web game runs with no `.env`: `apps/web/env.ts`
+validates `ENS_LABEL` and `VITE_SEPOLIA_RPC_URL` and defaults both to the public Sepolia values.
 
 ## Docs
 
