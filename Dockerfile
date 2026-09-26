@@ -9,6 +9,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/ens/package.json packages/ens/
 COPY packages/roster/package.json packages/roster/
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/world-id/package.json packages/world-id/
 RUN pnpm install --frozen-lockfile
 COPY . .
 # Vite bakes these into the client at build time (apps/web/vite.config.ts envPrefix).
@@ -21,6 +22,7 @@ RUN if [ -z "${ENS_LABEL}" ] || [ -z "${VITE_SEPOLIA_RPC_URL}" ]; then \
       echo "ENS_LABEL and VITE_SEPOLIA_RPC_URL are required at image build time. See .env.example." >&2; \
       exit 1; \
     fi
+RUN pnpm --filter @horror-tube/world-id build
 RUN pnpm --filter @horror-tube/web build
 RUN pnpm --filter @horror-tube/server build
 
@@ -32,6 +34,8 @@ WORKDIR /app
 ENV STATIC_DIR=/app/apps/web/dist
 COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/world-id/package.json ./packages/world-id/
+COPY --from=build /app/packages/world-id/dist ./packages/world-id/dist
 COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules

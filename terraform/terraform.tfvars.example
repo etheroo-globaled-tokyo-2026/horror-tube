@@ -29,3 +29,6 @@ vote_countdown_seconds = 15
 bet_min_seconds        = 10
 video_timeout_seconds  = 300
 settle_seconds         = 8
+
+# WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: production).
+# Do not put WORLD_ID_* secrets in this file.
