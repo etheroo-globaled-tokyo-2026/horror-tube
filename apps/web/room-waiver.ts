@@ -55,17 +55,12 @@ export function drawPaper(now: number): void {
   g.font = "27px DotGothic16";
   g.strokeStyle = COL.soot;
   g.lineWidth = 1.5;
-  [
-    "I am 18 or older.",
-    "I am here to watch.",
-    "My requests decide",
-    "who enters the room.",
-    "Events may continue",
-    "in my absence.",
-  ].forEach((l, i) => {
-    g.fillText(l, 28, 138 + i * 38);
-    g.strokeText(l, 28, 138 + i * 38);
-  });
+  ["I am 18 or older.", "I am here to watch.", "Events may continue", "in my absence."].forEach(
+    (l, i) => {
+      g.fillText(l, 28, 138 + i * 38);
+      g.strokeText(l, 28, 138 + i * 38);
+    },
+  );
   g.fillStyle = COL.soot;
   g.fillRect(28, 402, PW - 56, 3);
   g.font = "700 26px Silkscreen";

@@ -10,10 +10,6 @@ export function enterRoomAction(): string {
   return "enter-room";
 }
 
-export function voteActionForRound(roundId: string): string {
-  return `vote-round-${requireId("roundId", roundId)}`;
-}
-
 export function stakeActionForBattle(battleId: string): string {
   return `stake-battle-${requireId("battleId", battleId)}`;
 }

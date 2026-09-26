@@ -75,7 +75,7 @@ Omit `status` when the name is already known living. Never send dropped RPG keys
 - The name on the tape is `display_name`.
 - Case file: `brief`, then current `injuries` (`None.` when the list is empty). Not `look`: that is for the video model.
 - `injury_places` is on the sheet for the fight writer. The tape does not draw that list.
-- `status` = `dead`: black-and-white face, crossed-off name. The character cannot get votes. `""` counts as alive. Any other value stops the game with an error.
+- `status` = `dead`: black-and-white face, crossed-off name. The character is never drawn to fight. `""` counts as alive. Any other value stops the game with an error.
 
 ## Permission split
 

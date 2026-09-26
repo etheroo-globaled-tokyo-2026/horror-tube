@@ -7,11 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { PutFightVideoInput } from "@horror-tube/fight-media";
 import { z } from "zod";
 
-import {
-  fightInputFromRotation,
-  runFightTurn,
-  type FalVideoInput,
-} from "../src/index.js";
+import { runFightTurn, type FalVideoInput } from "../src/index.js";
 import {
   fighterA,
   fighterB,
@@ -102,7 +98,6 @@ describe("runFightTurn", () => {
         puts.push(input);
       },
       extractLastFrame: async () => frameBytes,
-      randomInt: () => 0,
     });
 
     assert.equal(downloadedUrl, saved.video.url);
@@ -127,7 +122,6 @@ describe("runFightTurn", () => {
     assert.notEqual(result.videoUrl, saved.video.url);
     assert.equal(result.expandedPrompt, saved.expanded_prompt);
     assert.equal(result.ensLines[0], "freddy|status=dead");
-    assert.equal(result.nextOpponentSubname, "leatherface");
     assert.equal(result.rationale, turn.rationale);
     assert.equal(result.videoPrompt.includes(turn.rationale), false);
     assert.equal(result.videoPrompt.includes("status=dead"), false);
@@ -167,7 +161,6 @@ describe("runFightTurn", () => {
       fightMediaConfig,
       putObject: async () => {},
       extractLastFrame: async () => new Uint8Array([0xff, 0xd8]),
-      randomInt: () => 0,
     });
 
     assert.equal(subscribedModel, "minimax/h3-max/image-to-video");
@@ -202,7 +195,6 @@ describe("runFightTurn", () => {
           putObject: async () => {
             throw new Error("AccessDenied: simulated Spaces failure");
           },
-          randomInt: () => 0,
         }),
       (cause: unknown) => {
         assert.ok(cause instanceof Error);
@@ -240,22 +232,8 @@ describe("runFightTurn", () => {
           extractLastFrame: async () => {
             throw new Error("ffmpeg exited 1 while extracting");
           },
-          randomInt: () => 0,
         }),
       /ffmpeg exited 1/,
-    );
-  });
-});
-
-describe("fightInputFromRotation", () => {
-  it("builds a bout pair from the winner and an injected random living challenger", () => {
-    const living = [fighterA, fighterB, livingOpponent, otherLiving];
-    const input = fightInputFromRotation(living, "jason", () => 0);
-    assert.equal(input.fighterA.subname, "jason");
-    assert.equal(input.fighterB.subname, "freddy");
-    assert.deepEqual(
-      input.eligibleOpponents.map((c) => c.subname),
-      ["leatherface", "chucky"],
     );
   });
 });

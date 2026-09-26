@@ -246,7 +246,7 @@ describe("winnings", () => {
   it("is checked on every phase change and on every settle update", () => {
     assert.equal(winningsDue("fight", "settle"), true);
     assert.equal(winningsDue("settle", "settle"), true);
-    assert.equal(winningsDue("settle", "vote"), true);
+    assert.equal(winningsDue("settle", "waiting"), true);
     assert.equal(winningsDue("bet", "bet"), false);
   });
 });

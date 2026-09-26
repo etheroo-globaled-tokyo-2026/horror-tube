@@ -1,18 +1,16 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
 import {
-  DUR,
   S,
   applyRoundState,
+  replaying,
   char,
-  face,
   usd,
   film,
   living,
   mmss,
   note,
   odds,
-  replaying,
   type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
@@ -460,8 +458,8 @@ function applyVideoSrc(url: string, mode: "live" | "rec"): void {
   if (mode === vidMode) return;
   vidMode = mode;
   video.currentTime = 0;
-  video.loop = mode === "rec";
-  video.muted = mode === "rec";
+  video.loop = false;
+  video.muted = false;
   video.play().catch(() => {
     video.muted = true;
     void video.play();
@@ -568,132 +566,6 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     g.drawImage(small, 0, y + 10, w, h - y - 10, dx, dy + (y + 10) * sy, dw, (h - y - 10) * sy);
   } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
 }
-export function drawGuide(now: number): void {
-  const g = tvCtx,
-    W = TW,
-    H = TH,
-    top = 236;
-  g.fillStyle = COL.soot;
-  g.fillRect(0, 0, W, H);
-  const filmCanvas = film();
-  if (S.phase === "countdown") {
-    g.textAlign = "center";
-    g.font = "700 26px Silkscreen";
-    g.fillStyle = COL.sulfur;
-    g.fillText(S.cast ? "REQUESTS CLOSE IN" : "LAST CALL FOR REQUESTS", W / 2, 76);
-    g.font = "700 84px Silkscreen";
-    g.fillStyle = COL.blood;
-    g.fillText(mmss(S.t), W / 2, 164);
-    g.font = "24px DotGothic16";
-    g.fillStyle = COL.bone;
-    const bots = S.bots.filter((b) => b.picks !== null).length,
-      humans = S.voters - bots;
-    g.fillText(
-      `${humans} ${humans === 1 ? "human" : "humans"}${bots === 0 ? "" : ` + ${bots === 1 ? "house bot" : `${bots} house bots`}`} sent requests`,
-      W / 2,
-      206,
-    );
-    const bar = W * Math.min(1, S.t / DUR.countdown);
-    g.fillStyle = COL.blood;
-    g.fillRect((W - bar) / 2, top - 8, bar, 8);
-  } else if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
-  else if (S.last && filmCanvas.width) {
-    g.imageSmoothingEnabled = false;
-    g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
-  } else {
-    const REEL_MS = 2600,
-      CUT_MS = 160,
-      ch = S.chars[Math.floor(now / REEL_MS) % S.chars.length];
-    g.fillStyle = COL.char;
-    g.fillRect(0, 0, W, top);
-    if (!LOW && now % REEL_MS < CUT_MS) {
-      for (let y = 0; y < top; y += 4) {
-        g.fillStyle = Math.random() < 0.5 ? COL.grime : COL.soot;
-        g.fillRect(0, y, W, 4);
-      }
-    } else if (ch) {
-      g.imageSmoothingEnabled = false;
-      g.drawImage(face(ch), 40, 28, 180, 180);
-      g.textAlign = "left";
-      g.font = "700 22px Silkscreen";
-      g.fillStyle = COL.sulfur;
-      g.fillText(`CH ${num(ch.id + 1)}`, 252, 88);
-      g.font = "30px DotGothic16";
-      g.fillStyle = COL.bone;
-      const y = wrap(g, ch.name.toUpperCase(), 252, 130, W - 276, 34);
-      g.font = "700 22px Silkscreen";
-      g.fillStyle = ch.alive ? COL.bone : COL.rust;
-      g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
-    }
-  }
-  if (S.last && S.phase !== "countdown") {
-    g.textAlign = "left";
-    if ((now / 500) % 2 < 1) {
-      g.fillStyle = COL.blood;
-      g.beginPath();
-      g.arc(34, 38, 9, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.font = "700 24px Silkscreen";
-    g.fillStyle = COL.bone;
-    g.fillText("REC · PREVIOUS FIGHT", 52, 47);
-  }
-  g.fillStyle = COL.char;
-  g.fillRect(0, top, W, H - top);
-  g.fillStyle = COL.sulfur;
-  g.fillRect(0, top, W, 32);
-  g.fillStyle = COL.soot;
-  g.textAlign = "left";
-  g.font = "700 18px Silkscreen";
-  g.fillText(S.cast ? "THANK YOU." : "RESIDENT DIRECTORY", 16, top + 23);
-  g.textAlign = "right";
-  g.fillText(S.cast ? "REQUEST RECORDED" : "TYPE A NUMBER", W - 16, top + 23);
-  S.chars.forEach((ch) => {
-    if (
-      (S.phase === "vote" || S.phase === "countdown") &&
-      S.champion !== null &&
-      ch.id === S.champion
-    ) {
-      return;
-    }
-    const visibleIndex = S.chars
-      .filter(
-        (c) =>
-          !(
-            (S.phase === "vote" || S.phase === "countdown") &&
-            S.champion !== null &&
-            c.id === S.champion
-          ),
-      )
-      .indexOf(ch);
-    const x = visibleIndex < 5 ? 12 : W / 2 + 6,
-      y = top + 34 + (visibleIndex % 5) * 42,
-      mine = S.picks.includes(ch.id);
-    if (mine) {
-      g.fillStyle = COL.bone;
-      g.fillRect(x - 6, y, W / 2 - 12, 40);
-    }
-    g.imageSmoothingEnabled = false;
-    g.drawImage(face(ch), x, y + 2, 36, 36);
-    g.textAlign = "left";
-    g.font = "700 20px Silkscreen";
-    g.fillStyle = !ch.alive ? COL.grime : mine ? COL.soot : COL.sulfur;
-    g.fillText(num(ch.id + 1), x + 44, y + 28);
-    g.font = "22px DotGothic16";
-    g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    const nameW = W / 2 - 110;
-    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28, nameW);
-    if (!ch.alive) {
-      g.fillStyle = COL.rust;
-      g.fillRect(x + 86, y + 20, Math.min(g.measureText(ch.name).width, nameW) + 4, 2);
-    }
-    if (mine) {
-      g.font = "700 12px Silkscreen";
-      g.fillText("✓ PICKED", x + 88, y + 37);
-    }
-  });
-}
-
 export let tvNoise = 0;
 function drawCaseFile(ch: Character): void {
   const g = tvCtx,
@@ -741,9 +613,7 @@ function drawCaseFile(ch: Character): void {
     ? ["THIS ROOM IS EMPTY", COL.rust]
     : S.champion !== null && ch.id === S.champion
       ? ["THE SURVIVOR STAYS ON", COL.rust]
-      : S.picks.includes(ch.id)
-        ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
-        : ["PRESS OK TO REQUEST", COL.sulfur];
+      : ["CLR TO GO BACK", COL.sulfur];
   g.textAlign = "center";
   g.fillStyle = color;
   g.font = "700 22px Silkscreen";
@@ -874,35 +744,43 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (
-    (S.phase === "vote" || S.phase === "countdown") &&
-    !S.cast &&
-    (T.buf || (T.reveal >= 0 && now < T.revealUntil))
-  ) {
+  } else if (T.buf) {
     fill(COL.soot);
     noise = 0.14;
-    if (T.reveal >= 0 && now < T.revealUntil) {
-      const ch = char(T.reveal);
-      text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
-      text(ch.name.toUpperCase(), 230, 44, COL.blood);
+    const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+    if (ch) drawCaseFile(ch);
+    else {
+      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+      else text("NO SUCH RESIDENT", 280, 28, COL.rust);
+    }
+  } else if (S.phase === "waiting") {
+    fill(COL.soot);
+    BARS.forEach((c, i) => {
+      g.fillStyle = c;
+      g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
+    });
+    if (S.startError === null) {
+      text("PLEASE STAND BY", 200, 40, COL.bone);
       text(
-        S.picks.length >= S.slots ? "REQUEST RECORDED. THANK YOU." : "CHOOSE ANOTHER RESIDENT.",
-        330,
-        26,
+        `the programme is starting${".".repeat(1 + (((now / 400) | 0) % 3))}`,
+        250,
+        24,
+        COL.rust,
+        "DotGothic16",
+        400,
       );
     } else {
-      const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
-      if (ch) drawCaseFile(ch);
-      else {
-        text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-        if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-        else text("NO SUCH RESIDENT", 280, 28, COL.rust);
-      }
+      noise = 0.2;
+      text("THE PROGRAMME DID NOT START", 130, 34, COL.blood);
+      g.font = "400 22px DotGothic16";
+      g.fillStyle = COL.bone;
+      const end = wrap(g, S.startError, W / 2, 190, W - 64, 28);
+      text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 28), 24, COL.sulfur);
     }
   } else {
     const filmCanvas = film();
-    if (S.phase === "vote" || S.phase === "countdown") drawGuide(now);
-    else if (vidMode && video.readyState >= 2) videoFrame();
+    if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
     if (S.phase === "bet" && vidMode === "live") {
@@ -1007,9 +885,17 @@ export function drawTV(): void {
         "DotGothic16",
         400,
       );
-      if (!endedByFailure)
-        text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
-      text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
+      if (S.startError !== null) {
+        text("THE NEXT PROGRAMME DID NOT START", 300, 24, COL.blood);
+        g.font = "400 20px DotGothic16";
+        g.fillStyle = COL.bone;
+        const end = wrap(g, S.startError, W / 2, 336, W - 64, 24);
+        text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.sulfur);
+      } else {
+        if (!endedByFailure)
+          text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
+        text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
+      }
     }
   }
   if (S.phase !== "gate" && !powered && T.say && now < T.sayUntil) {

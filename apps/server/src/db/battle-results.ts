@@ -23,7 +23,6 @@ type BattleResultRow = QueryResultRow & {
   winner_subname: string;
   loser_subname: string;
   winner_injuries: string[] | string;
-  next_opponent_subname: string;
   betting_closed: boolean;
   playback_finished: boolean;
   video_started_at: Date | null;
@@ -63,7 +62,6 @@ function rowToRecord(row: BattleResultRow): BattleQueueRecord {
     winnerSubname: row.winner_subname,
     loserSubname: row.loser_subname,
     winnerInjuries: parseJsonArray(v.string(), row.winner_injuries, "winner_injuries"),
-    nextOpponentSubname: row.next_opponent_subname,
     bettingClosed: row.betting_closed,
     playbackFinished: row.playback_finished,
     videoStartedAt: row.video_started_at === null ? null : row.video_started_at.getTime(),
@@ -82,7 +80,7 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
       `SELECT
         id, battle_id, fighter_a_subname, fighter_b_subname, shots,
         ens_line_loser, ens_line_winner, rationale,
-        winner_subname, loser_subname, winner_injuries, next_opponent_subname,
+        winner_subname, loser_subname, winner_injuries,
         betting_closed, playback_finished, video_started_at, betting_closes_at,
         injuries_tx_hash, status_tx_hash, settlement_tx_hash
       FROM battle_results
@@ -98,16 +96,16 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
       `INSERT INTO battle_results (
         id, battle_id, fighter_a_subname, fighter_b_subname, shots,
         ens_line_loser, ens_line_winner, rationale,
-        winner_subname, loser_subname, winner_injuries, next_opponent_subname,
+        winner_subname, loser_subname, winner_injuries,
         betting_closed, playback_finished, video_started_at, betting_closes_at,
         injuries_tx_hash, status_tx_hash, settlement_tx_hash,
         updated_at
       ) VALUES (
         $1, $2, $3, $4, $5::jsonb,
         $6, $7, $8,
-        $9, $10, $11::jsonb, $12,
-        $13, $14, $15, $16,
-        $17, $18, $19,
+        $9, $10, $11::jsonb,
+        $12, $13, $14, $15,
+        $16, $17, $18,
         now()
       )
       ON CONFLICT (id) DO UPDATE SET
@@ -121,7 +119,6 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
         winner_subname = EXCLUDED.winner_subname,
         loser_subname = EXCLUDED.loser_subname,
         winner_injuries = EXCLUDED.winner_injuries,
-        next_opponent_subname = EXCLUDED.next_opponent_subname,
         betting_closed = EXCLUDED.betting_closed,
         playback_finished = EXCLUDED.playback_finished,
         video_started_at = EXCLUDED.video_started_at,
@@ -142,7 +139,6 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
         record.winnerSubname,
         record.loserSubname,
         JSON.stringify(record.winnerInjuries),
-        record.nextOpponentSubname,
         record.bettingClosed,
         record.playbackFinished,
         record.videoStartedAt === null ? null : new Date(record.videoStartedAt),

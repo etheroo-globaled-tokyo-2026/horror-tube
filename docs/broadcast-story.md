@@ -28,10 +28,10 @@ would continue. The first versions repeated themselves. The later versions notic
 A living observer stabilised the picture. Recorded attention did nothing. Simulated viewers did nothing.
 Someone had to be there, expecting something to happen. Violence held the signal best. The service found its audience.
 
-The announcer asks you to select residents. He calls it a request. You enter their numbers. Somewhere on the
-television, a lock opens.
+The announcer asks whether the programme may begin. You say it may. He draws two room numbers; he says the draw is
+fair. Somewhere on the television, a lock opens.
 
-Watching costs nothing. Choosing costs nothing. The coin meter is for when you think you know someone. You
+Watching costs nothing. The coin meter is for when you think you know someone. You
 remember what one resident survived in a film. You know what the other keeps under his coat. You have an
 opinion about who will walk out. The meter accepts it.
 
@@ -40,8 +40,8 @@ opinion about who will walk out. The meter accepts it.
 There is no announcer during the worst part. Afterward, the survivor returns to their room. They have trouble
 closing the door with their remaining hand. The other tape stays on your shelf, its name crossed out.
 
-The broadcaster announces the result, makes the winning tickets available to collect, and asks for the next
-request. Injuries carry forward. The dead stay dead for the programme. Eventually one resident remains.
+The broadcaster announces the result, makes the winning tickets available to collect, and draws the next room
+number. The survivor stays on. Injuries carry forward. The dead stay dead for the programme. Eventually one resident remains.
 You assume they win something. The announcer has never said that.
 
 At the end of the broadcast, a message fills the screen:
@@ -55,10 +55,10 @@ At the end of the broadcast, a message fills the screen:
 - The announcer is a tired, polite television-service employee. Death is routine work. He helps the viewer use the service.
 - Use ordinary, short sentences. Most messages should be useful. Let an occasional implication carry the horror.
 - The reconstruction and observation premise guides the writing; the room reveals it through fragments, not an opening lecture.
-- Call the characters **residents**, votes **requests**, the player a **viewer**, and a season a **programme**.
-- Requests are audience votes, not a promise that an individual viewer's selection will fight. The survivor stays on; later requests select a challenger.
+- Call the characters **residents**, the player a **viewer**, and a season a **programme**.
+- A viewer starts the programme; the service draws who fights. The survivor stays on; each later draw picks a challenger.
 - The tapes are resident records. Injuries persist within a programme. A crossed-out name means the resident is dead.
-- Watching and requesting are free. Betting is optional. Never imply a deposit is needed to keep watching or leave.
+- Watching is free. Betting is optional. Never imply a deposit is needed to keep watching or leave.
 - Keep money language literal: stake, bet, balance, winnings, collect, return. Pending is not paid; failed is not refunded.
 - Name World App where the viewer must scan, and World ID where they sign. Keep credential machinery out of the room's instructions.
 - Errors identify the failed action and preserve the actual reason. Atmosphere must not replace a useful explanation.

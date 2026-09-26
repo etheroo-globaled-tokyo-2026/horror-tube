@@ -91,7 +91,6 @@ export function fightJobResultFromTurn(
     winnerSubname: string;
     loserSubname: string;
     winnerInjuries: string[];
-    nextOpponentSubname: string;
     videoUrl: string;
     frameUrl: string;
   },
@@ -132,7 +131,6 @@ export function fightJobResultFromTurn(
     winnerSubname: turn.winnerSubname,
     loserSubname: turn.loserSubname,
     winnerInjuries: turn.winnerInjuries,
-    nextOpponentSubname: turn.nextOpponentSubname,
   };
   return {
     insert,
@@ -175,7 +173,6 @@ export function createFightJobRunner(deps: {
         winnerSubname: result.turn.winner_subname,
         loserSubname: result.turn.loser_subname,
         winnerInjuries: result.turn.winner_injuries,
-        nextOpponentSubname: result.nextOpponentSubname,
         videoUrl: result.videoUrl,
         frameUrl: result.frameUrl,
       },

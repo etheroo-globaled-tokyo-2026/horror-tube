@@ -1,16 +1,5 @@
 import * as THREE from "three";
-import {
-  $,
-  DUR,
-  S,
-  countdown,
-  hooks,
-  loadBettingIds,
-  pick,
-  setWallet,
-  usd,
-  type Phase,
-} from "./game.ts";
+import { $, DUR, S, hooks, loadBettingIds, setWallet, usd, type Phase } from "./game.ts";
 import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
 import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
@@ -103,25 +92,25 @@ function hintText(): void {
                   : W8.step === "done"
                     ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
-      : S.phase === "vote" && !S.cast
-        ? `REQUEST ${S.slots === 1 ? "ONE RESIDENT" : "TWO RESIDENTS"} · NUMBER ${b("OK")}`
-        : S.phase === "countdown" && !S.cast
-          ? `LAST REQUESTS · CHOOSE ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
-          : S.phase === "bet" && !S.bet && S.poolId === null
-            ? "OPENING THE BOOK"
-            : S.pending === "bet"
-              ? "RECORDING YOUR BET…"
-              : S.pending === "claim"
-                ? "COLLECTING…"
-                : S.phase === "bet" && !S.bet && S.credit > 0
-                  ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
-                  : S.claim
-                    ? `COLLECT ${b("OK")}`
-                    : S.phase === "over"
-                      ? `NEXT PROGRAMME ${b("OK")}`
-                      : S.credit <= 0
-                        ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                        : `NEXT ${b("N")}`;
+      : S.phase === "vote" || S.phase === "countdown"
+        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
+        : S.phase === "waiting" || S.phase === "over"
+          ? "BOOK THE FIRST FIGHTER"
+          : S.phase === "pick"
+            ? "PICK THE NEXT FIGHTER"
+        : S.phase === "bet" && !S.bet && S.poolId === null
+          ? "OPENING THE BOOK"
+          : S.pending === "bet"
+            ? "RECORDING YOUR BET…"
+            : S.pending === "claim"
+              ? "COLLECTING…"
+              : S.phase === "bet" && !S.bet && S.credit > 0
+                ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+                : S.claim
+                  ? `COLLECT ${b("OK")}`
+                  : S.credit <= 0
+                      ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                      : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -136,11 +125,8 @@ function press(id: string): void {
   if (id === "power") return turnOff();
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
-    if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
-      T.reveal = -1;
-      T.held = -1;
-      T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
-    }
+    T.held = -1;
+    T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
   } else if (id === "clr") {
     T.buf = "";
     T.held = -1;
@@ -167,25 +153,11 @@ function turnOff(): void {
   hintText();
 }
 function ok(): void {
-  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast && T.buf.length === 2) {
-    const ch = S.chars[Number(T.buf) - 1];
-    if (
-      !ch ||
-      !ch.alive ||
-      S.picks.includes(ch.id) ||
-      (S.champion !== null && ch.id === S.champion)
-    )
-      return sfx.deny();
-    pick(ch.id);
-    sfx.pick();
-    T.buf = "";
-    T.reveal = ch.id;
-    T.revealUntil = performance.now() + 3200;
-    if (S.picks.length >= S.slots) $("#h-cast").click();
-  } else if (S.claim) {
+  if (S.claim) {
     if (!canCollect(S)) return;
     $("#h-claim").click();
-  } else if (S.phase === "over") $("#h-reset").click();
+  } else if (S.phase === "over" || (S.phase === "waiting" && S.startError !== null))
+    $("#h-reset").click();
 }
 let holdTimer = 0;
 const stake = (): number => STAKES[T.stake] ?? 0;
@@ -336,7 +308,6 @@ const WALK: WalkStep[] = [
     ],
     remote: false,
   },
-  { say: "USE THE REMOTE TO REQUEST WHO FIGHTS NEXT.", view: () => null, remote: true },
   {
     say: "WATCHING IS FREE. THE METER IS FOR BETS.",
     view: () => coinBox.view("meter"),
@@ -346,7 +317,6 @@ const WALK: WalkStep[] = [
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
-  countdown.hold = walkRef.n >= 0;
   hintText();
 }
 function zoom(at: CoinBoxView | null, pick = false): void {
@@ -457,7 +427,6 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pick.at === "shelf") {
     sfx.tape();
     T.buf = "";
-    T.reveal = -1;
     T.held = pick.slot?.id ?? -1;
     T.hover = -1;
     return hintText();
@@ -643,8 +612,6 @@ renderer.setAnimationLoop(() => {
 });
 
 const PHASE_SOUND = new Map<Phase, () => void>([
-  ["vote", sfx.bell],
-  ["countdown", sfx.static],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],

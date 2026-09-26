@@ -2,15 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { CLOSES_AT_UNSET, placeholderView, type PlaceholderInput } from "../placeholder-view.ts";
-import { withServerIds } from "../round-client.ts";
 
 function state(overrides: Partial<PlaceholderInput>): PlaceholderInput {
   return {
-    phase: "vote",
-    champion: null,
-    votes: {},
-    tally: null,
+    phase: "bet",
     fighters: null,
+    selectable: [],
     pool: [0, 0],
     bettingClosesAt: null,
     chars: [
@@ -24,55 +21,6 @@ function state(overrides: Partial<PlaceholderInput>): PlaceholderInput {
 }
 
 describe("placeholderView", () => {
-  it("shows living non-champion candidates with server counts and only the stored tally", () => {
-    const counting = placeholderView(
-      state({ phase: "countdown", champion: 3, votes: { 0: 2, 2: 1 } }),
-    );
-    assert.deepEqual(counting, {
-      screen: "vote",
-      candidates: [
-        { id: 0, name: "Jason", votes: 2 },
-        { id: 2, name: "Chucky", votes: 1 },
-      ],
-      tally: null,
-    });
-    const stored = placeholderView(
-      state({
-        phase: "countdown",
-        votes: { 0: 2, 2: 1 },
-        tally: [
-          { id: 2, votes: 5, reachedAt: 10 },
-          { id: 0, votes: 2, reachedAt: 20 },
-        ],
-      }),
-    );
-    assert.deepEqual(stored?.tally, [
-      { name: "Chucky", votes: 5 },
-      { name: "Jason", votes: 2 },
-    ]);
-  });
-
-  it("ticking a character sends the game server's id for it when ENS lists the cast in another order", () => {
-    const read = ["jason", "freddy", "chucky", "count"].map((label) => ({
-      label,
-      name: label.toUpperCase(),
-      alive: true,
-    }));
-    const server = ["chucky", "count", "freddy", "jason"].map((label, id) => ({
-      id,
-      label,
-      alive: true,
-      kills: 0,
-      damage: 0,
-    }));
-    const view = placeholderView(state({ chars: withServerIds(read, server) }));
-    const candidates = view?.screen === "vote" ? view.candidates : [];
-    for (const ticked of ["JASON", "FREDDY"]) {
-      const sent = candidates.find((c) => c.name === ticked)?.id;
-      assert.equal(sent, server.find((c) => c.label.toUpperCase() === ticked)?.id, ticked);
-    }
-  });
-
   it("shows the stored betting_closes_at as given, and says when it is not stored yet", () => {
     const closesAt = Date.UTC(2026, 8, 26, 12, 0, 5);
     const bet = placeholderView(
@@ -94,8 +42,26 @@ describe("placeholderView", () => {
     assert.equal(waiting?.screen === "bet" ? waiting.closesAt : "", CLOSES_AT_UNSET);
   });
 
-  it("shows neither screen outside vote, countdown, and bet", () => {
-    for (const phase of ["gate", "fight", "settle", "over"]) {
+  it("lists the server's selectable fighters for the opening booking and the next fighter", () => {
+    const opening = placeholderView(
+      state({ phase: "waiting", selectable: [0, 2], fighters: null }),
+    );
+    assert.equal(opening?.screen, "pick");
+    if (opening?.screen !== "pick") return;
+    assert.equal(opening.title, "BOOK THE FIRST FIGHTER");
+    assert.equal(opening.act, "book");
+    assert.deepEqual(opening.choices, [
+      { id: 0, name: "Jason" },
+      { id: 2, name: "Chucky" },
+    ]);
+    const next = placeholderView(state({ phase: "pick", selectable: [1], fighters: null }));
+    if (next?.screen !== "pick") return;
+    assert.equal(next.act, "next-fighter");
+    assert.deepEqual(next.choices, [{ id: 1, name: "Freddy" }]);
+  });
+
+  it("shows the bet screen only in bet", () => {
+    for (const phase of ["gate", "waiting", "fight", "settle", "over"]) {
       assert.equal(placeholderView(state({ phase, fighters: [0, 2] })), null, phase);
     }
   });

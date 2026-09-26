@@ -100,6 +100,19 @@ export function loadNarrationConfig(
   };
 }
 
+export type PairingConfig = {
+  maxAttempts: number;
+  timeoutMs: number;
+};
+
+export function loadPairingConfig(env: Record<string, string | undefined>): PairingConfig {
+  return {
+    maxAttempts: parsePositiveInt("PAIRING_MAX_ATTEMPTS", requiredEnv("PAIRING_MAX_ATTEMPTS", env)),
+    timeoutMs:
+      parsePositiveInt("PAIRING_TIMEOUT_SECONDS", requiredEnv("PAIRING_TIMEOUT_SECONDS", env)) * 1000,
+  };
+}
+
 export function loadFalVideoConfig(
   env: Record<string, string | undefined>,
 ): FalVideoConfig {

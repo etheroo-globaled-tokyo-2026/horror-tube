@@ -42,6 +42,19 @@ const falEnv = {
 };
 
 describe("buildFightInput", () => {
+  it("passes a fighter's recorded injuries into the fight input and refuses a dead fighter", () => {
+    const input = buildFightInput(baseRequest(), [
+      card("alpha", { injuries: ["cut across the cheek"] }),
+      card("bravo"),
+      card("charlie"),
+    ]);
+    assert.deepEqual(input.fighterA.injuries, ["cut across the cheek"]);
+    assert.throws(
+      () => buildFightInput(baseRequest(), [card("alpha", { status: "dead" }), card("bravo")]),
+      /fighterA "alpha" is not alive/u,
+    );
+  });
+
   it("maps fighter and eligible opponent cards from living subnames", () => {
     const input = buildFightInput(baseRequest(), [
       card("alpha"),
@@ -83,7 +96,6 @@ describe("fightJobResultFromTurn", () => {
         winnerSubname: "alpha",
         loserSubname: "bravo",
         winnerInjuries: ["cut"],
-        nextOpponentSubname: "charlie",
         videoUrl: "https://cdn.example/videos/a.mp4",
         frameUrl: "https://cdn.example/frames/a.jpg",
       },
@@ -110,7 +122,6 @@ describe("fightJobResultFromTurn", () => {
             winnerSubname: "charlie",
             loserSubname: "bravo",
             winnerInjuries: [],
-            nextOpponentSubname: "delta",
             videoUrl: "https://cdn.example/v.mp4",
             frameUrl: "https://cdn.example/f.jpg",
           },
@@ -139,13 +150,11 @@ describe("createFightJobRunner", () => {
         ],
         loser_subname: "bravo",
         winner_subname: "alpha",
-        winner_injuries: ["bruise"],
-        rationale: "alpha by a cut",
-        next_opponent_subname: "charlie",
-      },
-      ensLines: ["bravo|status=dead", 'alpha|injuries=["bruise"]'],
-      nextOpponentSubname: "charlie",
-      rationale: "alpha by a cut",
+            winner_injuries: ["bruise"],
+            rationale: "alpha by a cut",
+          },
+          ensLines: ["bravo|status=dead", 'alpha|injuries=["bruise"]'],
+          rationale: "alpha by a cut",
       videoPrompt: "prompt",
       videoUrl: "https://cdn.example/videos/job.mp4",
       frameUrl: "https://cdn.example/frames/job.jpg",
@@ -213,10 +222,8 @@ describe("createFightJobRunner", () => {
             winner_subname: "alpha",
             winner_injuries: [],
             rationale: "ok",
-            next_opponent_subname: "alpha",
           },
           ensLines: ["bravo|status=dead", "alpha|injuries=[]"],
-          nextOpponentSubname: "alpha",
           rationale: "ok",
           videoPrompt: "p",
           videoUrl: "https://cdn.example/v.mp4",

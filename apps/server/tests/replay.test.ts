@@ -9,6 +9,7 @@ import * as v from "valibot";
 
 import { MemoryRoundStore } from "../src/db/rounds.js";
 import { GameLoop } from "../src/game/loop.js";
+import type { PairingRunner } from "../src/pairing-job.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import { baseUrl } from "./base-url.js";
 
@@ -20,6 +21,7 @@ const ReplayErr = v.object({ ok: v.literal(false), error: v.string() });
 const config = {
   quorumVotes: 1,
   voteCountdownSeconds: 1,
+  voteTimeoutSeconds: 1,
   bettingCloseAfterVideoStartSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
@@ -45,7 +47,6 @@ function agentInsert(overrides: Partial<BattleQueueInsert> = {}): BattleQueueIns
     winnerSubname: "jason",
     loserSubname: "freddy",
     winnerInjuries: [],
-    nextOpponentSubname: "chucky",
     ...overrides,
   };
 }
@@ -100,6 +101,11 @@ function testLoop(
       },
     },
     fightJob: fightJobThatNeverFinishes,
+    pairing: (async () => ({
+      fighterASubname: "jason",
+      fighterBSubname: "freddy",
+      rationale: "test pairing",
+    })) satisfies PairingRunner,
   });
 }
 
@@ -143,7 +149,7 @@ describe("GET /replay", () => {
     const game = testLoop(store, () => clock);
     const base = await listen(game);
 
-    await game.voteWithNullifier("n1", [0, 1]);
+    await game.start(0);
     clock = 1_000;
     await game.tick(clock);
     assert.equal(game.getState().phase, "bet");
