@@ -130,7 +130,7 @@ export const DEMO = {
 };
 export const isDemo = (pair: Pair | null): boolean =>
   !!pair && pair.includes(DEMO.a) && pair.includes(DEMO.b);
-const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
+export const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
 const CHAPTERS = [
