@@ -85,7 +85,7 @@ function hintText(): void {
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY${W8.qrUri === "" ? "" : ` <a href="${esc(W8.qrUri)}" target="_blank" rel="noopener">OPEN LINK</a> <button data-copy-link>COPY LINK</button>`}`
+          ? `SCAN WITH ${b("WORLD APP")}${W8.qrUri === "" ? "" : ` <button data-copy-link>COPY LINK</button>`}`
           : W8.step === "wallet"
             ? `${b("VERIFIED")} · OPENING YOUR WALLET`
             : W8.fail !== ""

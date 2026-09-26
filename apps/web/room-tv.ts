@@ -689,18 +689,11 @@ export function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
-        text(
-          "Orb only. We check it on our side.",
-          oy + side + 68,
-          22,
-          COL.bone,
-          "DotGothic16",
-          400,
-        );
+        text("PROVE YOU'RE STILL HUMAN", oy + side + 36, 28, COL.sulfur);
+        text("The dead have enough channels.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
       } else {
-        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
-        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+        text("IS ANYBODY ALIVE?", 210, 36, COL.sulfur);
+        text("Hold still. Finding your signal.", 270, 24, COL.bone, "DotGothic16", 400);
       }
     } else if (W8.step === "wallet") {
       noise = 0.1;
