@@ -62,6 +62,10 @@ betting, humans and house bots vote for who they think will win. The winner stay
   then calls `setOutcome` and `setVideoReady` with the CDN video URL, duration, and last-frame URL. A prior
   `frameUrl` on the round is passed as `priorFrameUrl` (image-to-video); the first bout is text-to-video. Missing
   FAL, narration, or Spaces env fails closed and names the variable.
+- Narration is checked before any video is made: each `winner_injuries` phrase must appear in the shot text (case
+  and punctuation ignored), and the list must keep every injury on the winner's ENS card. A rejected answer is
+  logged and asked again with the reason, up to `NARRATION_MAX_ATTEMPTS` (`packages/fight/src/narrate.ts`); then the
+  fight job fails naming both fighters.
 - A ready video is not a closed book. Once `videoUrl` is set the room plays it while betting is still open. The
   first room whose `<video>` fires `playing` sends `POST /playback-start`; the server stores `video_started_at` and
   `betting_closes_at = video_started_at + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` on the `battle_results` row, then
