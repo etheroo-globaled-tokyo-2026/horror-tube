@@ -1,11 +1,17 @@
 -- Game-loop tables (docs/game-loop.md, issue #69).
--- Character ids are ENS labels. No stakes table.
+-- Character ids are ENS labels. No stakes table, stake columns, or amounts.
+-- Postgres is not the betting ledger; bets settle on the Sui contract (other
+-- developer's open PR — none found in etheroo-globaled-tokyo-2026/horror-tube
+-- open PRs as of this migration; do not invent an address). Eth Sepolia
+-- BattleBetting (#44) is not this path.
 --
--- Authority: ENS text record `status` is the source of truth for alive/dead.
--- BattleBetting settle reads ENS, not Postgres (docs/battle-betting.md).
--- seasons.characters is a holding copy for the current season / bet window only
--- (vote list, RoundState.chars, resume). Settle writes ENS first; then this row
--- is refreshed from ENS. Never treat Postgres alive/dead as authoritative.
+-- seasons.characters is a holding copy for the current season / bet window
+-- (vote list, RoundState.chars, resume). Order after a fight:
+--   1) update this holding row when the fight result is known (bet window reads it)
+--   2) on-chain settle finishes on Sui
+--   3) then write ENS text record `status`
+-- Do not write ENS before settlement. Do not treat this row as what pays out.
+-- After the ENS write, ENS `status` is the authority for alive/dead.
 -- kills/damage in the same jsonb are season-loop holding fields the same way.
 --
 -- gen_random_uuid() is built into PostgreSQL 13+ (Managed Postgres on DigitalOcean).
@@ -20,9 +26,9 @@ CREATE TABLE IF NOT EXISTS seasons (
   created_at timestamptz NOT NULL DEFAULT now(),
   ended_at timestamptz,
   champion_ens_label text,
-  -- Holding copy for this season (not source of truth). Shape:
+  -- Holding copy for this season (not the payout source; not ENS). Shape:
   -- [{ "ens_label": string, "alive": boolean, "kills": number, "damage": number }, ...]
-  -- `alive` mirrors ENS text `status` (`dead` => false; otherwise true). Refresh from ENS after settle.
+  -- `alive` holds the fight outcome for the bet window until Sui settle, then ENS write.
   characters jsonb NOT NULL DEFAULT '[]'::jsonb
 );
 
