@@ -15,8 +15,13 @@ LOOSE = "loose"
 class CastMember:
     id: str
     name: str
-    find: str       # what SAM searches for
-    side: str       # where they start: left, center or right
+    find: str               # what SAM searches for
+    side: str | None        # where they start: left, center or right; needed only by members who share a find
+
+
+def same_find(find: str) -> str:
+    """A find phrase compared as SAM reads it: case and spacing don't count."""
+    return " ".join(find.lower().split())
 
 
 @dataclass(frozen=True)
@@ -100,9 +105,18 @@ def _cast(raw: Any, where: str, problems: list[str]) -> tuple[CastMember, ...]:
             problems.append(f"{at}.name must be a non-empty string")
         find = _phrase(c.get("find"), f"{at}.find", problems)
         side = c.get("side")
-        if side not in SIDES:
-            problems.append(f"{at}.side must be one of {', '.join(SIDES)}")
-        out.append(CastMember(str(cid), str(name), find, str(side)))
+        if side is not None and side not in SIDES:
+            problems.append(f"{at}.side must be one of {', '.join(SIDES)}, or left out")
+        out.append(CastMember(str(cid), str(name), find, side if side in SIDES else None))
+    # members who share a find are told apart only by where they start
+    groups: dict[str, list[CastMember]] = {}
+    for m in out:
+        if m.find:
+            groups.setdefault(same_find(m.find), []).append(m)
+    for members in groups.values():
+        if len(members) > 1 and any(m.side is None for m in members):
+            problems.append(f"{where}: {' and '.join(m.id for m in members)} share the find {members[0].find!r}, so "
+                            f"each needs a side ({', '.join(SIDES)})")
     return tuple(out)
 
 
