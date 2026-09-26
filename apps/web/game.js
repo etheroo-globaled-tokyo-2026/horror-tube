@@ -451,7 +451,7 @@ function gate(step) {
   g.hidden = false;
   if (step === "wallet")
     g.innerHTML = `<p class="osd t-alive lit">■ VERIFIED · HUMAN 18+</p><h1 class="lit">CONNECT A WALLET</h1>
-    <p>Voting is free. To bet, you need test ETH on Sepolia.</p>
+    <p>Voting is free. To bet, you need USDC on Sui testnet.</p>
     <div class="row"><button class="btn primary" data-act="wallet">OPEN YOUR WALLET</button><button class="btn" data-act="empty">CONNECT AN EMPTY WALLET</button></div>`;
   if (step === "funds")
     g.innerHTML = `<p class="osd t-alive lit">■ ${S.wallet}</p><h1 class="lit">${S.credit > 0 ? "FUNDS OK" : "NO FUNDS"}</h1>
