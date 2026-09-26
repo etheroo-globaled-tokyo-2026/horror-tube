@@ -1,4 +1,5 @@
 import { config as loadDotenv } from "dotenv";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -30,18 +31,58 @@ const ZERO_BYTES32 =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const STATUS_REGISTERED = 2;
 export const REGISTER_SELECTOR = "0x85f3e643" as const;
-export const TRANSFER_SINGLE_TOPIC0 =
-  "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
 const transferSingleEvent = parseAbiItem(
   "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
 );
+/** Inclusive block count per eth_getLogs window. Never larger than this. */
+export const MAX_LOG_CHUNK_BLOCKS = 49999n;
+/** Cap on backward windows from chain head. */
+export const MAX_RECENT_LOG_CHUNKS = 4;
+/** Lowest block number this dashboard will query. Never block 0. */
+export const MIN_LOG_BLOCK = 1n;
 
-export function isPrunedHistoricalStateError(message: string): boolean {
-  return /historical state|missing trie node|state pruned|history has been pruned/iu.test(
-    message,
-  );
+export type BlockRange = {
+  fromBlock: bigint;
+  toBlock: bigint;
+};
+
+/**
+ * Inclusive block windows walking backward from `latestBlock`.
+ * Each window spans at most `maxChunkBlocks` blocks. Never includes block 0.
+ */
+export function recentLogScanChunks(
+  latestBlock: bigint,
+  maxChunks: number = MAX_RECENT_LOG_CHUNKS,
+  maxChunkBlocks: bigint = MAX_LOG_CHUNK_BLOCKS,
+): BlockRange[] {
+  if (!Number.isInteger(maxChunks) || maxChunks < 1) {
+    throw new Error(
+      `recentLogScanChunks: maxChunks must be a positive integer. Got: ${String(maxChunks)}`,
+    );
+  }
+  if (maxChunkBlocks < 1n) {
+    throw new Error(
+      `recentLogScanChunks: maxChunkBlocks must be >= 1. Got: ${maxChunkBlocks.toString()}`,
+    );
+  }
+  if (latestBlock < MIN_LOG_BLOCK) {
+    return [];
+  }
+  const chunks: BlockRange[] = [];
+  let toBlock = latestBlock;
+  for (let i = 0; i < maxChunks && toBlock >= MIN_LOG_BLOCK; i++) {
+    let fromBlock = toBlock - (maxChunkBlocks - 1n);
+    if (fromBlock < MIN_LOG_BLOCK) {
+      fromBlock = MIN_LOG_BLOCK;
+    }
+    chunks.push({ fromBlock, toBlock });
+    if (fromBlock <= MIN_LOG_BLOCK) {
+      break;
+    }
+    toBlock = fromBlock - 1n;
+  }
+  return chunks;
 }
-const LOG_CHUNK_SIZE = 40000n;
 
 const textResolverAbi = parseAbi([
   "function text(bytes32 node, string key) view returns (string)",
@@ -50,12 +91,21 @@ const textResolverAbi = parseAbi([
 export type CharacterSheet = {
   label: string;
   name: string;
+  owner: string;
   look: string;
   brief: string;
   injuries: string;
   status: string;
   icon: string;
 };
+
+export function ensAppUrl(name: string): string {
+  return `https://app.ens.dev/${encodeURI(name)}`;
+}
+
+export function sepoliaAddressUrl(address: string): string {
+  return `https://sepolia.etherscan.io/address/${address}`;
+}
 
 function fail(message: string): never {
   console.error(message);
@@ -90,21 +140,124 @@ export function parseLabel(value: string | undefined): string {
   return trimmed;
 }
 
+export const DASHBOARD_PORT = 8130;
+
 export function parseDashboardPort(value: string | undefined): number {
   if (value === undefined || value.trim() === "") {
-    fail(
-      "DASHBOARD_PORT is required. Set it in .env. See .env.example. Refusing to fall back.",
-    );
+    return DASHBOARD_PORT;
   }
   const trimmed = value.trim();
   if (!/^[0-9]+$/u.test(trimmed)) {
-    fail(`DASHBOARD_PORT must be an integer port. Got: ${trimmed}`);
+    throw new Error(`DASHBOARD_PORT must be an integer port. Got: ${trimmed}`);
   }
   const port = Number(trimmed);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    fail(`DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`);
+    throw new Error(
+      `DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`,
+    );
   }
   return port;
+}
+
+export function parseListenerPids(stdout: string, selfPid: number): number[] {
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") {
+      continue;
+    }
+    if (!/^[0-9]+$/u.test(trimmed)) {
+      throw new Error(`lsof listener line was not a pid. Got: ${JSON.stringify(trimmed)}`);
+    }
+    const pid = Number(trimmed);
+    if (pid === selfPid) {
+      continue;
+    }
+    pids.push(pid);
+  }
+  return pids;
+}
+
+function lsofListeners(port: number): Promise<string> {
+  return new Promise((resolvePromise, reject) => {
+    execFile(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      { encoding: "utf8" },
+      (error, stdout, stderr) => {
+        if (error === null) {
+          resolvePromise(stdout);
+          return;
+        }
+        const exitCode = "code" in error ? error.code : undefined;
+        if (exitCode === 1) {
+          resolvePromise(stdout);
+          return;
+        }
+        const detail = stderr.trim() === "" ? error.message : stderr.trim();
+        reject(new Error(`lsof failed for port ${port}: ${detail}`));
+      },
+    );
+  });
+}
+
+function stopPid(pid: number, signal: NodeJS.Signals, port: number): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code === "ESRCH") {
+      return;
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to send ${signal} to pid ${pid} on port ${port}: ${detail}`,
+    );
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
+
+async function waitUntilPortFree(port: number, attempts: number): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const stdout = await lsofListeners(port);
+    if (parseListenerPids(stdout, process.pid).length === 0) {
+      return true;
+    }
+    await delay(100);
+  }
+  return false;
+}
+
+export async function reclaimPort(port: number): Promise<number[]> {
+  const stdout = await lsofListeners(port);
+  const pids = parseListenerPids(stdout, process.pid);
+  if (pids.length === 0) {
+    return [];
+  }
+  for (const pid of pids) {
+    stopPid(pid, "SIGTERM", port);
+    console.error(`Sent SIGTERM to pid ${pid} listening on port ${port}`);
+  }
+  if (await waitUntilPortFree(port, 10)) {
+    return pids;
+  }
+  const remaining = parseListenerPids(await lsofListeners(port), process.pid);
+  for (const pid of remaining) {
+    stopPid(pid, "SIGKILL", port);
+    console.error(`Sent SIGKILL to pid ${pid} listening on port ${port}`);
+  }
+  if (await waitUntilPortFree(port, 10)) {
+    return pids;
+  }
+  const left = parseListenerPids(await lsofListeners(port), process.pid);
+  throw new Error(
+    `Port ${port} still in use after SIGKILL. pid=${left.join(",")}`,
+  );
 }
 
 function labelId(label: string): bigint {
@@ -188,7 +341,8 @@ export function renderDashboardHtml(
     .map((sheet) => {
       return [
         `<article class="sheet">`,
-        `<h2>${escapeHtml(sheet.name)}</h2>`,
+        `<h2><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></h2>`,
+        `<p class="addr"><a href="${escapeHtml(sepoliaAddressUrl(sheet.owner))}">${escapeHtml(sheet.owner)}</a></p>`,
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
@@ -249,7 +403,15 @@ h1 {
 .sheet h2 {
   color: var(--bone);
   font-size: 1.1rem;
+  margin-bottom: 0.35rem;
+}
+.sheet h2 a,
+.addr a {
+  color: var(--sulfur);
+}
+.addr {
   margin-bottom: 0.75rem;
+  word-break: break-all;
 }
 dt {
   color: var(--rust);
@@ -282,168 +444,73 @@ ${cards}
 `;
 }
 
-async function hasBytecodeAt(
+async function collectRecentTransferSingleLogs(
   publicClient: PublicClient,
   address: Address,
-  blockNumber: bigint,
-): Promise<boolean> {
-  try {
-    const code = await publicClient.getBytecode({ address, blockNumber });
-    return code !== undefined && code !== "0x";
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isPrunedHistoricalStateError(message)) {
-      return false;
-    }
+): Promise<{
+  logs: readonly { transactionHash: Hex }[];
+  fromBlock: bigint;
+  toBlock: bigint;
+}> {
+  const latestBlock = await publicClient.getBlockNumber();
+  const planned = recentLogScanChunks(latestBlock);
+  if (planned.length === 0) {
     throw new Error(
-      `getBytecode(${address}, block ${blockNumber.toString()}) failed: ${message}`,
+      `Cannot scan TransferSingle logs: latest block ${latestBlock.toString()} is below MIN_LOG_BLOCK ${MIN_LOG_BLOCK.toString()}`,
     );
-  }
-}
-
-export async function findContractBirthBlock(
-  publicClient: PublicClient,
-  address: Address,
-): Promise<bigint> {
-  const latest = await publicClient.getBlockNumber();
-  const latestHasCode = await hasBytecodeAt(publicClient, address, latest);
-  if (!latestHasCode) {
-    throw new Error(
-      `Subregistry ${address} has no bytecode at latest block ${latest.toString()}`,
-    );
-  }
-  let lo = 0n;
-  let hi = latest;
-  while (lo < hi) {
-    const mid = (lo + hi) / 2n;
-    if (await hasBytecodeAt(publicClient, address, mid)) {
-      hi = mid;
-    } else {
-      lo = mid + 1n;
-    }
-  }
-  return lo;
-}
-
-async function historicalStateAvailable(
-  publicClient: PublicClient,
-  address: Address,
-  blockNumber: bigint,
-): Promise<boolean> {
-  try {
-    await publicClient.getBytecode({ address, blockNumber });
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isPrunedHistoricalStateError(message)) {
-      return false;
-    }
-    throw new Error(
-      `getBytecode(${address}, block ${blockNumber.toString()}) failed: ${message}`,
-    );
-  }
-}
-
-export async function findTransferLogStartBlock(
-  publicClient: PublicClient,
-  address: Address,
-): Promise<bigint> {
-  const birthBlock = await findContractBirthBlock(publicClient, address);
-  if (birthBlock === 0n) {
-    return 0n;
-  }
-  const priorAvailable = await historicalStateAvailable(
-    publicClient,
-    address,
-    birthBlock - 1n,
-  );
-  if (priorAvailable) {
-    return birthBlock;
   }
 
   console.error(
-    `discover: getBytecode birthBlock=${birthBlock.toString()} is at the RPC state frontier; walking TransferSingle logs backward`,
+    `discover: subregistry=${address} latestBlock=${latestBlock.toString()} maxChunks=${String(MAX_RECENT_LOG_CHUNKS)} maxChunkBlocks=${MAX_LOG_CHUNK_BLOCKS.toString()}`,
   );
-  let start = birthBlock;
-  let cursor = birthBlock;
-  while (cursor > 0n) {
-    const from = cursor > LOG_CHUNK_SIZE ? cursor - LOG_CHUNK_SIZE : 0n;
-    const to = cursor - 1n;
-    const logs = await getLogsChunked(publicClient, address, from, to);
-    if (logs.length === 0) {
-      break;
-    }
-    start = from;
-    cursor = from;
-  }
-  return start;
-}
 
-async function getLogsChunked(
-  publicClient: PublicClient,
-  address: Address,
-  fromBlock: bigint,
-  toBlock: bigint,
-): Promise<readonly { transactionHash: Hex }[]> {
-  if (fromBlock > toBlock) {
-    return [];
-  }
-  try {
-    return await publicClient.getLogs({
-      address,
-      event: transferSingleEvent,
-      fromBlock,
-      toBlock,
-    });
-  } catch (error) {
-    if (fromBlock === toBlock) {
+  const all: { transactionHash: Hex }[] = [];
+  let seenAnyLog = false;
+  let searchedFrom = planned[0]!.fromBlock;
+  let searchedTo = planned[0]!.toBlock;
+
+  for (const { fromBlock, toBlock } of planned) {
+    searchedFrom = fromBlock < searchedFrom ? fromBlock : searchedFrom;
+    searchedTo = toBlock > searchedTo ? toBlock : searchedTo;
+
+    let chunk: readonly { transactionHash: Hex }[];
+    try {
+      chunk = await publicClient.getLogs({
+        address,
+        event: transferSingleEvent,
+        fromBlock,
+        toBlock,
+      });
+    } catch (error) {
       throw new Error(
-        `eth_getLogs failed for ${address} at block ${fromBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+        `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const mid = (fromBlock + toBlock) / 2n;
-    const left = await getLogsChunked(publicClient, address, fromBlock, mid);
-    const right = await getLogsChunked(publicClient, address, mid + 1n, toBlock);
-    return [...left, ...right];
-  }
-}
 
-async function collectTransferSingleLogs(
-  publicClient: PublicClient,
-  address: Address,
-  birthBlock: bigint,
-  latestBlock: bigint,
-): Promise<readonly { transactionHash: Hex }[]> {
-  const all: { transactionHash: Hex }[] = [];
-  let start = birthBlock;
-  while (start <= latestBlock) {
-    let end = start + LOG_CHUNK_SIZE - 1n;
-    if (end > latestBlock) {
-      end = latestBlock;
+    console.error(
+      `discover: eth_getLogs fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()} logs=${String(chunk.length)}`,
+    );
+
+    if (chunk.length > 0) {
+      seenAnyLog = true;
+      for (const log of chunk) {
+        all.push({ transactionHash: log.transactionHash });
+      }
+    } else if (seenAnyLog) {
+      break;
     }
-    const chunk = await getLogsChunked(publicClient, address, start, end);
-    for (const log of chunk) {
-      all.push({ transactionHash: log.transactionHash });
-    }
-    start = end + 1n;
   }
-  return all;
+
+  return { logs: all, fromBlock: searchedFrom, toBlock: searchedTo };
 }
 
 async function discoverRegisteredLabels(
   publicClient: PublicClient,
   subregistry: Address,
 ): Promise<string[]> {
-  const logStartBlock = await findTransferLogStartBlock(publicClient, subregistry);
-  const latestBlock = await publicClient.getBlockNumber();
-  console.error(
-    `discover: subregistry=${subregistry} logStartBlock=${logStartBlock.toString()} latestBlock=${latestBlock.toString()}`,
-  );
-  const logs = await collectTransferSingleLogs(
+  const { logs, fromBlock, toBlock } = await collectRecentTransferSingleLogs(
     publicClient,
     subregistry,
-    logStartBlock,
-    latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
   const candidateLabels = new Set<string>();
@@ -460,6 +527,12 @@ async function discoverRegisteredLabels(
     if (label !== null) {
       candidateLabels.add(label);
     }
+  }
+
+  if (candidateLabels.size === 0) {
+    throw new Error(
+      `No register() labels found in TransferSingle logs for ${subregistry} in blocks ${fromBlock.toString()}..${toBlock.toString()}`,
+    );
   }
 
   const registered: string[] = [];
@@ -531,12 +604,26 @@ async function loadCharacterSheets(
   for (const label of labels) {
     const name = subname(label, ensLabel);
     const dnsName = dnsEncodeName(name);
+    let owner: Address;
+    try {
+      const state = await publicClient.readContract({
+        address: subregistry,
+        abi: userRegistryAbi,
+        functionName: "getState",
+        args: [labelId(label)],
+      });
+      owner = getAddress(state.latestOwner);
+    } catch (error) {
+      throw new Error(
+        `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     const look = await readText(publicClient, resolver, dnsName, "look");
     const brief = await readText(publicClient, resolver, dnsName, "brief");
     const injuries = await readText(publicClient, resolver, dnsName, "injuries");
     const status = await readText(publicClient, resolver, dnsName, "status");
     const icon = await readText(publicClient, resolver, dnsName, "icon");
-    sheets.push({ label, name, look, brief, injuries, status, icon });
+    sheets.push({ label, name, owner, look, brief, injuries, status, icon });
   }
   return sheets;
 }
@@ -601,7 +688,15 @@ export async function readRosterFromChain(
 async function main(): Promise<void> {
   const ensLabel = parseLabel(process.env.ENS_LABEL);
   const rpcUrl = requiredEnv("SEPOLIA_RPC_URL");
-  const port = parseDashboardPort(process.env.DASHBOARD_PORT);
+  const portEnv = process.env.DASHBOARD_PORT;
+  const port = parseDashboardPort(portEnv);
+  const portSource =
+    portEnv === undefined || portEnv.trim() === "" ? "fixed" : "DASHBOARD_PORT";
+
+  const stopped = await reclaimPort(port);
+  if (stopped.length > 0) {
+    console.error(`Reclaimed port ${port} from pid ${stopped.join(",")}`);
+  }
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -633,7 +728,7 @@ async function main(): Promise<void> {
     });
   });
 
-  console.log(`http://127.0.0.1:${port}/`);
+  console.log(`http://127.0.0.1:${port}/ (${portSource})`);
 }
 
 function isDirectRun(): boolean {
