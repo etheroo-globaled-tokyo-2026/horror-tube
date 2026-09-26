@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
-import { loadWorldIdEnv, readGateActions } from "@horror-tube/world-id";
+import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { createBattleBettingPorts } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
@@ -28,7 +28,6 @@ loadRepoDotenv(join(repoRoot, ".env"));
 
 // Fail closed before listen: the waiver gate needs a signed World ID request.
 loadWorldIdEnv();
-readGateActions();
 
 const port = readGamePort();
 const staticDir = readStaticDir();
