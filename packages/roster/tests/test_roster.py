@@ -343,10 +343,47 @@ class ProposeTests(unittest.TestCase):
         self.assertIn("tall man", sheet["look"])
         self.assertIn("Inhuman Strength", sheet["brief"])
 
-    def test_missing_appearance_section_fails(self):
-        with self.assertRaises(FandomError) as ctx:
-            _lore("Jason Voorhees (Friday the 13th)")
-        self.assertIn("no Appearance section", str(ctx.exception))
+    def test_character_description_counts_as_look(self):
+        sections = {
+            "parse": {
+                "title": "Jason Voorhees (Friday the 13th)",
+                "pageid": 9,
+                "properties": {},
+                "categories": [],
+                "sections": [
+                    {"line": "Character Description", "index": "1"},
+                    {"line": "Powers and Abilities", "index": "2"},
+                ],
+            }
+        }
+        body = {"parse": {"text": "<p>A large man in a hockey mask.</p>"}}
+
+        def fake(_host, params):
+            if str(params.get("prop", "")).startswith("sections"):
+                return sections
+            return body
+
+        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+            lore = fetch_page_lore(
+                resolve_page("Jason Voorhees (Friday the 13th)", wiki=WIKI)
+            )
+        self.assertEqual(lore.appearance, "A large man in a hockey mask.")
+        self.assertEqual(lore.powers, "A large man in a hockey mask.")
+
+    def test_missing_look_section_fails(self):
+        parse = {
+            "parse": {
+                "title": "Only Biography",
+                "pageid": 1,
+                "properties": {},
+                "categories": [],
+                "sections": [{"line": "Biography", "index": "1"}],
+            }
+        }
+        with mock.patch("roster.fandom.fetch_api", return_value=parse):
+            with self.assertRaises(FandomError) as ctx:
+                fetch_page_lore(resolve_page("Only Biography", wiki=WIKI))
+        self.assertIn("no look section", str(ctx.exception))
 
     def test_disambiguation_page_fails(self):
         with self.assertRaises(FandomError) as ctx:
@@ -362,8 +399,8 @@ class ProposeTests(unittest.TestCase):
 
     def test_unknown_label_has_no_injury_places(self):
         with self.assertRaises(FandomError) as ctx:
-            injury_places_json_for_label("michael")
-        self.assertIn("michael", str(ctx.exception))
+            injury_places_json_for_label("count")
+        self.assertIn("count", str(ctx.exception))
         self.assertIn("injury_places", str(ctx.exception))
 
     def test_catalog_has_the_three_roster_batches(self):
@@ -373,13 +410,7 @@ class ProposeTests(unittest.TestCase):
 
     def test_bulk_propose_then_import_plan(self):
         lores = [_lore("Pinhead (Hellraiser)"), _lore("Michael Myers (Halloween)")]
-        with self.assertRaises(FandomError) as ctx:
-            propose_sheets(lores)
-        self.assertIn("michael", str(ctx.exception))
-        characters = [
-            sheet_from_lore(lores[0]),
-            sheet_from_lore(lores[1], injury_places='["mask", "knife hand"]'),
-        ]
+        characters = propose_sheets(lores)
         self.assertEqual([c["label"] for c in characters], ["pinhead", "michael"])
         payload = sheets_payload(characters)
         self.assertIsInstance(payload, list)
