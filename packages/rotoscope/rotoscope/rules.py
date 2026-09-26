@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from rotoscope.config import Rules
-from rotoscope.shots import SIDES, CastMember, Shot
+from rotoscope.shots import SIDES, CastMember, Shot, same_find
 from rotoscope.types import ANALYSIS_H, ANALYSIS_W, Find
 
 Joints = Sequence[tuple[float, float]]
@@ -185,11 +185,11 @@ def lanes(masks: Sequence[np.ndarray]) -> list[int]:
 def identity(figures: Sequence[Find], cast: Sequence[CastMember]) -> list[str]:
     """Which character each figure is: the cast id whose description found it. Cast members who share one
     description can't be told apart by it, so the figures it found take their ids by seat: the members in order of
-    side, the figures left to right."""
+    side, the figures left to right. parse() makes sure each of them has a side."""
     ids = [f.key for f in figures]
     groups: dict[str, list[CastMember]] = {}
     for c in cast:
-        groups.setdefault(" ".join(c.find.lower().split()), []).append(c)
+        groups.setdefault(same_find(c.find), []).append(c)
     for members in groups.values():
         if len(members) < 2:
             continue

@@ -9,8 +9,11 @@ from starlette.testclient import TestClient
 from rotoscope.config import Config, Server
 from rotoscope.server import create_app
 
-CAST = {"id": "A", "name": "Freddy Krueger", "find": "man in a red and green striped sweater", "side": "left"}
-SHOT = {"start_s": 0.0, "end_s": 2.0, "cast": [CAST], "props": [{"find": "knife", "holder": "A"}]}
+# as the fight pipeline sends them: no sides, which only cast members who share a find need
+CAST = {"id": "A", "name": "Freddy Krueger", "find": "man in a red and green striped sweater"}
+RIVAL = {"id": "B", "name": "Xenomorph", "find": "black alien creature"}
+SHOT = {"start_s": 0.0, "end_s": 2.0, "cast": [CAST, RIVAL], "props": [{"find": "knife", "holder": "A"}]}
+TWIN = {**CAST, "id": "B", "name": "Freddy's double"}
 
 
 @pytest.fixture(scope="module")
@@ -56,6 +59,8 @@ def test_a_clip_comes_back_drawn_at_4x_with_its_audio(clip, tmp_path):
     ({"shots": [{**SHOT, "cast": [{**CAST, "find": "a very tall man in a long dark coat and hat"}]}]}, "words"),
     ({"shots": [{**SHOT, "props": [{"find": "knife", "holder": "C"}]}]}, "holder"),
     ({"shots": [{**SHOT, "cast": [{**CAST, "side": "above"}]}]}, "side"),
+    ({"shots": [{**SHOT, "cast": [CAST, TWIN]}]}, "A and B share the find"),
+    ({"shots": [{**SHOT, "cast": [{**CAST, "side": "left"}, TWIN]}]}, "A and B share the find"),
 ])
 def test_a_bad_shot_list_is_refused_saying_what_is_wrong(clip, shots, problem):
     r = post(clip, shots)
