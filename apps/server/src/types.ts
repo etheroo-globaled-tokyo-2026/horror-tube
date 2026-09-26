@@ -10,7 +10,6 @@ export type RoundState = {
   votes: [number, number];
   tally: [number, number] | null;
   fighters: [number, number] | null;
-  /** Character ids the panel may book or send in as the next fighter. */
   selectable: number[];
   battleId: string | null;
   poolId: string | null;

@@ -5,13 +5,11 @@ export const STAKES = [1, 3, 5];
 
 export type Focus = {
   at: CoinBoxView | null;
-  pick: boolean;
   hover: CoinBoxPart | null;
   error: string;
 };
 export const Z: Focus = {
   at: null,
-  pick: false,
   hover: null,
   error: "",
 };

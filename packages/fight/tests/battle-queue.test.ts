@@ -13,13 +13,7 @@ import {
   type BattleQueueRecord,
   type ChainWritePorts,
 } from "../src/battle-queue.js";
-import {
-  fighterA,
-  fighterB,
-  livingOpponent,
-  otherLiving,
-  validModelTurn,
-} from "./fixtures.js";
+import { validModelTurn } from "./fixtures.js";
 
 function sampleInsert(
   overrides: Partial<BattleQueueInsert> = {},
