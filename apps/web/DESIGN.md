@@ -17,7 +17,6 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `logo.ts`         | The logo on a canvas: `drawLogo` (two lines) and `drawLogoLine` (one line).                                 |
 | `brand.html`      | Store art: the 512 × 512 logo and the 1280 × 720 cover. Click an image to save it.                          |
 | `ht.css`          | Tokens, plus the World ID gate and the cursors.                                                             |
-| `system.html`     | The specimen page for the tokens.                                                                           |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
