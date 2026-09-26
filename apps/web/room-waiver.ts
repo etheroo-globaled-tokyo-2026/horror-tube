@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { $, newSeason } from "./game.ts";
 import { ctx2d } from "./sprites.ts";
+import { drawLogoLine } from "./logo.ts";
 import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
 import { openGameWallet } from "./wallet.ts";
 import { sfx } from "./sfx.ts";
@@ -45,9 +46,7 @@ export function drawPaper(now: number): void {
   speckle(g, PW, PH, [COL.grime, COL.rust], 260);
   g.textAlign = "left";
   g.textBaseline = "alphabetic";
-  g.fillStyle = COL.blood;
-  g.font = "700 38px Silkscreen";
-  g.fillText("HORROR TUBE", 28, 62);
+  drawLogoLine(g, 28, 62, PW - 56);
   g.fillStyle = COL.rustDeep;
   g.font = "700 20px Silkscreen";
   g.fillText("READ BEFORE YOU WATCH", 28, 92);
