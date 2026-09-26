@@ -84,6 +84,7 @@ type Command =
   | "ensure"
   | "snapshot"
   | "apply-register"
+  | "apply-text"
   | "unregister"
   | "list"
   | "labels"
@@ -153,13 +154,14 @@ function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
     fail(
-      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.",
+      "Command is required. Use: ensure | snapshot | apply-register | apply-text | unregister | list | labels | set-icon | rewrite-empty-injuries.",
     );
   }
   if (
     arg === "ensure" ||
     arg === "snapshot" ||
     arg === "apply-register" ||
+    arg === "apply-text" ||
     arg === "unregister" ||
     arg === "list" ||
     arg === "labels" ||
@@ -169,7 +171,7 @@ function parseCommand(argv: string[]): Command {
     return arg;
   }
   fail(
-    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.`,
+    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | apply-text | unregister | list | labels | set-icon | rewrite-empty-injuries.`,
   );
 }
 
@@ -868,6 +870,105 @@ async function main(): Promise<void> {
       for (const skipped of plan.skipped) {
         console.log(`skipped ${skipped.label}: ${skipped.reason}`);
       }
+    }
+    return;
+  }
+
+  if (command === "apply-text") {
+    const planPath = requireFlag(process.argv, "--plan");
+    const raw = readJson(planPath);
+    if (
+      raw === null ||
+      typeof raw !== "object" ||
+      Array.isArray(raw) ||
+      !("characters" in raw) ||
+      !Array.isArray((raw as RegisterPlan).characters)
+    ) {
+      fail(
+        `--plan must be an object with characters[] of text sheets. Got: ${planPath}`,
+      );
+    }
+    const plan = raw as RegisterPlan;
+    if (plan.characters.length === 0) {
+      fail(`${planPath}: characters[] must not be empty.`);
+    }
+    const ensured = await ensureParentInfrastructure();
+    await grantRestrictedTextRoles(ensured.resolver);
+
+    for (const entry of plan.characters) {
+      if (
+        typeof entry.label !== "string" ||
+        typeof entry.display_name !== "string" ||
+        typeof entry.look !== "string" ||
+        typeof entry.brief !== "string" ||
+        typeof entry.injury_places !== "string" ||
+        typeof entry.injuries !== "string" ||
+        typeof entry.status !== "string" ||
+        typeof entry.icon !== "string"
+      ) {
+        fail(`Plan entry missing required string fields: ${JSON.stringify(entry)}`);
+      }
+      if (entry.display_name.trim() === "") {
+        fail(`Plan entry ${entry.label} has blank display_name.`);
+      }
+      parseInjuryPlaces(entry.label, entry.injury_places);
+      parseInjuries(entry.label, entry.injuries);
+      const id = labelId(entry.label);
+      let status: number;
+      try {
+        status = Number(
+          await publicClient.readContract({
+            address: ensured.subregistry,
+            abi: userRegistryAbi,
+            functionName: "getStatus",
+            args: [id],
+          }),
+        );
+      } catch (error) {
+        fail(
+          `UserRegistry.getStatus(${entry.label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (status !== STATUS_REGISTERED) {
+        fail(
+          `Cannot apply-text for ${subname(entry.label, ensLabel)}: getStatus=${status}, expected REGISTERED(${STATUS_REGISTERED}). Refusing to register or invent a name.`,
+        );
+      }
+
+      const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
+      for (const key of REGISTER_BOOTSTRAP_TEXT_KEYS) {
+        await writeTextWithWallet(
+          walletClient,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
+        );
+      }
+      for (const key of ROSTER_TEXT_KEYS) {
+        await writeTextWithWallet(
+          rosterWallet,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
+        );
+      }
+      for (const key of AGENT_TEXT_KEYS) {
+        await writeTextWithWallet(
+          agentWallet,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
+        );
+      }
+      console.log(
+        `apply-text complete label=${entry.label} name=${subname(entry.label, ensLabel)}`,
+      );
     }
     return;
   }
