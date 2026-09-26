@@ -1,8 +1,8 @@
 # Roster JSON import and removal plans
 
-Issue #4 pipeline: propose character sheets from Fandom lore, validate JSON, and
-emit **plans**. This does **not** send register/unregister transactions. Subname
-registry writes land in a later PR when the contracts path is safe to call.
+Part of #23: propose character sheets from Fandom, validate JSON, and emit
+**plans**. This does **not** read chain state or send register/unregister
+transactions. On-chain subname register/unregister is not implemented yet.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL` fails with an error that
@@ -37,8 +37,9 @@ Import accepts either one character object or a bulk array.
 `roster/fixtures/sample-characters.json` is a **fixture** of two invented
 characters for local tests. It is not live Fandom lore.
 
-Saved Fandom-shaped HTML under `roster/fixtures/fandom-*.html` is used for
-offline propose unit tests. Those tests do not hit the network.
+`roster/fixtures/fandom-api.json` holds real `villains.fandom.com` `api.php`
+responses keyed by host and sorted query. Propose tests read it and never hit
+the network.
 
 ## Commands
 
@@ -50,44 +51,45 @@ python3 -m pip install -r roster/requirements.txt
 
 ### propose
 
-Fetch N Fandom pages over real HTTP and write proposed roster JSON that matches
-the schemas above. `--n` must equal the number of sources. On HTTP failure the
-command prints the URL and the error, then exits non-zero. It does not invent
-lore or substitute another page.
+Reads N pages through `https://<wiki>.fandom.com/api.php?action=parse` and
+writes proposed roster JSON that matches the schemas above. It never fetches
+`/wiki/` HTML (Fandom returns 403) and never falls through to another site.
+`--n` must equal the number of sources. A `/wiki/<Title>` URL is only parsed for
+host and title.
+
+The command fails, naming the page, when:
+
+- the page is a disambiguation page (`disambiguation` page property or a
+  `*Disambiguation*` category)
+- there is no `Appearance` / `Physical Appearance` section
+- there is no `Powers and Abilities` section
+- a section has no paragraph or list text, or `api.php` returns an error
 
 ```bash
 # One character (full URL)
 python3 -m roster propose \
   --n 1 \
-  --source 'https://horror.fandom.com/wiki/Dracula' \
-  --out /tmp/dracula.json
+  --source 'https://villains.fandom.com/wiki/Pinhead_(Hellraiser)' \
+  --out /tmp/pinhead.json
 
 # Bulk list of N (titles need --wiki)
 python3 -m roster propose \
   --n 2 \
-  --wiki horror.fandom.com \
-  --source Dracula \
-  --source 'Wolf Man' \
+  --wiki villains.fandom.com \
+  --source 'Pinhead (Hellraiser)' \
+  --source 'Michael Myers (Halloween)' \
   --out /tmp/roster.json
 ```
 
-Or put one URL/title per line in a file:
-
-```bash
-python3 -m roster propose \
-  --n 2 \
-  --wiki horror.fandom.com \
-  --sources-file sources.txt \
-  --out /tmp/roster.json
-```
+`--sources-file` takes one URL or title per line (`#` comments allowed).
 
 Field rules for proposed sheets:
 
-- `label`: one lowercase word from the page title
-- `look`: first usable lore sentence from the page text
-- `brief`: second usable lore sentence (fight-usable line from the same page)
-- `injuries` / `status`: always written as `""`
-- `icon`: `""` unless the HTML contained a direct `https://` image URL
+- `label`: first lowercase word of the page title, parenthetical dropped
+- `look`: first sentence of the Appearance section
+- `brief`: first sentence of the Powers and Abilities section
+- `injuries` / `status` / `icon`: always `""`. Icons are Spaces CDN URLs set
+  separately.
 
 Duplicate labels across the N proposed characters are an error.
 

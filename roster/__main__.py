@@ -9,13 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
-from roster.fandom import (
-    FandomError,
-    fetch_html,
-    parse_page_html,
-    require_source_count,
-    resolve_source_url,
-)
+from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
 from roster.plan import ON_EXISTING_VALUES, build_import_plan, build_removal_plan
 from roster.propose import propose_sheets, sheets_payload
 from roster.validate import (
@@ -85,30 +79,11 @@ def cmd_propose(args: argparse.Namespace) -> int:
             "Provide at least one --source URL/title, or a --sources-file list."
         )
     sources = require_source_count(sources, n=args.n)
-    wiki = args.wiki
-    if wiki is not None and wiki.strip() == "":
+    if args.wiki is not None and args.wiki.strip() == "":
         raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
 
-    lores = []
-    for source in sources:
-        url = resolve_source_url(source, wiki=wiki)
-        try:
-            html = fetch_html(url)
-            lore = parse_page_html(html, url=url)
-        except FandomError as exc:
-            print(f"error: {url}: {exc}", file=sys.stderr)
-            return 1
-        except Exception as exc:
-            print(f"error: {url}: {exc}", file=sys.stderr)
-            return 1
-        lores.append(lore)
-
-    try:
-        characters = propose_sheets(lores)
-    except (FandomError, RosterValidationError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-
+    refs = [resolve_page(source, wiki=args.wiki) for source in sources]
+    characters = propose_sheets([fetch_page_lore(ref) for ref in refs])
     payload = sheets_payload(characters)
     _write_json(out_path, payload)
     print(f"Wrote proposed roster JSON: {out_path}")
@@ -190,8 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
     propose_p = sub.add_parser(
         "propose",
         help=(
-            "Fetch Fandom pages over HTTP and write proposed roster JSON "
-            "(ready for `import`)."
+            "Read Appearance and Powers and abilities sections from Fandom api.php "
+            "and write proposed roster JSON (ready for `import`)."
         ),
     )
     propose_p.add_argument(
@@ -205,8 +180,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help=(
-            "Fandom page URL or wiki page title. Repeat for each character. "
-            "Titles require --wiki."
+            "https://<wiki>.fandom.com/wiki/<Title> URL (parsed, not fetched) or page title. "
+            "Repeat for each character. Titles require --wiki."
         ),
     )
     propose_p.add_argument(
@@ -219,7 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--wiki",
         required=False,
         default=None,
-        help="Fandom host for page titles, e.g. horror.fandom.com. Not used for full URLs.",
+        help="Fandom host for page titles, e.g. villains.fandom.com. Not used for full URLs.",
     )
     propose_p.add_argument(
         "--out",
