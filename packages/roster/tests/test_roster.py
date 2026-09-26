@@ -16,6 +16,7 @@ from roster.plan import build_import_plan, build_register_plan, build_removal_pl
 
 from roster.propose import (
     display_name_from_title,
+    injury_places_json_for_label,
     propose_sheets,
     sheet_from_lore,
     sheets_payload,
@@ -56,6 +57,7 @@ def _char(**overrides):
         "display_name": "Alpha",
         "look": "A figure in a coat.",
         "brief": "Walks forward without stopping.",
+        "injury_places": "[\"coat\"]",
         "injuries": "[]",
         "status": "",
         "icon": "",
@@ -319,13 +321,23 @@ class ProposeTests(unittest.TestCase):
         self.assertTrue(sheet["look"].startswith("Pinhead's unique physical description"))
         self.assertTrue(sheet["brief"].startswith("Immortality: Pinhead is shown"))
         self.assertEqual(sheet["injuries"], "[]")
+        self.assertEqual(
+            json.loads(sheet["injury_places"]),
+            [
+                "Pins torn from the skull",
+                "Lament Configuration sealed so cenobite summons fail",
+            ],
+        )
         self.assertEqual(sheet["status"], "alive")
         self.assertEqual(sheet["icon"], "")
         self.assertNotIn("strength", sheet)
         self.assertNotIn("role", sheet)
 
     def test_physical_appearance_section_is_used(self):
-        sheet = sheet_from_lore(_lore("Michael Myers (Halloween)"))
+        sheet = sheet_from_lore(
+            _lore("Michael Myers (Halloween)"),
+            injury_places='["mask", "knife hand"]',
+        )
         self.assertEqual(sheet["label"], "michael")
         self.assertEqual(sheet["display_name"], "Michael Myers")
         self.assertIn("tall man", sheet["look"])
@@ -348,9 +360,26 @@ class ProposeTests(unittest.TestCase):
         self.assertIn("duplicate", str(ctx.exception).lower())
         self.assertIn("pinhead", str(ctx.exception))
 
+    def test_unknown_label_has_no_injury_places(self):
+        with self.assertRaises(FandomError) as ctx:
+            injury_places_json_for_label("michael")
+        self.assertIn("michael", str(ctx.exception))
+        self.assertIn("injury_places", str(ctx.exception))
+
+    def test_catalog_has_the_three_roster_batches(self):
+        places = json.loads(injury_places_json_for_label("art"))
+        self.assertEqual(places[0], "Bag of weapons emptied")
+        self.assertGreaterEqual(len(json.loads(Path(__file__).resolve().parents[1].joinpath("roster/injury_places.json").read_text())), 60)
+
     def test_bulk_propose_then_import_plan(self):
         lores = [_lore("Pinhead (Hellraiser)"), _lore("Michael Myers (Halloween)")]
-        characters = propose_sheets(lores)
+        with self.assertRaises(FandomError) as ctx:
+            propose_sheets(lores)
+        self.assertIn("michael", str(ctx.exception))
+        characters = [
+            sheet_from_lore(lores[0]),
+            sheet_from_lore(lores[1], injury_places='["mask", "knife hand"]'),
+        ]
         self.assertEqual([c["label"] for c in characters], ["pinhead", "michael"])
         payload = sheets_payload(characters)
         self.assertIsInstance(payload, list)
@@ -436,20 +465,19 @@ class CliTests(unittest.TestCase):
                     [
                         "propose",
                         "--n",
-                        "2",
+                        "1",
                         "--wiki",
                         WIKI,
                         "--source",
                         "Pinhead (Hellraiser)",
-                        "--source",
-                        "https://villains.fandom.com/wiki/Michael_Myers_(Halloween)",
                         "--out",
                         str(out),
                     ]
                 )
             self.assertEqual(code, 0)
-            labels = [c["label"] for c in json.loads(out.read_text(encoding="utf-8"))]
-            self.assertEqual(labels, ["pinhead", "michael"])
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload["label"], "pinhead")
+            self.assertEqual(len(json.loads(payload["injury_places"])), 2)
 
     def test_propose_cli_fails_on_fetch_error(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,7 +8,12 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from roster.validate import Character, RosterValidationError, parse_injuries
+from roster.validate import (
+    Character,
+    RosterValidationError,
+    parse_injuries,
+    parse_injury_places,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TSX = REPO_ROOT / "packages" / "ens" / "node_modules" / ".bin" / "tsx"
@@ -47,7 +52,16 @@ def ensure_parent_infrastructure() -> None:
 
 
 def _chain_character(label: str, value: Mapping[str, Any], *, source: str) -> Character:
-    for key in ("label", "display_name", "look", "brief", "injuries", "status", "icon"):
+    for key in (
+        "label",
+        "display_name",
+        "look",
+        "brief",
+        "injury_places",
+        "injuries",
+        "status",
+        "icon",
+    ):
         if key not in value or not isinstance(value[key], str):
             raise RosterValidationError(
                 f"{source} {label!r} missing string field {key!r}."
@@ -57,7 +71,14 @@ def _chain_character(label: str, value: Mapping[str, Any], *, source: str) -> Ch
         raise RosterValidationError(
             f"{source} {label!r} has blank display_name."
         )
+    raw_places = value["injury_places"]
     raw_injuries = value["injuries"]
+    try:
+        injury_places = parse_injury_places(raw_places, context=f"{source} {label!r}")
+    except RosterValidationError as exc:
+        raise RosterValidationError(
+            f"{source} {label!r} has invalid injury_places {raw_places!r}: {exc}"
+        ) from exc
     try:
         injuries = parse_injuries(raw_injuries, context=f"{source} {label!r}")
     except RosterValidationError as exc:
@@ -69,6 +90,7 @@ def _chain_character(label: str, value: Mapping[str, Any], *, source: str) -> Ch
         "display_name": display_name,
         "look": value["look"],
         "brief": value["brief"],
+        "injury_places": json.dumps(injury_places, ensure_ascii=False),
         "injuries": json.dumps(injuries, ensure_ascii=False),
         "status": value["status"],
         "icon": value["icon"],
