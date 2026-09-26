@@ -1,46 +1,121 @@
 import assert from "node:assert/strict";
-import { describe, it, mock } from "node:test";
+import { describe, it } from "node:test";
 
-import { betTx } from "@horror-tube/betting";
-import { SuiGrpcClient } from "@mysten/sui/grpc";
-import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { bcs } from "@mysten/sui/bcs";
+import { JsonRpcHTTPTransport, SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
+import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import * as v from "valibot";
 
-import { fetchBettingIds, toContractIds } from "../betting.ts";
+import { fetchBettingIds, placeBet, toContractIds } from "../betting.ts";
 import { formatPoolOdds } from "../odds.ts";
-import {
-  runKind,
-  usdcTransfer,
-  type GameWallet,
-} from "../wallet.ts";
+import type { GameWallet } from "../wallet.ts";
 
-const ADDRESS = `0x${"11".repeat(32)}`;
+const PLAYER = `0x${"11".repeat(32)}`;
 const PACKAGE = `0x${"aa".repeat(32)}`;
 const HOUSE = `0x${"bb".repeat(32)}`;
 const POOL = `0x${"cc".repeat(32)}`;
-const TO = `0x${"dd".repeat(32)}`;
 const COIN_TYPE = `0x${"ee".repeat(32)}::usdc::USDC`;
+const IDS = toContractIds({ packageId: PACKAGE, houseId: HOUSE, coinType: COIN_TYPE, feeBps: 200 });
+const DIGEST = "11111111111111111111111111111111";
 
-function fakeWallet(session = "sess"): GameWallet {
-  const client = new SuiGrpcClient({ network: "testnet", baseUrl: "http://127.0.0.1:9" });
-  mock.method(client, "waitForTransaction", async () => undefined);
-  return { address: ADDRESS, session, client };
+type Kind = ReturnType<Transaction["getData"]>;
+type Outcome = { status: "success" } | { status: "failure"; error: string };
+type Reply = { status: number; body: { digest: string } | { error: string } };
+
+const TxBody = v.object({ txKind: v.string() });
+const NodeCall = v.variant("method", [
+  v.object({
+    id: v.number(),
+    method: v.literal("sui_getNormalizedMoveFunction"),
+    params: v.tuple([v.string(), v.string(), v.string()]),
+  }),
+  v.object({
+    id: v.number(),
+    method: v.literal("sui_multiGetObjects"),
+    params: v.looseTuple([v.array(v.string())]),
+  }),
+  v.object({
+    id: v.number(),
+    method: v.literal("sui_getTransactionBlock"),
+    params: v.looseTuple([v.string()]),
+  }),
+]);
+
+const struct = (address: string, module: string, name: string) => ({
+  Struct: { address, module, name, typeArguments: [{ TypeParameter: 0 }] },
+});
+const BET_PARAMS = [
+  { Reference: struct(PACKAGE, "betting", "House") },
+  { MutableReference: struct(PACKAGE, "betting", "Pool") },
+  "U64",
+  struct("0x2", "coin", "Coin"),
+  { Reference: struct("0x2", "clock", "Clock") },
+  {
+    MutableReference: {
+      Struct: { address: "0x2", module: "tx_context", name: "TxContext", typeArguments: [] },
+    },
+  },
+];
+
+const json = (status: number, body: string): Response =>
+  new Response(body, { status, headers: { "content-type": "application/json" } });
+
+function fakeServer(
+  outcome: Outcome = { status: "success" },
+  reply: Reply = { status: 200, body: { digest: DIGEST } },
+) {
+  const posted: { authorization: string | null; kind: Kind }[] = [];
+  const node = (call: v.InferOutput<typeof NodeCall>) => {
+    if (call.method === "sui_getNormalizedMoveFunction")
+      return {
+        visibility: "Private",
+        isEntry: true,
+        typeParameters: [{ abilities: [] }],
+        parameters: BET_PARAMS,
+        return: [],
+      };
+    if (call.method === "sui_multiGetObjects")
+      return call.params[0].map((objectId) => ({
+        data: {
+          objectId,
+          version: "7",
+          digest: DIGEST,
+          type: "object",
+          owner: { Shared: { initial_shared_version: 3 } },
+        },
+      }));
+    return { digest: call.params[0], effects: { status: outcome } };
+  };
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const body = String(init?.body);
+    if (String(input) === "/tx") {
+      const { txKind } = v.parse(TxBody, JSON.parse(body));
+      posted.push({
+        authorization: new Headers(init?.headers).get("authorization"),
+        kind: Transaction.fromKind(txKind).getData(),
+      });
+      return json(reply.status, JSON.stringify(reply.body));
+    }
+    const call = v.parse(NodeCall, JSON.parse(body));
+    return json(200, JSON.stringify({ jsonrpc: "2.0", id: call.id, result: node(call) }));
+  };
+  const wallet: GameWallet = {
+    address: PLAYER,
+    session: "signed-session",
+    client: new SuiJsonRpcClient({
+      network: "testnet",
+      transport: new JsonRpcHTTPTransport({ url: "http://sui.test", fetch: fetchImpl }),
+    }),
+  };
+  return { wallet, posted, fetchImpl };
 }
 
 describe("fetchBettingIds", () => {
   it("parses GET /betting", async () => {
     const fetchImpl: typeof fetch = async (input) => {
       assert.equal(String(input), "/betting");
-      return new Response(
-        JSON.stringify({
-          packageId: PACKAGE,
-          houseId: HOUSE,
-          coinType: COIN_TYPE,
-          network: "testnet",
-          feeBps: 200,
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      return json(200, JSON.stringify({ ...IDS, network: "testnet", feeBps: 200 }));
     };
     const ids = await fetchBettingIds(fetchImpl);
     assert.equal(ids.feeBps, 200);
@@ -50,10 +125,7 @@ describe("fetchBettingIds", () => {
 
   it("refuses a GET /betting body without a coin type", async () => {
     const fetchImpl: typeof fetch = async () =>
-      new Response(JSON.stringify({ packageId: PACKAGE, houseId: HOUSE, feeBps: 200 }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      json(200, JSON.stringify({ packageId: PACKAGE, houseId: HOUSE, feeBps: 200 }));
     await assert.rejects(
       () => fetchBettingIds(fetchImpl),
       /GET \/betting returned bad betting IDs:.*coinType/u,
@@ -61,65 +133,48 @@ describe("fetchBettingIds", () => {
   });
 
   it("fails with HTTP status when GET /betting is not ok", async () => {
-    const fetchImpl: typeof fetch = async () =>
-      new Response("missing", { status: 500 });
+    const fetchImpl: typeof fetch = async () => new Response("missing", { status: 500 });
     await assert.rejects(() => fetchBettingIds(fetchImpl), /GET \/betting failed: HTTP 500/u);
   });
 });
 
-describe("bet kind", () => {
-  it("builds a MoveCall to package::betting::bet for the side", () => {
-    const ids = toContractIds({
-      packageId: PACKAGE,
-      houseId: HOUSE,
-      coinType: COIN_TYPE,
-      feeBps: 200,
-    });
-    const data = betTx(ids, POOL, 1, 30_000n).getData();
-    const calls = data.commands.flatMap((command) =>
-      command.MoveCall === undefined ? [] : [command.MoveCall],
-    );
-    const bet = calls.find(
-      (call) =>
-        normalizeSuiAddress(call.package) === normalizeSuiAddress(PACKAGE) &&
-        call.module === "betting" &&
-        call.function === "bet",
-    );
+describe("placeBet through /tx", () => {
+  it("posts one betting::bet kind for the side and pool with the session", async () => {
+    const server = fakeServer();
+    assert.equal(await placeBet(server.wallet, IDS, POOL, 1, 30_000n, server.fetchImpl), DIGEST);
+    assert.equal(server.posted.length, 1);
+    const [only] = server.posted;
+    assert.ok(only);
+    assert.equal(only.authorization, "Bearer signed-session");
+    const bet = only.kind.commands.flatMap((command) =>
+      command.MoveCall !== undefined &&
+      normalizeSuiAddress(command.MoveCall.package) === PACKAGE &&
+      command.MoveCall.function === "bet"
+        ? [command.MoveCall]
+        : [],
+    )[0];
     assert.ok(bet, "expected betting::bet MoveCall");
-  });
-});
-
-describe("runKind /tx", () => {
-  it("posts one /tx and returns the digest", async () => {
-    const wallet = fakeWallet();
-    let posted = false;
-    const fetchImpl: typeof fetch = async (input, init) => {
-      assert.equal(String(input), "/tx");
-      const headers = new Headers(init?.headers);
-      assert.equal(headers.get("authorization"), "Bearer sess");
-      const body = v.parse(v.object({ txKind: v.string() }), JSON.parse(String(init?.body)));
-      assert.ok(body.txKind.length > 0);
-      posted = true;
-      return new Response(JSON.stringify({ digest: "0xdigest" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    };
-    const digest = await runKind(wallet, usdcTransfer(COIN_TYPE, TO, 1_000n), fetchImpl);
-    assert.equal(digest, "0xdigest");
-    assert.equal(posted, true);
+    assert.deepEqual(bet.typeArguments.map(normalizeStructTag), [normalizeStructTag(COIN_TYPE)]);
+    const side = bet.arguments[2];
+    assert.ok(side?.$kind === "Input");
+    const sideInput = only.kind.inputs[side.Input];
+    assert.ok(sideInput?.$kind === "Pure");
+    assert.equal(bcs.u64().parse(fromBase64(sideInput.Pure.bytes)), "1");
   });
 
   it("surfaces /tx errors and does not invent a digest", async () => {
-    const wallet = fakeWallet();
-    const fetchImpl: typeof fetch = async () =>
-      new Response(JSON.stringify({ error: "tx policy rejected" }), {
-        status: 400,
-        headers: { "content-type": "application/json" },
-      });
+    const server = fakeServer(undefined, { status: 400, body: { error: "tx policy rejected" } });
     await assert.rejects(
-      () => runKind(wallet, usdcTransfer(COIN_TYPE, TO, 1_000n), fetchImpl),
+      () => placeBet(server.wallet, IDS, POOL, 0, 30_000n, server.fetchImpl),
       /tx policy rejected/u,
+    );
+  });
+
+  it("rejects with the chain's error when the bet aborts on chain", async () => {
+    const server = fakeServer({ status: "failure", error: "MoveAbort EBettingClosed" });
+    await assert.rejects(
+      () => placeBet(server.wallet, IDS, POOL, 0, 30_000n, server.fetchImpl),
+      /EBettingClosed/u,
     );
   });
 });
