@@ -125,6 +125,33 @@ describe("RoundState client contract", () => {
     assert.equal((await fetchRoundState()).phase, "waiting");
   });
 
+  it("accepts a countdown with a per-side tally and the server's character labels", async (t) => {
+    respond(
+      t,
+      200,
+      JSON.stringify({
+        ...baseState,
+        round: 2,
+        phase: "countdown",
+        endsAt: 15_000,
+        champion: 0,
+        voters: 2,
+        quorum: 2,
+        votes: [2, 1],
+        fighters: [0, 1],
+        chars: [
+          { id: 0, label: "chucky", alive: true, kills: 1, damage: 10 },
+          { id: 1, label: "count", alive: true, kills: 0, damage: 0 },
+        ],
+      }),
+    );
+    const state = await fetchRoundState();
+    assert.equal(state.phase, "countdown");
+    assert.equal(state.votes[0], 2);
+    assert.equal(state.chars[0]?.label, "chucky");
+    assert.equal(state.chars[0]?.damage, 10);
+  });
+
   it("rejects a RoundState that is missing a field", async (t) => {
     const { pool: _pool, ...withoutPool } = baseState;
     respond(t, 200, JSON.stringify(withoutPool));

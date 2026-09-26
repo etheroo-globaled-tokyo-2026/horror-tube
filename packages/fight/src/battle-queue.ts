@@ -59,7 +59,34 @@ export type ChainWritePorts = {
 export type BattleQueueStore = {
   get(id: string): Promise<BattleQueueRecord | null>;
   save(record: BattleQueueRecord): Promise<void>;
+  setVideoUrl(id: string, videoUrl: string): Promise<void>;
+  getLatestVideoUrl(): Promise<string | null>;
 };
+
+export function assertPlayableFightVideoUrl(url: string): string {
+  const trimmed = url.trim();
+  if (trimmed === "") {
+    throw new BattleQueueError(
+      "fight video URL is blank. Refusing to store. Use the Spaces CDN URL from uploadFightVideo.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch (cause) {
+    throw new BattleQueueError(
+      `fight video URL is not a valid URL: ${JSON.stringify(trimmed)}`,
+      { cause },
+    );
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "fal.media" || host.endsWith(".fal.media")) {
+    throw new BattleQueueError(
+      `fight video URL host ${JSON.stringify(parsed.hostname)} is fal.media. Store the Spaces CDN URL from uploadFightVideo, not the fal download URL.`,
+    );
+  }
+  return trimmed;
+}
 
 export class BattleQueueError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -253,6 +280,7 @@ function wrapStepError(
 
 export class MemoryBattleQueueStore implements BattleQueueStore {
   private readonly rows = new Map<string, BattleQueueRecord>();
+  private readonly videoById = new Map<string, string>();
 
   async get(id: string): Promise<BattleQueueRecord | null> {
     const row = this.rows.get(id);
@@ -261,5 +289,23 @@ export class MemoryBattleQueueStore implements BattleQueueStore {
 
   async save(record: BattleQueueRecord): Promise<void> {
     this.rows.set(record.id, structuredClone(record));
+  }
+
+  async setVideoUrl(id: string, videoUrl: string): Promise<void> {
+    const trimmed = assertPlayableFightVideoUrl(videoUrl);
+    if (!this.rows.has(id)) {
+      throw new BattleQueueError(
+        `battle_results row ${JSON.stringify(id)} is missing. Cannot store fight video.`,
+      );
+    }
+    this.videoById.set(id, trimmed);
+  }
+
+  async getLatestVideoUrl(): Promise<string | null> {
+    let latest: string | null = null;
+    for (const id of this.rows.keys()) {
+      latest = this.videoById.get(id) ?? latest;
+    }
+    return latest;
   }
 }

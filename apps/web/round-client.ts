@@ -40,7 +40,13 @@ const RoundStateSchema = v.object({
     }),
   ),
   chars: v.array(
-    v.object({ id: v.number(), alive: v.boolean(), kills: v.number(), damage: v.number() }),
+    v.object({
+      id: v.number(),
+      label: v.string(),
+      alive: v.boolean(),
+      kills: v.number(),
+      damage: v.number(),
+    }),
   ),
 }) satisfies v.GenericSchema<RoundState>;
 
@@ -71,6 +77,41 @@ function parseRoundState(source: string, json: string): ServerRoundState {
   return parsed.output;
 }
 
+export async function fetchReplayVideoUrl(
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const res = await fetchImpl("/replay");
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (cause) {
+    throw new Error(
+      `GET /replay returned non-JSON with HTTP ${String(res.status)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+  const parsed = v.safeParse(
+    v.union([
+      v.object({ videoUrl: v.pipe(v.string(), v.minLength(1)) }),
+      v.object({ ok: v.literal(false), error: v.string() }),
+    ]),
+    body,
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `GET /replay sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
+    );
+  }
+  const out = parsed.output;
+  if ("error" in out) {
+    throw new Error(out.error);
+  }
+  if (!res.ok) {
+    throw new Error(`GET /replay failed: HTTP ${String(res.status)}`);
+  }
+  return out.videoUrl;
+}
+
 export async function fetchRoundState(): Promise<ServerRoundState> {
   const res = await fetch("/round");
   if (!res.ok) {
@@ -97,6 +138,21 @@ export function connectRoundEvents(onState: RoundListener): () => void {
     source.removeEventListener("round", onRound);
     source.close();
   };
+}
+
+export function withServerIds<T extends { label: string }>(
+  sheets: T[],
+  chars: ServerRoundState["chars"],
+): (T & { id: number })[] {
+  return chars.map((c) => {
+    const sheet = sheets.find((s) => s.label === c.label);
+    if (sheet === undefined) {
+      throw new Error(
+        `The game server lists ${c.label} as character ${String(c.id)}, but the ENS roster the room read has no ${c.label} (it has ${sheets.map((s) => s.label).join(", ")}).`,
+      );
+    }
+    return { ...sheet, id: c.id };
+  });
 }
 
 function storedSession(store: SessionStore): string {

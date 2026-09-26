@@ -4,17 +4,17 @@ Smallest ENS text set for a video LLM (not vision). Not product copy.
 
 ## Keys
 
-| Key        | Who writes                         | Required | Purpose |
-| ---------- | ---------------------------------- | -------- | ------- |
-| `display_name` | roster key at import           | yes      | Human-readable character name shown to people. |
-| `look`     | roster key at import               | yes      | Visible body, costume, silhouette. One sentence. |
-| `brief`    | roster key at import               | yes      | One short lore line the fight can act on. |
-| `injury_places` | roster key at import          | yes      | JSON list of places this character can be injured. |
-| `injuries` | `agent.horrortube.eth` after fight | yes\*    | JSON list of damage the character is carrying now. |
-| `status`   | `agent.horrortube.eth` on death    | yes\*    | `dead` removes the name from selection. |
-| `icon`     | roster key at import               | no       | HTTPS URL string to the CDN portrait. |
+| Key             | Who writes              | Required | Purpose                                            |
+| --------------- | ----------------------- | -------- | -------------------------------------------------- |
+| `display_name`  | bootstrap key at import | yes      | Human-readable character name shown to people.     |
+| `look`          | roster key at import    | yes      | Visible body, costume, silhouette. One sentence.   |
+| `brief`         | roster key at import    | yes      | One short lore line the fight can act on.          |
+| `injury_places` | bootstrap key at import | yes      | JSON list of places this character can be injured. |
+| `injuries`      | agent key after fight   | yes\*    | JSON list of damage the character is carrying now. |
+| `status`        | agent key on death      | yes\*    | `dead` removes the name from selection.            |
+| `icon`          | roster key at import    | no       | HTTPS URL string to the CDN portrait.              |
 
-\*At import: `injuries` is the string `[]`, meaning unhurt; `status` is `alive`. `dead` removes the name from selection (the name must still be `REGISTERED`). `""` is only allowed for legacy `status`.
+\*At import the agent key writes `injuries` as the string `[]`, meaning unhurt, and `status` as `alive`. `dead` removes the name from selection (the name must still be `REGISTERED`). `""` is only allowed for legacy `status`.
 
 Drop: `strength`, `intelligence`, `luck`, `role`. Do not store bets, odds, HP, or numeric combat stats on ENS.
 
