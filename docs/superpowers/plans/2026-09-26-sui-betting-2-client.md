@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A TypeScript client for `horror_tube::betting`, CLIs to find the gas owner and deploy, and a testnet e2e that proves the gasless money path.
+**Goal:** A TypeScript client for `horror_tube::betting`, CLIs to deploy and read pools, and a testnet e2e that proves the gasless money path.
 
 **Architecture:** `packages/betting` becomes a built workspace package exactly like `packages/world-id` (`exports` → `types: ./src/index.ts`, `import: ./dist/index.js`, `tsc -p tsconfig.build.json`). Objects are parsed from BCS. Player transactions go through Shinami `executeGaslessTransaction`, as main's `/tx` does. Spec: `docs/superpowers/specs/2026-09-26-sui-betting-design.md`.
 
@@ -25,7 +25,7 @@
 | `src/execute.ts` | Execute + wait; created-object lookup |
 | `src/operator.ts` | Idempotent, serialized operator calls |
 | `src/index.ts` | Re-exports the above |
-| `src/cli/gas-owner.ts`, `deploy.ts`, `pool.ts`, `e2e.ts`, `shinami.ts` | CLIs; `shinami.ts` is the e2e's gasless wallet |
+| `src/cli/deploy.ts`, `pool.ts`, `e2e.ts`, `shinami.ts` | CLIs; `shinami.ts` is the e2e's gasless wallet |
 | `tests/ids.test.ts`, `tests/payout.test.ts` | Unit tests |
 
 ### Task 1: Package
@@ -46,7 +46,6 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "sui move test --path move && tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "gas-owner": "tsx --env-file=../../.env src/cli/gas-owner.ts",
     "deploy": "tsx --env-file=../../.env src/cli/deploy.ts",
     "pool": "tsx --env-file=../../.env src/cli/pool.ts",
     "e2e": "tsx --env-file=../../.env src/cli/e2e.ts"
@@ -62,7 +61,7 @@
 ```
 
 - [x] `tsconfig.json` and `tsconfig.build.json`: copy `packages/world-id`'s; the build config excludes `tests` and `src/cli`.
-- [x] Root `package.json`: `betting:gas-owner`, `betting:deploy`, `betting:pool`, `betting:e2e` → `pnpm --filter @horror-tube/betting run <name>`.
+- [x] Root `package.json`: `betting:deploy`, `betting:pool`, `betting:e2e` → `pnpm --filter @horror-tube/betting run <name>`.
 - [x] `Dockerfile`: copy `packages/betting/package.json` before install; `RUN pnpm --filter @horror-tube/betting build` before the server build; in the runtime stage copy `packages/betting/{package.json,dist,node_modules}` like `packages/fight`.
 - [x] `pnpm install`. Commit: `feat: add the betting package`.
 
@@ -394,7 +393,7 @@ export function createOperator(chain: OperatorChain, ids: ContractIds, cap: stri
 
 ### Task 4: CLIs
 
-**Files:** Create `src/cli/shinami.ts`, `gas-owner.ts`, `deploy.ts`, `pool.ts`; modify `.env.example`
+**Files:** Create `src/cli/shinami.ts`, `deploy.ts`, `pool.ts`; modify `.env.example`
 
 - [x] `.env.example`, append (comment above each, file style):
 
@@ -407,8 +406,6 @@ SUI_GRPC_URL=
 BETTING_HOUSE_ID=
 # Minimum bet in USDC base units (30000 = 0.03 USDC). Read by pnpm betting:deploy
 SUI_MIN_BET=
-# Shinami Gas Station gas owner, printed by pnpm betting:gas-owner. Read by pnpm betting:deploy
-SUI_BET_SPONSOR=
 # 1password: op://Private/Horror Tube Sui admin/private key
 # Publisher. Holds AdminCap (deploy makes the package immutable). Funds the e2e wallet. Laptop only.
 SUI_ADMIN_PRIVATE_KEY=
@@ -454,7 +451,6 @@ export async function gaslessWallet(client: SuiGrpcClient, walletId: string) {
 }
 ```
 
-- [x] `src/cli/gas-owner.ts`: `gaslessWallet(client, "horror-tube-gas-owner")`; three times run a tx with one `0x2::clock::timestamp_ms(tx.object.clock())` call; for each digest read `client.core.getTransaction({ digest, include: { transaction: true } })` and print `transaction.transaction.gasData.owner`. Print `SUI_BET_SPONSOR=<owner>` only when all three match; otherwise exit 1 naming the three owners.
 - [x] `src/cli/deploy.ts`:
 
 ```ts
@@ -469,7 +465,6 @@ const client = createClient({ network, grpcUrl: requiredEnv("SUI_GRPC_URL") });
 const coinType = requiredEnv("SUI_USDC_TYPE");
 const feeBps = readUnits("BET_FEE_BPS");
 const minBet = readUnits("SUI_MIN_BET");
-const sponsor = requiredEnv("SUI_BET_SPONSOR");
 const admin = readKeypair("SUI_ADMIN_PRIVATE_KEY");
 const operator = readKeypair("SUI_OPERATOR_PRIVATE_KEY").toSuiAddress();
 
@@ -495,12 +490,12 @@ const published = await execute(client, admin, publish);
 const packageId = publishedPackageId(published);
 const adminCap = createdId(published, "::betting::AdminCap");
 
-console.log(`Creating the house (fee ${feeBps} bps, min bet ${minBet}, sponsor ${sponsor})…`);
+console.log(`Creating the house (fee ${feeBps} bps, min bet ${minBet})…`);
 const create = new Transaction();
 create.moveCall({
   target: `${packageId}::betting::create_house`,
   typeArguments: [coinType],
-  arguments: [create.object(adminCap), create.pure.u64(feeBps), create.pure.u64(minBet), create.pure.address(sponsor)],
+  arguments: [create.object(adminCap), create.pure.u64(feeBps), create.pure.u64(minBet)],
 });
 const houseId = createdId(await execute(client, admin, create), "::betting::House<");
 
@@ -527,11 +522,10 @@ SUI_E2E_OPERATOR_CAP_ID=${e2eCap}`);
 ```
 
 - [x] `src/cli/pool.ts` (`pnpm betting:pool <battleId>`): print the pool with bigints as decimal strings, or `No pool for battle <id>`.
-- [x] Commit: `feat: betting gas-owner, deploy and pool CLIs`.
+- [x] Commit the CLIs.
 
 ### Task 5: Deploy (after the operator's setup in the spec)
 
-- [ ] `pnpm betting:gas-owner` → `SUI_BET_SPONSOR=…` into `.env`. On mismatch, stop and report.
 - [ ] `.env`: `SUI_NETWORK=testnet`, `SUI_GRPC_URL=https://fullnode.testnet.sui.io:443`, `BET_FEE_BPS=200`, `SUI_MIN_BET=30000`.
 - [ ] `pnpm betting:deploy` → paste the five printed lines into `.env`.
 
@@ -581,7 +575,6 @@ console.log(`Battle ${battleId}, pool ${pool}`);
 await operator.openPool(battleId, BigInt(Date.now() + 10 * 60_000));
 console.log(`bet side 0: ${await player.run(betTx(config, pool, 0, 2n * minBet))}`);
 console.log(`bet side 1: ${await player.run(betTx(config, pool, 1, minBet))}`);
-await assert.rejects(execute(client, admin, betTx(config, pool, 0, minBet)), /EBetNotSponsored|sponsor/u);
 
 await operator.closeBetting(battleId);
 await operator.settle(battleId, 0);

@@ -16,10 +16,12 @@
     "contracts:test:fork": "pnpm --filter @horror-tube/contracts run test:fork",
     "contracts:deploy": "pnpm --filter @horror-tube/contracts run deploy",
     "contracts:e2e": "pnpm --filter @horror-tube/contracts run e2e",
-    "betting:gas-owner": "pnpm --filter @horror-tube/betting run gas-owner",
     "betting:deploy": "pnpm --filter @horror-tube/betting run deploy",
     "betting:pool": "pnpm --filter @horror-tube/betting run pool",
-    "betting:e2e": "pnpm --filter @horror-tube/betting run e2e"
+    "betting:e2e": "pnpm --filter @horror-tube/betting run e2e",
+    "test-usdc:deploy": "pnpm --filter @horror-tube/test-usdc run deploy",
+    "test-usdc:mint": "pnpm --filter @horror-tube/test-usdc run mint",
+    "test-usdc:accounts": "pnpm --filter @horror-tube/test-usdc run accounts"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",

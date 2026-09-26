@@ -145,8 +145,6 @@ jobs:
       WORLD_ID_RP_ID: "rp_ci_docker"
       WORLD_ID_SIGNING_KEY: "0xabababababababababababababababababababababababababababababababab"
       WORLD_ID_ENVIRONMENT: "production"
-      WORLD_ID_PRACTICE_ACTIONS: "enter-room-1,enter-room-2,enter-room-3,enter-room-4,enter-room-5"
-      WORLD_ID_JUDGE_ACTION: "enter-room-judge"
       # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
       QUORUM_VOTES: "1"
       VOTE_COUNTDOWN_SECONDS: "15"
@@ -154,7 +152,13 @@ jobs:
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
       SKIP_BATTLE_SETTLEMENT: "1"
+      # jason and freddy are registered under horrortube.eth so the server can
+      # read each label's ENS status before listen.
       ROSTER_ENS_LABELS: "jason,freddy"
+      # BattleBetting placeBet / openBattle (apps/server/src/battle-betting.ts). Public Sepolia
+      # deploy address; CI key and RPC are not production secrets and send no live tx here.
+      BATTLE_BETTING_ADDRESS: "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
+      AGENT_PRIVATE_KEY: "0xabababababababababababababababababababababababababababababababab"
       # Startup requires these. The key and pepper are not real. The coin type is public testnet USDC so the tag check passes. CI does not send a transaction.
       SHINAMI_ACCESS_KEY: "ci-not-a-real-shinami-key"
       WALLET_SECRET_PEPPER: "ci-wallet-pepper"
@@ -223,8 +227,6 @@ jobs:
             -e "WORLD_ID_RP_ID=${WORLD_ID_RP_ID}" \
             -e "WORLD_ID_SIGNING_KEY=${WORLD_ID_SIGNING_KEY}" \
             -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
-            -e "WORLD_ID_PRACTICE_ACTIONS=${WORLD_ID_PRACTICE_ACTIONS}" \
-            -e "WORLD_ID_JUDGE_ACTION=${WORLD_ID_JUDGE_ACTION}" \
             -e "QUORUM_VOTES=${QUORUM_VOTES}" \
             -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
             -e "BET_MIN_SECONDS=${BET_MIN_SECONDS}" \
@@ -234,6 +236,8 @@ jobs:
             -e "ENS_LABEL=${SERVER_ENS_LABEL}" \
             -e "SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
+            -e "BATTLE_BETTING_ADDRESS=${BATTLE_BETTING_ADDRESS}" \
+            -e "AGENT_PRIVATE_KEY=${AGENT_PRIVATE_KEY}" \
             -e "SHINAMI_ACCESS_KEY=${SHINAMI_ACCESS_KEY}" \
             -e "WALLET_SECRET_PEPPER=${WALLET_SECRET_PEPPER}" \
             -e "SUI_USDC_TYPE=${SUI_USDC_TYPE}" \

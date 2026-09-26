@@ -13,11 +13,11 @@ the gas. Replaces the Sepolia `BattleBetting` contract.
 | Off Sui | Fighters, votes, winner and damage: ENS and Postgres (`rounds`, `battle_results`) |
 | Pool key | The battle's database ID as text (`battle_results.battle_id`). A pool's object ID derives from house + battle ID (`sui::derived_object`), so the app finds a pool with no indexer and a battle can't get two pools. A Move test and a TS test pin both sides to one vector |
 | Sides | Side 0 = `fighters[0]` (`fighter_a`), side 1 = `fighters[1]` (`fighter_b`) |
-| Coin | `SUI_USDC_TYPE` (Circle testnet USDC, 6 decimals) |
+| Coin | `SUI_USDC_TYPE` (Circle testnet USDC or our test USDC, 6 decimals) |
 | Economics | 2% of the losing side, locked per pool, max 10%. Refunds when cancelled or one-sided. Min bet 0.03 USDC. The admin changes fee and min |
 | Winner | The server's operator settles with the winning side from the battle queue's settle step (`ChainWritePorts.settleBattle`) |
 | Wallet and gas | Main's existing path: the web builds a tx kind, `POST /tx` checks it with `tx-policy.ts` (betting-package calls are already allowed) and runs Shinami `executeGaslessTransaction`. No burner, no sponsor of our own |
-| Gate | `bet` requires `tx_context::sponsor() == house.bet_sponsor`, set to the Gas Station's gas owner. Only `/tx`, behind the World ID session, reaches it, so only verified humans bet. Precondition: the gas owner is one stable address (checked before publish) |
+| Gate | `/tx` with the World ID session: players bet from their Shinami wallets through it. The Move package doesn't enforce this; a wallet that calls `bet` directly can bet. Future on-chain option: a non-transferable pass minted to verified wallets |
 | USDC location | `/tx` spends USDC from the address balance only (`assumeSufficientAddressBalances`). So `claim` pays with `coin::send_funds`, and coin-box deposits switch from `transferObjects` to `coin::send_funds` |
 | Roles | `AdminCap` on the laptop (fees, config, operator caps, treasury). `OperatorCap` on the server (open, close, settle, cancel; revocable). A second operator cap for the laptop e2e |
 | Upgrades | None: the publish transaction makes the `UpgradeCap` immutable, since the package has no version check and an upgrade could add code that empties the pools. A fix ships as a new publish and a new house |
@@ -54,15 +54,15 @@ Code and unit tests: `packages/betting/move`.
 | --- | --- | --- |
 | `AdminCap` | Owned by the publisher | — |
 | `OperatorCap` | Owned by the server; valid while its ID is in `house.operators` | `house_id` |
-| `House<T>` | Shared | `fee_bps`, `min_bet`, `bet_sponsor`, `operators: VecSet<ID>`, `treasury: Balance<T>` |
+| `House<T>` | Shared | `fee_bps`, `min_bet`, `operators: VecSet<ID>`, `treasury: Balance<T>` |
 | `Pool<T>` | Shared, ID derived from `PoolKey(battle_id)` | `house_id`, `battle_id: String`, `closes_at_ms`, `fee_bps` (locked), `status` (0 open, 1 settled, 2 cancelled), `winning_side`, `fee`, `totals: [u64; 2]`, `pot` |
 | `Ticket<T>` | Owned by the bettor | `pool_id`, `side`, `stake` |
 
 | Function | Caller | Effect |
 | --- | --- | --- |
-| `create_house<T>`, `issue_operator_cap`, `revoke_operator_cap`, `set_fee_bps`, `set_min_bet`, `set_bet_sponsor`, `withdraw_fees` | Admin | Config and treasury |
+| `create_house<T>`, `issue_operator_cap`, `revoke_operator_cap`, `set_fee_bps`, `set_min_bet`, `withdraw_fees` | Admin | Config and treasury |
 | `open_pool(house, cap, battle_id, closes_at_ms, clock)` | Operator | Shares the pool, locks the fee |
-| `bet(house, pool, side, coin, clock)` | Player, sponsored | Adds the stake, sends a ticket to the player |
+| `bet(house, pool, side, coin, clock)` | Player, through `/tx` | Adds the stake, sends a ticket to the player |
 | `close_betting(house, cap, pool, clock)` | Operator | Ends betting now |
 | `settle(house, cap, pool, winning_side, clock)` | Operator | Moves the fee to the treasury |
 | `cancel(house, cap, pool)` | Operator | Every ticket refunds |
@@ -106,7 +106,6 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 | `BETTING_HOUSE_ID` | server, CLIs | Printed by deploy |
 | `SUI_NETWORK`, `SUI_GRPC_URL` | server, CLIs | `testnet`, `https://fullnode.testnet.sui.io:443` |
 | `BET_FEE_BPS`, `SUI_MIN_BET` | deploy | `200`, `30000` (0.03 USDC) |
-| `SUI_BET_SPONSOR` | deploy | The Gas Station's gas owner, printed by `pnpm betting:gas-owner` |
 | `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID` | laptop | Publisher; holds `AdminCap`; funds the e2e wallet |
 | `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID` | server | Operator |
 | `SUI_E2E_OPERATOR_CAP_ID` | laptop | Operator cap held by the admin, so e2e runs never contend with the server |
@@ -122,24 +121,41 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 3. faucet.sui.io: testnet SUI to both addresses. faucet.circle.com (Sui testnet): 20 USDC to the admin
    address.
 
+## Test USDC (testnet only)
+
+Circle's faucet gives 20 USDC per address every 2 hours behind a captcha, so testing can use our own
+coin instead: `packages/test-usdc`, module `test_usdc::usdc`. It has no value.
+
+- Coin `USDC`, 6 decimals, registered in Sui's coin registry. A shared `Faucet` owns the
+  `TreasuryCap`, so anyone can mint: `mint` returns a coin, and `mint_to` sends to an address balance
+  with `coin::send_funds` (where `/tx` spends from). Max 1,000 USDC per call.
+- `pnpm test-usdc:deploy` publishes it and prints `TEST_USDC_TYPE` and `TEST_USDC_FAUCET_ID`.
+  `pnpm test-usdc:mint <address> <units>` mints base units to that address balance and prints its
+  new balance. `pnpm test-usdc:accounts <count> <usdc-each> <sui-each>` (e.g. `20 500 0.5`) creates
+  keypairs, saves them to the gitignored `packages/test-usdc/accounts.json`, and in one transaction
+  gives each the admin's SUI and freshly minted test USDC. The CLIs load `@horror-tube/betting` from
+  `dist`, so run `pnpm --filter @horror-tube/betting build` first.
+- Switch the game to it: set `SUI_USDC_TYPE` to the `TEST_USDC_TYPE` value and run
+  `pnpm betting:deploy`, which creates its house for `SUI_USDC_TYPE` (it also publishes a new betting
+  package, so replace every ID it prints). `apps/web/wallet.ts` hard-codes `USDC_TYPE`, which must match.
+- Testnet only: the deploy CLI refuses any other `SUI_NETWORK`.
+
 ## Deploy, once
 
-1. `pnpm betting:gas-owner`: three gasless no-op txs through Shinami print their gas owner. All three
-   the same → `SUI_BET_SPONSOR`. Different → stop: the Move sponsor check goes before publishing.
-2. `pnpm betting:deploy`: publishes, creates the USDC house, issues both operator caps, prints the IDs
+1. `pnpm betting:deploy`: publishes, creates the USDC house, issues both operator caps, prints the IDs
    for `.env`.
-3. Gate: `pnpm betting:e2e` passes on testnet.
+2. Gate: `pnpm betting:e2e` passes on testnet.
 
 ## Testing
 
-- Move (`sui move test`): payouts, refunds, fee lock and cap, sponsor gate, close and settle timing,
-  operator revocation, a pool settles or cancels once and only through its own house, one pool per
-  battle, derived IDs, a 20-round payout invariant.
+- Move (`sui move test`): payouts, refunds, fee lock and cap, close and settle timing, operator
+  revocation, a pool settles or cancels once and only through its own house, one pool per battle,
+  derived IDs, a 20-round payout invariant.
 - TS unit (`tsx --test`): pool ID derivation against the Move vector, the payout mirror, `tx-policy`
   accepting real bet and claim kinds, the operator's state machine with a fake chain.
 - Live (`pnpm betting:e2e`): the admin moves USDC into a Shinami e2e wallet's address balance → open →
-  two gasless bets → an unsponsored bet aborts → close → settle → gasless claim → the wallet's USDC
-  moved by exactly `-fee`. It reads every ID from effects.
+  two gasless bets → close → settle → gasless claim → the wallet's USDC moved by exactly `-fee`. It
+  reads every ID from effects.
 
 ## Blockers
 
@@ -162,14 +178,11 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 
 - **Operator trust**: the server knows the winner while people bet and declares it on Sui.
   `docs/PLAN.md` accepts this for the demo.
-- **Gas owner stability**: if Shinami rotates gas owners, the Move sponsor check must go and the World
-  ID gate is `/tx` alone.
 - **Public full node limits**: move to Shinami Node Service if the demo needs it.
 - **Testnet reset**: rerun deploy.
 
 ## Out of scope
 
 - Votes, rounds and character state on Sui.
-- Mainnet, multisig custody, a pause switch (pointing `bet_sponsor` at an unused address stops new
-  bets).
+- Mainnet, multisig custody, a pause switch.
 - An indexer or database mirror of bets.

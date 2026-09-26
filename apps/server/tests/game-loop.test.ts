@@ -7,6 +7,7 @@ import {
   type ChainWritePorts,
 } from "@horror-tube/fight/battle-queue";
 
+import type { BattleBettingPorts } from "../src/battle-betting.js";
 import { readSkipBattleSettlement } from "../src/env.js";
 import {
   readGameLoopConfig,
@@ -44,6 +45,33 @@ function trackingPorts(calls: string[]): ChainWritePorts {
     async settleBattle(battleId) {
       calls.push(`settle:${battleId}`);
       return "0xsettle";
+    },
+  };
+}
+
+function trackingBattleBetting(calls: string[]): BattleBettingPorts {
+  let nextId = 1n;
+  return {
+    async minBet() {
+      return 10_000_000_000_000n;
+    },
+    async openBattle(fighterA, fighterB, closesAtUnix) {
+      const id = nextId;
+      nextId += 1n;
+      calls.push(
+        `open:${fighterA},${fighterB},${String(closesAtUnix)}→${String(id)}`,
+      );
+      return id;
+    },
+    async placeBet(battleId, fighter, valueWei) {
+      calls.push(
+        `bet:${String(battleId)},${String(fighter)},${String(valueWei)}`,
+      );
+      return `0xbet${String(battleId)}` as `0x${string}`;
+    },
+    async cancelBattle(battleId) {
+      calls.push(`cancel:${String(battleId)}`);
+      return `0xcancel${String(battleId)}` as `0x${string}`;
     },
   };
 }
@@ -94,11 +122,14 @@ function sampleAgentInsert(
 
 function unusedSettleDeps(skipSettlement = true) {
   const calls: string[] = [];
+  const betCalls: string[] = [];
   return {
     battleQueueStore: new MemoryBattleQueueStore(),
     chainWritePorts: trackingPorts(calls),
+    battleBetting: trackingBattleBetting(betCalls),
     skipSettlement,
     calls,
+    betCalls,
   };
 }
 
@@ -177,6 +208,7 @@ describe("World ID vote gate", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: settle.skipSettlement,
     });
     await assert.rejects(
@@ -196,6 +228,7 @@ describe("GameLoop ENS status", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "dead-vote" }),
     });
@@ -215,6 +248,7 @@ describe("GameLoop ENS status", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
     });
     assert.equal(loop.getState().chars[0]?.alive, true);
@@ -231,6 +265,7 @@ describe("GameLoop ENS status", () => {
           randomInt: pickFirst,
           battleQueueStore: settle.battleQueueStore,
           chainWritePorts: settle.chainWritePorts,
+          battleBetting: settle.battleBetting,
           skipSettlement: true,
         }),
       /bravo.*ghost|ghost.*bravo/u,
@@ -255,6 +290,7 @@ describe("GameLoop ENS status", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "reset-dead" }),
     });
@@ -305,6 +341,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => {
         nullifierSeq += 1;
@@ -331,9 +368,17 @@ describe("GameLoop phases", () => {
     assert.ok(loop.getState().fighters);
     // votes: 0→1, 1→2, 2→1 → top are 1 then 0
     assert.deepEqual(loop.getState().fighters, [1, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith("open:bravo,alpha,")),
+      `expected openBattle for bravo vs alpha, got ${JSON.stringify(settle.betCalls)}`,
+    );
 
-    loop.bet(0, 1.5);
-    assert.deepEqual(loop.getState().pool, [1.5, 0]);
+    await loop.bet(0, 2);
+    assert.deepEqual(loop.getState().pool, [2, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith("bet:1,0,20000000000000")),
+      `expected placeBet call, got ${JSON.stringify(settle.betCalls)}`,
+    );
 
     await loop.attachAgentResult(sampleAgentInsert());
     loop.setOutcome(0, 3);
@@ -396,6 +441,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: false,
       verifyWorldId: async () => {
         n += 1;
@@ -452,6 +498,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: store,
       chainWritePorts: ports,
+      battleBetting: trackingBattleBetting([]),
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "ens-fail" }),
     });
@@ -503,6 +550,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "mismatch" }),
     });
@@ -542,6 +590,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "no-agent" }),
     });
@@ -577,6 +626,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "same" }),
     });
@@ -599,6 +649,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
+      battleBetting: settle2.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
@@ -635,10 +686,11 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "x" }),
     });
-    assert.throws(() => loop.bet(0, 1), /bet phase/u);
+    await assert.rejects(() => loop.bet(0, 1), /bet phase/u);
     let now = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
@@ -654,6 +706,7 @@ describe("GameLoop phases", () => {
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
+      battleBetting: settle2.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "y" }),
     });
@@ -689,6 +742,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "z" }),
     });
@@ -707,5 +761,80 @@ describe("GameLoop phases", () => {
       () => loop.tick(now),
       /randomInt was not provided/u,
     );
+  });
+
+  it("after failVideo refuses bets, cancels the battle, and leaves bet for over", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        videoTimeoutSeconds: 5,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "fail-video" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    await loop.bet(0, 1);
+    assert.deepEqual(loop.getState().pool, [1, 0]);
+
+    await loop.failVideo("fal render failed: timeout");
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().error, "fal render failed: timeout");
+    assert.deepEqual(loop.getState().pool, [0, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c === "cancel:1"),
+      `expected cancelBattle, got ${JSON.stringify(settle.betCalls)}`,
+    );
+    await assert.rejects(
+      () => loop.bet(1, 1),
+      /bet is only allowed in the bet phase|video failure/u,
+    );
+  });
+
+  it("video timeout failVideo also leaves bet and refuses further stakes", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        videoTimeoutSeconds: 2,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "timeout-video" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    now += 2_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+    assert.match(loop.getState().error ?? "", /VIDEO_TIMEOUT_SECONDS/u);
+    assert.ok(settle.betCalls.some((c) => c.startsWith("cancel:")));
+    await assert.rejects(() => loop.bet(0, 1), /bet phase|video failure/u);
   });
 });
