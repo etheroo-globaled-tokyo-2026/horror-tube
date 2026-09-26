@@ -28,12 +28,18 @@ def describe_ens_action(label: str, ens_label: str, *, kind: str) -> str:
         return (
             f"Intended ENS action for {name}: register (or update text on) the subname "
             f"under parent {ens_label}.eth. Text keys: look, brief, injuries, status, icon. "
-            "This PR does not send the transaction."
+            "Plan only; does not send the transaction. Use `python -m roster register` to send."
         )
     if kind == "remove":
         return (
             f"Intended ENS action for {name}: unregister that label under parent "
-            f"{ens_label}.eth. This PR does not send the transaction."
+            f"{ens_label}.eth. Plan only; does not send the transaction. "
+            "Use `python -m roster remove` to send."
+        )
+    if kind == "register":
+        return (
+            f"ENS chain action for {name}: register (if needed) and setText "
+            f"(look, brief, injuries, status, icon) under parent {ens_label}.eth."
         )
     raise RosterValidationError(f"Unknown ENS action kind: {kind!r}")
 
@@ -63,9 +69,7 @@ def build_import_plan(
         raise RosterValidationError(
             "Input includes label(s) that already exist as dead or injured: "
             f"{', '.join(conflicts)}. Pass --on-existing={ON_EXISTING_SKIP} or "
-            f"--on-existing={ON_EXISTING_RESTORE}. "
-            "Chain reads are not implemented in this PR; supply --existing JSON when "
-            "you need dead/injured detection."
+            f"--on-existing={ON_EXISTING_RESTORE}."
         )
 
     planned: list[dict[str, Any]] = []
@@ -84,7 +88,6 @@ def build_import_plan(
                     }
                 )
                 continue
-            # restore: clear status; keep injuries from the import file
             sheet = normalize_character(character)
             sheet["status"] = ""
             entry = {
@@ -117,8 +120,99 @@ def build_import_plan(
         "chain_reads": False,
         "note": (
             "Normalized import plan only. On-chain register/update is not executed. "
-            "Chain state is not read in this PR; optional --existing JSON is the only "
-            "source of prior dead/injured status."
+            "Use `python -m roster register` to read chain state and send transactions."
+        ),
+        "characters": planned,
+        "skipped": skipped,
+    }
+
+
+def build_register_plan(
+    characters: CharacterList,
+    *,
+    ens_label: str,
+    existing_on_chain: Mapping[str, Character],
+    on_existing: Optional[str] = None,
+) -> dict[str, Any]:
+    """Plan chain register/update from a chain snapshot of already-registered labels."""
+    if on_existing is not None and on_existing not in ON_EXISTING_VALUES:
+        raise RosterValidationError(
+            f"--on-existing must be {ON_EXISTING_SKIP!r} or {ON_EXISTING_RESTORE!r}. "
+            f"Got: {on_existing!r}"
+        )
+
+    conflicts = [
+        character["label"]
+        for character in characters
+        if character["label"] in existing_on_chain
+    ]
+    if conflicts and on_existing is None:
+        deadish = [
+            label
+            for label in conflicts
+            if is_dead_or_injured(existing_on_chain[label])
+        ]
+        if deadish:
+            raise RosterValidationError(
+                "Input includes label(s) already registered on chain as dead or injured: "
+                f"{', '.join(deadish)}. Pass --on-existing={ON_EXISTING_SKIP} or "
+                f"--on-existing={ON_EXISTING_RESTORE}. Chain text records are the source."
+            )
+        raise RosterValidationError(
+            "Input includes label(s) already registered on chain: "
+            f"{', '.join(conflicts)}. Pass --on-existing={ON_EXISTING_SKIP} or "
+            f"--on-existing={ON_EXISTING_RESTORE}."
+        )
+
+    planned: list[dict[str, Any]] = []
+    skipped: list[dict[str, str]] = []
+
+    for character in characters:
+        label = character["label"]
+        prior = existing_on_chain.get(label)
+        if prior is not None:
+            if on_existing == ON_EXISTING_SKIP:
+                skipped.append(
+                    {
+                        "label": label,
+                        "name": subname(label, ens_label),
+                        "reason": "already registered on chain; --on-existing=skip",
+                    }
+                )
+                continue
+            sheet = normalize_character(character)
+            sheet["status"] = ""
+            entry = {
+                **sheet,
+                "name": subname(label, ens_label),
+                "action": "restore_and_update",
+                "ens_action": describe_ens_action(label, ens_label, kind="register"),
+                "note": (
+                    "status cleared to empty because --on-existing=restore; "
+                    "injuries taken from the input file as supplied"
+                ),
+            }
+            planned.append(entry)
+            continue
+
+        sheet = normalize_character(character)
+        entry = {
+            **sheet,
+            "name": subname(label, ens_label),
+            "action": "register",
+            "ens_action": describe_ens_action(label, ens_label, kind="register"),
+        }
+        planned.append(entry)
+
+    return {
+        "plan": "register",
+        "parent": f"{ens_label}.eth",
+        "ens_label": ens_label,
+        "chain_writes": True,
+        "chain_reads": True,
+        "note": (
+            "Register plan from chain snapshot. `python -m roster register` sends "
+            "UserRegistry.register and PermissionedResolver.setText."
         ),
         "characters": planned,
         "skipped": skipped,
@@ -144,7 +238,7 @@ def build_removal_plan(labels: Sequence[str], *, ens_label: str) -> dict[str, An
         "chain_reads": False,
         "note": (
             "Normalized removal plan only. Unregister is not executed. "
-            "Subname registry write path is not implemented in this PR."
+            "Use `python -m roster remove` to send UserRegistry.unregister."
         ),
         "labels": entries,
     }

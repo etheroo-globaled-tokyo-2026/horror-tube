@@ -6,7 +6,8 @@
     "format": "oxfmt",
     "typecheck": "tsc --noEmit",
     "ens:check": "tsx scripts/register-eth-label.ts check",
-    "ens:register": "tsx scripts/register-eth-label.ts"
+    "ens:register": "tsx scripts/register-eth-label.ts",
+    "ens:subnames": "tsx scripts/character-subnames.ts"
   },
   "dependencies": {
     "viem": "^2.56.8"

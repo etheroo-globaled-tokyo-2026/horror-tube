@@ -148,6 +148,6 @@ parent TLD. Each label keeps its own commit file.
 
 ## Out of scope for this draft
 
-- Deploying a UserRegistry for the parent name
-- Registering character labels
-- PermissionedResolver grants
+- Character labels beyond ensuring a UserRegistry on the parent (see
+  `docs/roster-json.md` and `python -m roster register`)
+- PermissionedResolver grants beyond the parent owner ALL_ROLES bootstrap
