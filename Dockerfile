@@ -36,6 +36,7 @@ COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/world-id/package.json ./packages/world-id/
 COPY --from=build /app/packages/world-id/dist ./packages/world-id/dist
+COPY --from=build /app/packages/world-id/node_modules ./packages/world-id/node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
