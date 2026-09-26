@@ -52,6 +52,9 @@ function testLoop(): GameLoop {
         throw new Error("vote tests must not cancel a battle.");
       },
     },
+    fightJob: async () => {
+      throw new Error("vote tests must not start a fight job.");
+    },
     skipSettlement: true,
   });
 }

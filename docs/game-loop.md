@@ -51,8 +51,13 @@ fills the challenger slot from rotation after settle.
 - Betting opens when voting closes (stage 1) or when the next rotation pair is ready (stage 2+).
 - Bets are optional. A fight happens with zero bets. Do not seed a house or robot stake.
 - Odds are only meaningful when both sides have stake; do not block the video on an empty pool.
-- The story and the video are made during betting. The LLM picks the winner and the damage.
-- Betting closes when the video is ready, and never earlier than 10s.
+- When betting opens, the server starts `runFightTurn` for the bout pair (stage 1
+  vote pair, or stage 2+ champion + random living challenger). On success it
+  attaches the agent result, then calls `setOutcome` and `setVideoReady` with the
+  CDN video URL, duration, and last-frame URL. A prior `frameUrl` on the round is
+  passed as `priorFrameUrl` (image-to-video); the first bout is text-to-video.
+  Missing FAL, narration, or Spaces env fails closed and names the variable.
+- Betting closes when the video is ready, outcome is set, and never earlier than 10s.
 - Winners share the pool in proportion to their bets.
 - If either side has no stake at settle, stakes are refunded (BattleBetting claim path).
 
