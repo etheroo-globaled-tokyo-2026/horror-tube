@@ -1,14 +1,12 @@
 import * as THREE from "three";
 import {
   $,
-  CAPS,
-  DEMO,
   S,
   char,
+  face,
   usd,
   film,
   hooks,
-  isDemo,
   living,
   mmss,
   newSeason,
@@ -17,7 +15,7 @@ import {
   replaying,
   type Character,
 } from "./game.ts";
-import { css, ctx2d, portrait, rgb } from "./sprites.ts";
+import { css, ctx2d, rgb } from "./sprites.ts";
 import { type CoinBox, type CoinBoxPart, createCoinBox } from "./coinbox.ts";
 import { getGameWallet } from "./wallet.ts";
 
@@ -41,7 +39,6 @@ const COL = {
 };
 const STAKES = [1, 3, 5];
 const num = (n: number): string => String(n).padStart(2, "0");
-const known = (ch: Character): string[] => ch.bio.slice(0, 1 + ch.fights);
 const T = {
   buf: "",
   reveal: -1,
@@ -458,7 +455,7 @@ function drawTape(ch: Character): void {
   g.textAlign = "right";
   g.fillText(num(ch.id + 1), VW - 16, 30);
   g.imageSmoothingEnabled = false;
-  g.drawImage(avatar(ch), VW / 2 - 70, 56, 140, 140);
+  g.drawImage(face(ch), VW / 2 - 70, 56, 140, 140);
   g.textAlign = "center";
   g.fillStyle = COL.bone;
   g.font = "28px DotGothic16";
@@ -470,30 +467,19 @@ function drawTape(ch: Character): void {
     VW / 2,
     262,
   );
-  CAPS[ch.kind].forEach((cap, i) => {
-    const y = 280 + i * 28,
-      gone = i >= 3 - ch.lost;
-    g.fillStyle = gone ? COL.grime : COL.bone;
-    g.fillRect(24, y, VW - 48, 22);
-    g.fillStyle = COL.soot;
-    g.fillText(cap.toUpperCase(), VW / 2, y + 17);
-    if (gone) g.fillRect(34, y + 10, VW - 68, 2);
-  });
   g.textAlign = "left";
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
-  g.fillText("CASE FILE", 24, 390);
-  g.font = "20px DotGothic16";
-  ch.bio.forEach((line, i) => {
-    const y = 418 + i * 28;
-    if (i < 1 + ch.fights) {
-      g.fillStyle = COL.bone;
-      g.fillText(line, 24, y);
-    } else {
-      g.fillStyle = COL.grime;
-      g.fillRect(24, y - 16, 150 + ((i * 53) % 90), 18);
-    }
-  });
+  g.fillText("CASE FILE", 24, 298);
+  g.fillStyle = COL.bone;
+  g.font = "18px DotGothic16";
+  const y = wrap(g, ch.brief, 24, 324, VW - 48, 23);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("INJURIES", 24, y + 8);
+  g.fillStyle = ch.injuries ? COL.bone : COL.grime;
+  g.font = "18px DotGothic16";
+  wrap(g, ch.injuries || "None.", 24, y + 34, VW - 48, 23);
   g.textAlign = "center";
   g.fillStyle = COL.grime;
   g.font = "700 12px Silkscreen";
@@ -598,7 +584,7 @@ SHELF.rows.forEach((y, row) => {
 });
 function drawSpine(slot: Slot, ch: Character): void {
   const g = ctx2d(slot.canvas);
-  g.fillStyle = V(ch.hue);
+  g.fillStyle = ch.alive ? V(ch.hue) : COL.grime;
   g.fillRect(0, 0, 48, 132);
   g.fillStyle = COL.soot;
   g.fillRect(3, 3, 42, 64);
@@ -608,7 +594,7 @@ function drawSpine(slot: Slot, ch: Character): void {
   g.textBaseline = "alphabetic";
   g.fillText(num(ch.id + 1), 24, 18);
   g.imageSmoothingEnabled = false;
-  g.drawImage(avatar(ch), 4, 22, 40, 40);
+  g.drawImage(face(ch), 4, 22, 40, 40);
   g.fillStyle = COL.bone;
   g.fillRect(6, 71, 36, 58);
   g.save();
@@ -620,6 +606,8 @@ function drawSpine(slot: Slot, ch: Character): void {
   while (g.measureText(ch.short).width > 54 && size > 8);
   g.textBaseline = "middle";
   g.fillText(ch.short, 0, 1);
+  if (!ch.alive)
+    g.fillRect(-g.measureText(ch.short).width / 2 - 2, 0, g.measureText(ch.short).width + 4, 2);
   g.restore();
   slot.tex.needsUpdate = true;
 }
@@ -627,9 +615,9 @@ function updateShelf(shown: Character | null): void {
   shelf.visible = S.phase !== "gate";
   for (const slot of slots) {
     const ch = S.chars[slot.id];
-    slot.mesh.visible = shelf.visible && !!ch && ch.alive && shown !== ch;
+    slot.mesh.visible = shelf.visible && !!ch && shown !== ch;
     if (!ch) continue;
-    const key = ch.id + ch.hue;
+    const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);
     slot.key = key;
     const out = T.hover === slot.id ? 1 : 0;
@@ -645,7 +633,7 @@ function updateTape(now: number): void {
   const ch = tapeResident();
   updateShelf(ch);
   if (ch) {
-    const key = [ch.id, ch.alive, ch.fights, ch.kills, ch.damage, ch.lost].join();
+    const key = [ch.ens, ch.alive, ch.fights, ch.kills, ch.damage].join();
     if (ch.id !== TAPE.id) TAPE.at = now;
     if (key !== TAPE.key) drawTape(ch);
     TAPE.key = key;
@@ -660,7 +648,7 @@ function updateTape(now: number): void {
 }
 
 const video = document.createElement("video");
-video.src = DEMO.video;
+video.src = "assets/demo-fight.mp4";
 video.playsInline = true;
 video.preload = "auto";
 video.muted = true;
@@ -671,12 +659,7 @@ const sg = ctx2d(small, { willReadFrequently: true });
 const RAMP = [COL.soot, COL.rustDeep, COL.rust, COL.bone].map(rgb);
 let vidMode: "" | "live" | "rec" = "";
 function syncVideo(): void {
-  const mode =
-    S.phase === "fight" && isDemo(S.fighters)
-      ? "live"
-      : replaying() && isDemo(S.last?.fighters ?? null)
-        ? "rec"
-        : "";
+  const mode = S.phase === "fight" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
   if (!mode) {
@@ -736,17 +719,6 @@ function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     g.drawImage(small, 0, y + 10, w, h - y - 10, dx, dy + (y + 10) * sy, dw, (h - y - 10) * sy);
   } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
 }
-const avatars = new Map<string, HTMLCanvasElement>();
-const avatar = (ch: Character): HTMLCanvasElement => {
-  const key = ch.id + (ch.alive ? "" : "x");
-  let cv = avatars.get(key);
-  if (!cv) {
-    cv = document.createElement("canvas");
-    portrait(cv, ch.kind, V(ch.hue), { dead: !ch.alive });
-    avatars.set(key, cv);
-  }
-  return cv;
-};
 function drawGuide(now: number): void {
   const g = tvCtx,
     W = TW,
@@ -798,7 +770,7 @@ function drawGuide(now: number): void {
       g.fillRect(x - 6, y, W / 2 - 12, 40);
     }
     g.imageSmoothingEnabled = false;
-    g.drawImage(avatar(ch), x, y + 2, 36, 36);
+    g.drawImage(face(ch), x, y + 2, 36, 36);
     g.textAlign = "left";
     g.font = "700 20px Silkscreen";
     g.fillStyle = !ch.alive ? COL.grime : mine ? COL.soot : COL.sulfur;
@@ -952,9 +924,9 @@ function drawTV(): void {
       else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
       else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
       else {
-        g.font = "30px DotGothic16";
+        g.font = "24px DotGothic16";
         g.fillStyle = COL.bone;
-        wrap(g, `“${known(ch).at(-1)}”`, W / 2, 262, W - 100, 38);
+        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
         text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
       }
     }
@@ -1232,7 +1204,7 @@ function enterRoom(): void {
   step("done");
   paper.visible = false;
   $("#gate").hidden = true;
-  newSeason();
+  void newSeason();
 }
 let coinBox: CoinBox | null = null;
 let chainCredit = 0;
