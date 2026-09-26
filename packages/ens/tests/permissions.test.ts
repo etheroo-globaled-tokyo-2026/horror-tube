@@ -7,9 +7,14 @@ import { fileURLToPath } from "node:url";
 import {
   type Address,
   type Hex,
+  BaseError,
+  ContractFunctionRevertedError,
   createPublicClient,
   createWalletClient,
+  decodeAbiParameters,
+  encodeFunctionData,
   http,
+  parseAbi,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
@@ -44,6 +49,12 @@ const AGENT_KEY =
   "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" as const;
 const THIRD_KEY =
   "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" as const;
+
+const ZERO_BYTES32 =
+  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const textResolverAbi = parseAbi([
+  "function text(bytes32 node, string key) view returns (string)",
+]);
 
 const bootstrap = privateKeyToAccount(BOOTSTRAP_KEY);
 const roster = privateKeyToAccount(ROSTER_KEY);
@@ -269,6 +280,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
       transport: http(rpcUrl),
     });
     const dnsName = dnsEncodeName("fighter.test.eth");
+    const before = await readText(dnsName, textKey);
     try {
       const hash = await wallet.writeContract({
         address: resolver,
@@ -277,10 +289,43 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
         args: [dnsName, textKey, value],
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      return receipt.status === "success" ? "ok" : "revert";
-    } catch {
+      if (receipt.status !== "success") {
+        throw new Error(`setText(${textKey}) mined but reverted: ${hash}`);
+      }
+    } catch (error) {
+      const reverted =
+        error instanceof BaseError &&
+        error.walk((e) => e instanceof ContractFunctionRevertedError) !== null;
+      if (!reverted) {
+        throw error;
+      }
+      assert.equal(
+        await readText(dnsName, textKey),
+        before,
+        `${textKey} changed after a reverted setText`,
+      );
       return "revert";
     }
+    assert.equal(await readText(dnsName, textKey), value, `${textKey} not stored`);
+    return "ok";
+  }
+
+  async function readText(dnsName: Hex, textKey: string): Promise<string> {
+    const encoded = await publicClient.readContract({
+      address: resolver,
+      abi: permissionedResolverAbi,
+      functionName: "resolve",
+      args: [
+        dnsName,
+        encodeFunctionData({
+          abi: textResolverAbi,
+          functionName: "text",
+          args: [ZERO_BYTES32, textKey],
+        }),
+      ],
+    });
+    const [text] = decodeAbiParameters([{ type: "string" }], encoded);
+    return text;
   }
 
   it("exposes grantSetterRoles on the pinned ABI used by grants", () => {
