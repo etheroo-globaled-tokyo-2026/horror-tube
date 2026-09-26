@@ -17,6 +17,7 @@ import {
 import { sepolia } from "viem/chains";
 
 import { ethRegistryAbi, permissionedResolverAbi, userRegistryAbi } from "./abis.js";
+import { castLabels } from "./cast-labels.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
@@ -471,10 +472,21 @@ async function discoverRegisteredLabels(
   }
 }
 
+export const CHARACTER_TEXT_KEYS = [
+  "display_name",
+  "look",
+  "brief",
+  "injury_places",
+  "injuries",
+  "status",
+  "icon",
+] as const;
+
 async function readText(
   publicClient: PublicClient,
   resolverAddress: Address,
   dnsName: Hex,
+  label: string,
   key: string,
 ): Promise<string> {
   const data = encodeFunctionData({
@@ -484,7 +496,7 @@ async function readText(
   });
   let encoded: Hex;
   try {
-    encoded = await withRateLimitRetry(`resolve(text ${key})`, async () =>
+    encoded = await withRateLimitRetry(`resolve(text ${label}.${key})`, async () =>
       (await publicClient.readContract({
         address: resolverAddress,
         abi: permissionedResolverAbi,
@@ -494,7 +506,7 @@ async function readText(
     );
   } catch (error) {
     throw new Error(
-      `PermissionedResolver.resolve(text ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      `PermissionedResolver.resolve(text ${key}) failed for ${label}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   try {
@@ -502,24 +514,26 @@ async function readText(
     return value;
   } catch (error) {
     throw new Error(
-      `Failed to decode text(${key}) resolve result: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to decode text(${key}) resolve result for ${label}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
 
-async function loadCharacterSheets(
+/**
+ * Start every getState and text resolve before awaiting so Multicall3 can batch.
+ * Same label order as `labels`. Failures name the label/key; no skips.
+ */
+export async function loadCharacterSheets(
   publicClient: PublicClient,
   ensLabel: string,
   subregistry: Address,
   resolver: Address,
   labels: readonly string[],
 ): Promise<CharacterSheet[]> {
-  // Sequential per label: Infura rate-limits bursts of resolve/getState after getTransaction.
-  const sheets: CharacterSheet[] = [];
-  for (const label of labels) {
+  const pending = labels.map((label) => {
     const name = subname(label, ensLabel);
     const dnsName = dnsEncodeName(name);
-    const readOwner = async (): Promise<Address> => {
+    const ownerPromise = (async (): Promise<Address> => {
       try {
         const state = await withRateLimitRetry(`getState(${label})`, async () =>
           publicClient.readContract({
@@ -535,24 +549,20 @@ async function loadCharacterSheets(
           `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    };
-    const textKeys = [
-      "display_name",
-      "look",
-      "brief",
-      "injury_places",
-      "injuries",
-      "status",
-      "icon",
-    ] as const;
-    const owner = await readOwner();
-    const texts: string[] = [];
-    for (const key of textKeys) {
-      texts.push(await readText(publicClient, resolver, dnsName, key));
-    }
+    })();
+    const textPromises = CHARACTER_TEXT_KEYS.map((key) =>
+      readText(publicClient, resolver, dnsName, label, key),
+    );
+    return { label, name, ownerPromise, textPromises };
+  });
+
+  const sheets: CharacterSheet[] = [];
+  for (const item of pending) {
+    const owner = await item.ownerPromise;
+    const texts = await Promise.all(item.textPromises);
     const [display_name, look, brief, injury_places, injuries, status, icon] = texts;
     sheets.push(
-      characterSheetFromTexts(label, name, owner, {
+      characterSheetFromTexts(item.label, item.name, owner, {
         display_name,
         look,
         brief,
@@ -567,8 +577,62 @@ async function loadCharacterSheets(
 }
 
 /**
- * Browser-safe: no node imports. Contract reads may multicall; eth_getLogs and
- * eth_getTransaction stay unbatched. getTransaction is sequential with 429 backoff.
+ * Read parent subregistry/resolver, then cast-label sheets (no TransferSingle discovery).
+ * Injectable client for unit tests; production uses createPublicClient with multicall batching.
+ */
+export async function readRosterWithClient(
+  publicClient: PublicClient,
+  ensLabel: string,
+  ethRegistry: Address,
+  labels: readonly string[],
+): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
+  let subregistry: Address;
+  let resolver: Address;
+  try {
+    const [sub, res] = await Promise.all([
+      publicClient.readContract({
+        address: ethRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getSubregistry",
+        args: [ensLabel],
+      }),
+      publicClient.readContract({
+        address: ethRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getResolver",
+        args: [ensLabel],
+      }),
+    ]);
+    subregistry = getAddress(sub);
+    resolver = getAddress(res);
+  } catch (error) {
+    throw new Error(
+      `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (subregistry === ZERO_ADDRESS) {
+    throw new Error(
+      `Parent ${ensLabel}.eth has no subregistry (getSubregistry returned zero address).`,
+    );
+  }
+  if (resolver === ZERO_ADDRESS) {
+    throw new Error(`Parent ${ensLabel}.eth has no resolver (getResolver returned zero address).`);
+  }
+
+  const sheets = await loadCharacterSheets(
+    publicClient,
+    ensLabel,
+    subregistry,
+    resolver,
+    labels,
+  );
+  return { parentName: `${ensLabel}.eth`, sheets };
+}
+
+/**
+ * Browser-safe: no node imports. Cast labels replace TransferSingle discovery;
+ * sheet reads start together so Multicall3 batches them. Chain text stays the source.
  */
 export async function readRosterFromChain(
   ensLabel: string,
@@ -580,47 +644,7 @@ export async function readRosterFromChain(
     transport: http(rpcUrl),
     batch: { multicall: true },
   });
-
-  const readParent = async (): Promise<[Address, Address]> => {
-    try {
-      const [sub, res] = await Promise.all([
-        publicClient.readContract({
-          address: ethRegistry,
-          abi: ethRegistryAbi,
-          functionName: "getSubregistry",
-          args: [ensLabel],
-        }),
-        publicClient.readContract({
-          address: ethRegistry,
-          abi: ethRegistryAbi,
-          functionName: "getResolver",
-          args: [ensLabel],
-        }),
-      ]);
-      return [getAddress(sub), getAddress(res)];
-    } catch (error) {
-      throw new Error(
-        `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  };
-  const [[subregistry, resolver], latestBlock] = await Promise.all([
-    readParent(),
-    publicClient.getBlockNumber(),
-  ]);
-
-  if (subregistry === ZERO_ADDRESS) {
-    throw new Error(
-      `Parent ${ensLabel}.eth has no subregistry (getSubregistry returned zero address).`,
-    );
-  }
-  if (resolver === ZERO_ADDRESS) {
-    throw new Error(`Parent ${ensLabel}.eth has no resolver (getResolver returned zero address).`);
-  }
-
-  const labels = await discoverRegisteredLabels(publicClient, subregistry, latestBlock);
-  const sheets = await loadCharacterSheets(publicClient, ensLabel, subregistry, resolver, labels);
-  return { parentName: `${ensLabel}.eth`, sheets };
+  return readRosterWithClient(publicClient, ensLabel, ethRegistry, castLabels());
 }
 
 /** Registered subname labels only. Does not read text records. */

@@ -860,7 +860,8 @@ class PagePairTests(unittest.TestCase):
     def test_cast_json_frankenstein_is_two_pages(self):
         entries = [e for e in load_cast() if "Frankenstein" in json.dumps(e)]
         self.assertEqual(len(entries), 1)
-        self.assertEqual(set(entries[0]), {"look_source", "brief_source"})
+        self.assertEqual(set(entries[0]), {"label", "look_source", "brief_source"})
+        self.assertEqual(entries[0]["label"], "frankenstein")
 
 
 class PagePairCliTests(unittest.TestCase):
