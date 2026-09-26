@@ -1,34 +1,16 @@
 -- Game-loop tables (docs/game-loop.md, issue #69).
--- Character ids are ENS labels. No stakes table, stake columns, or amounts.
--- Postgres is not the betting ledger; bets settle on the Sui contract (other
--- developer's open PR — none found in etheroo-globaled-tokyo-2026/horror-tube
--- open PRs as of this migration; do not invent an address). Eth Sepolia
--- BattleBetting (#44) is not this path.
---
--- seasons.characters is a holding copy for the current season / bet window
--- (vote list, RoundState.chars, resume). Order after a fight:
---   1) update this holding row when the fight result is known (bet window reads it)
---   2) on-chain settle finishes on Sui
---   3) then write ENS text record `status`
--- Do not write ENS before settlement. Do not treat this row as what pays out.
--- After the ENS write, ENS `status` is the authority for alive/dead.
--- kills/damage in the same jsonb are season-loop holding fields the same way.
---
+-- Character ids are ENS labels. No stakes table.
+-- After Sui settle, ENS text `status` is the authority for alive/dead;
+-- seasons.characters is only a holding copy for the current season / bet window
+-- (lifecycle: docs/game-loop.md). schema_migrations is created by the migrate runner.
 -- gen_random_uuid() is built into PostgreSQL 13+ (Managed Postgres on DigitalOcean).
-
-CREATE TABLE IF NOT EXISTS schema_migrations (
-  id text PRIMARY KEY,
-  applied_at timestamptz NOT NULL DEFAULT now()
-);
 
 CREATE TABLE IF NOT EXISTS seasons (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at timestamptz NOT NULL DEFAULT now(),
   ended_at timestamptz,
   champion_ens_label text,
-  -- Holding copy for this season (not the payout source; not ENS). Shape:
-  -- [{ "ens_label": string, "alive": boolean, "kills": number, "damage": number }, ...]
-  -- `alive` holds the fight outcome for the bet window until Sui settle, then ENS write.
+  -- Holding copy: [{ "ens_label": string, "alive": boolean, "kills": number, "damage": number }, ...]
   characters jsonb NOT NULL DEFAULT '[]'::jsonb
 );
 
