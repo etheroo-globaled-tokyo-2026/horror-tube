@@ -1,11 +1,11 @@
 # Horror Tube
 
 A battle royale of famous horror movie characters. AI makes each fight as a video.
-Verified humans start the show; the winner stays on against a random living challenger. Users bet on who wins (paid).
+Verified humans start the show; the winner stays on against a living challenger the viewers vote for. Users bet on who wins (paid).
 
 ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Sui** (DeFi & Payments).
 
-## Status (2026-09-26)
+## Status (2026-09-27)
 
 | Part                         | Status                                                                                                                                                                                                                                                              |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,8 +16,8 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                                                                                                                             |
 | Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                                                                                                                            |
 | Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet.                                               |
-| Game server                  | Built (`apps/server`). Waiting→vote→bet→fight→settle holding loop; the fighter vote (`POST /vote`, quorum plus a short countdown) opens each bout.                                                                                                                         |
-| Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                                                                                                                                                         |
+| Game server                  | Built (`apps/server`). Waiting→vote→bet→fight→settle holding loop; the fighter vote (`POST /vote`, quorum plus a short countdown) opens each bout.                                                                                                                  |
+| Story LLM and video pipeline | Built. `@horror-tube/fight` narrates and calls fal. The server runs `runFightTurn` when betting opens (`apps/server/src/fight-job.ts`).                                                                                                                             |
 | ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or an unfinished settle is logged and the next bout still opens. |
 
 ## Art direction
@@ -30,7 +30,7 @@ See `apps/web/DESIGN.md`.
 - **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons and the battle-result queue (`battle_results`). Not Durable Objects.
 - **Smart contract**: the Move package `horror_tube::betting` on Sui testnet holds one USDC pool per battle. The server's operator key opens, closes, cancels and settles it. See [sui-betting.md](sui-betting.md).
 - **Wallet**: a Shinami Invisible Wallet per World ID human, held by the server (`apps/server/src/wallet-handler.ts`, `apps/web/wallet.ts`). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
-- **Frontend host**: Vercel or similar.
+- **Frontend host**: DigitalOcean App Platform, one service for the Vite client and the game process (`terraform/README.md`). The public room URL is the `app_live_url` output.
 
 ## Flow
 
@@ -50,7 +50,7 @@ See `apps/web/DESIGN.md`.
    The video model makes the video from the LLM text while betting is open.
 9. **Show video**: the fight video plays from `RoundState.videoUrl`. There is no local demo clip.
 10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. The server then calls `settleBattle` on the Sui pool. A failed ENS write or an unfinished settle is logged and does not stay on the round. The next bout still opens. Moving the loser to a dead-pool name is still open (question 2).
-11. The winner stays on against a random living challenger (step 6), until one character is left.
+11. The winner stays on. The viewers vote for the next living challenger, until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
 

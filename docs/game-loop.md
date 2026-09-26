@@ -152,10 +152,10 @@ The fight lasts as long as the video. It needs no variable.
 
 ## Server contract
 
-All players share one game, so a server owns the state, the timers, and the bets. How the server is built is open.
+All players share one game, so `apps/server` owns the state, the timers, and the bets.
 The client and the server agree on this contract.
 
-**State pushed to each tab** (SSE or WebSocket):
+**State pushed to each tab** (SSE `GET /events`):
 
 ```ts
 type Phase = "waiting" | "pick" | "bet" | "fight" | "settle" | "over";
@@ -200,9 +200,8 @@ Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by lab
 The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow
 server `RoundState` (SSE `/events` and `GET /round`). The panel lists `selectable`. Voting for one sends `POST /vote`. A failed booking stays on the panel with the server's `bookError`. Bets go through `/tx`. The fight video is `RoundState.videoUrl`.
 
-The placeholder panels (`[data-placeholder="pick"]` and `[data-placeholder="bet"]`) stand in for the final pick and bet
-UI. The server phase picks the screen; the client runs no timer. The bet screen shows the stored
-`bettingClosesAt`. A rejected submission stays on the screen until dismissed. The final UI deletes this root.
+The server phase picks the screen. The client runs no timer. The bet screen shows the stored
+`bettingClosesAt`. A rejected submission stays on the screen until dismissed.
 
 ## Out of scope
 

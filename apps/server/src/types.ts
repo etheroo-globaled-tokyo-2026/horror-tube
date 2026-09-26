@@ -8,6 +8,7 @@ export type Tape = {
   rationale: string;
   videoUrl: string;
   recordedAt: number;
+  statusTx: string | null;
 };
 
 export type RoundState = {
