@@ -19,15 +19,15 @@ ENS: the fighter whose `status` text record is `dead` lost.
 
 ## Battle lifecycle
 
-| Step              | Who                     | Call                                       | Effect                                                                                                                      |
-| ----------------- | ----------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| 1                 | Operator                | `openBattle(fighterA, fighterB, closesAt)` | `closesAt` must be in the future. New battle id (1, 2, 3, …); betting opens; the current fee rate is locked into the battle |
-| 2                 | Anyone                  | `placeBet(battleId, fighter)` + ETH        | Adds to the caller's stake on fighter 0 or 1 while `block.timestamp < closesAt`                                             |
-| 3                 | —                       | —                                          | Betting closes by time; no transaction                                                                                      |
-| 4                 | Backend's ENS agent key | ENS `setText`                              | Loser's `status` becomes `dead` (PLAN.md step 10)                                                                           |
-| 5                 | Anyone                  | `settleBattle(battleId)`                   | Allowed once `block.timestamp >= closesAt`. Reads both fighters' `status`; exactly one `dead` → the other fighter wins      |
-| 6                 | Each bettor             | `claim(battleId)`                          | Pays winnings or a refund, once per bettor per battle                                                                       |
-| any time before 5 | Operator                | `cancelBattle(battleId)`                   | Battle cancelled; everyone can claim a full refund                                                                          |
+| Step              | Who                     | Call                                       | Effect                                                                                                                                                                                                |
+| ----------------- | ----------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1                 | Operator                | `openBattle(fighterA, fighterB, closesAt)` | `closesAt` must be in the future. Both fighters must read alive on ENS and be in no other unsettled battle. New battle id (1, 2, 3, …); betting opens; the current fee rate is locked into the battle |
+| 2                 | Anyone                  | `placeBet(battleId, fighter)` + ETH        | Adds to the caller's stake on fighter 0 or 1 while `block.timestamp < closesAt`                                                                                                                       |
+| 3                 | —                       | —                                          | Betting closes by time; no transaction                                                                                                                                                                |
+| 4                 | Backend's ENS agent key | ENS `setText`                              | Loser's `status` becomes `dead` (PLAN.md step 10)                                                                                                                                                     |
+| 5                 | Anyone                  | `settleBattle(battleId)`                   | Allowed once `block.timestamp >= closesAt`. Reads both fighters' `status`; exactly one `dead` → the other fighter wins                                                                                |
+| 6                 | Each bettor             | `claim(battleId)`                          | Pays winnings or a refund, once per bettor per battle                                                                                                                                                 |
+| any time before 5 | Operator                | `cancelBattle(battleId)`                   | Battle cancelled; everyone can claim a full refund                                                                                                                                                    |
 
 Statuses: `Open` → `Settled` or `Cancelled`. Settling or cancelling a battle that
 is not `Open` reverts.
@@ -81,6 +81,10 @@ wins. Fee = 2% × 0.04 = 0.0008. Alice gets 0.0594, Bob 0.0198, Carol nothing.
   reads mid-battle.
 - Fighter labels passed to `openBattle` must be 1–63 bytes of `a-z`, `0-9`, `-`,
   and the two must differ. Anything else can't form a valid ENS name.
+- Settlement trusts a fighter's current `status` to describe this battle, so opening
+  refuses a fighter who already reads `dead` (`FighterAlreadyDead`) or who is in
+  another unsettled battle (`FighterInOpenBattle`); settling or cancelling frees the
+  fighters again.
 - Settle errors: `NoFighterDead`, `BothFightersDead` (operator cancels),
   `EnsLookupFailed(battleId, fighter, reason)` carrying ENS's revert data.
 
@@ -167,6 +171,8 @@ pnpm scripts:
 
 - **Unit tests** with a stand-in Universal Resolver whose `status` per node and
   revert behaviour the test sets:
+  - Open: dead or unreadable fighter refused; a fighter in an unsettled battle is
+    refused until that battle settles or is cancelled.
   - Open: operator only; `closesAt` in the past; bad or duplicate labels; ids
     increment.
   - Bet: below minimum; at or after `closesAt`; unknown or non-open battle; bad

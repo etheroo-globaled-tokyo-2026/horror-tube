@@ -28,7 +28,9 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 | 5        | Each bettor             | `claim(battleId)`                          | Pays winnings or a refund, once per bettor per battle                                        |
 | Before 4 | Operator                | `cancelBattle(battleId)`                   | Everyone can claim a full refund                                                             |
 
-Settling reverts with `NoFighterDead` (retry after the ENS update), `BothFightersDead`
+Opening reverts with `FighterAlreadyDead` if either fighter already reads `dead`,
+`FighterInOpenBattle` if either is in another unsettled battle, or `EnsLookupFailed` if ENS
+can't be read. Settling reverts with `NoFighterDead` (retry after the ENS update), `BothFightersDead`
 (cancel the battle) or `EnsLookupFailed(battleId, fighter, reason)` carrying ENS's revert data.
 
 ## Payouts
@@ -65,13 +67,16 @@ Example: Alice 0.03 and Bob 0.01 on Jason, Carol 0.04 on Freddy, Jason wins. The
 3. Never set `status` on the resolver's default record (root name `0x00`). Every name without
    its own record reads the default, so every unregistered fighter would read `dead`.
 4. Call `settleBattle` after the ENS update. Anyone may call it.
-5. Fighter labels are 1–63 bytes of `a-z`, `0-9` and `-`.
-6. Skip cancelled battles in the UI. `pnpm contracts:e2e` leaves cancelled `e2e-a` vs `e2e-b`
-   battles on the deployment.
+5. A fighter can be in one unsettled battle at a time. Settle or cancel a battle before
+   putting either fighter in a new one.
+6. Fighter labels are 1–63 bytes of `a-z`, `0-9` and `-`.
+7. Skip cancelled battles in the UI. Each `pnpm contracts:e2e` run leaves a cancelled battle
+   between two `e2e-<timestamp>-…` fighters on the deployment.
 
 ## Reading state
 
 - Views: `getBattle(battleId)`, `stakesOf(battleId, bettor)`, `claimable(battleId, bettor)`,
+  `openBattleOf(fighterNode)`,
   `fighterNode(fighter)`, `nextBattleId`, `accruedFees`, `feeBps`, `minBet`, `treasury`.
 - Events: `BattleOpened`, `BetPlaced`, `BattleSettled`, `BattleCancelled`, `Claimed`,
   `FeesWithdrawn`, `FeeBpsSet`, `TreasurySet`, `MinBetSet`.
@@ -84,12 +89,12 @@ in `packages/contracts/lib/`. Foundry only reads `.env` from where it runs, so t
 scripts that need `.env` run forge from the repo root with `--root packages/contracts`.
 `forge test` inside the package needs no `.env`.
 
-| Command                    | What it does                                                                                                                                                                                                                                                    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm contracts:test`      | Unit and fuzz tests with a stand-in ENS resolver                                                                                                                                                                                                                |
-| `pnpm contracts:test:fork` | Settles a battle on a Sepolia fork against the real ENS contracts                                                                                                                                                                                               |
-| `pnpm contracts:deploy`    | Deploys with the `.env` settings and verifies the source on Sourcify                                                                                                                                                                                            |
-| `pnpm contracts:e2e`       | Real transactions against `BATTLE_BETTING_ADDRESS`: checks its ENS settings and the wallet's operator role, then opens an `e2e-a` vs `e2e-b` battle, bets on both, cancels it and claims the refund. The same `forge script` without `--broadcast` simulates it |
+| Command                    | What it does                                                                                                                                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm contracts:test`      | Unit and fuzz tests with a stand-in ENS resolver                                                                                                                                                                                                                                           |
+| `pnpm contracts:test:fork` | Settles a battle on a Sepolia fork against the real ENS contracts                                                                                                                                                                                                                          |
+| `pnpm contracts:deploy`    | Deploys with the `.env` settings and verifies the source on Sourcify                                                                                                                                                                                                                       |
+| `pnpm contracts:e2e`       | Real transactions against `BATTLE_BETTING_ADDRESS`: checks its ENS settings and the wallet's operator role, then opens a battle between two fresh `e2e-<timestamp>-…` fighters, bets on both, cancels it and claims the refund. The same `forge script` without `--broadcast` simulates it |
 
 ## Environment
 
