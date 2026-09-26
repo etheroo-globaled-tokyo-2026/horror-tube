@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 
 const devProxy = (gamePort: string) => ({
-  "^/(auth/world-id|tx|wallet|world-id/request|world-id/verify|events|round|vote|bet|health)(\\?.*)?$":
+  "^/(auth/world-id|tx|wallet|world-id/request|world-id/verify|events|round|vote|betting|health)(\\?.*)?$":
     {
       target: `http://127.0.0.1:${gamePort}`,
       changeOrigin: true,

@@ -12,6 +12,11 @@ export type RoundState = {
   quorum: number;
   votes: Record<number, number>;
   fighters: [number, number] | null;
+  /** Sui pool battle id (UUID). Null outside the bet/fight/settle window. */
+  battleId: string | null;
+  /** Derived Sui pool object id once the operator opened the pool. */
+  poolId: string | null;
+  /** Pool totals in USDC base units from the Sui pool (0 before the first read). */
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;

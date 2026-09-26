@@ -297,8 +297,13 @@ async function setText(
   return hash;
 }
 
+export type EnsSettlePort = {
+  settle: (battleId: string, side: 0 | 1) => Promise<void>;
+};
+
 export function createEnsChainWritePorts(
   env: NodeJS.ProcessEnv = process.env,
+  sui?: EnsSettlePort,
 ): ChainWritePorts {
   return {
     async writeWinnerInjuries(args) {
@@ -321,10 +326,14 @@ export function createEnsChainWritePorts(
       const dnsName = dnsEncodeName(name);
       return setText(clients, dnsName, args.subname, "status", "dead");
     },
-    async settleBattle(battleId) {
-      throw new Error(
-        `BattleBetting settlement is not implemented (battleId=${battleId}). Set SKIP_BATTLE_SETTLEMENT=1 until a settlement client exists. See .env.example.`,
-      );
+    async settleBattle(battleId, winningSide) {
+      if (sui === undefined) {
+        throw new Error(
+          `Sui pool settlement requires a settle port (battleId=${battleId}). Pass createEnsChainWritePorts(env, { settle }) from the game process.`,
+        );
+      }
+      await sui.settle(battleId, winningSide);
+      return battleId;
     },
   };
 }
