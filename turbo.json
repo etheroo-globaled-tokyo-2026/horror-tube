@@ -6,12 +6,17 @@
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "@horror-tube/server#check:env"],
       "cache": false,
       "persistent": true,
       "passThroughEnv": ["PORT", "GAME_PORT"]
     },
     "test": {},
-    "typecheck": {}
+    "typecheck": {},
+    "check:env": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "passThroughEnv": ["GAME_PORT"]
+    }
   }
 }
