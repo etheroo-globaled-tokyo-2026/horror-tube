@@ -1233,10 +1233,6 @@ function drawTape(ch: Character): void {
 }
 function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
-  if (S.phase === "vote" && !S.cast) {
-    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
-    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
-  }
   return S.chars[T.held] ?? null;
 }
 
@@ -1580,10 +1576,11 @@ function drawGuide(now: number): void {
     g.fillText(num(ch.id + 1), x + 44, y + 28);
     g.font = "22px DotGothic16";
     g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28);
+    const nameW = W / 2 - 110;
+    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28, nameW);
     if (!ch.alive) {
       g.fillStyle = COL.rust;
-      g.fillRect(x + 86, y + 20, g.measureText(ch.name).width + 4, 2);
+      g.fillRect(x + 86, y + 20, Math.min(g.measureText(ch.name).width, nameW) + 4, 2);
     }
     if (mine) {
       g.font = "700 12px Silkscreen";
@@ -1612,6 +1609,58 @@ const say = (text: string, ms = 3600): void => {
 };
 
 let tvNoise = 0;
+function drawCaseFile(ch: Character): void {
+  const g = tvCtx,
+    W = TW,
+    x = 232,
+    seen = ch.fights > 0;
+  g.fillStyle = COL.rust;
+  g.font = "700 18px Silkscreen";
+  g.textAlign = "left";
+  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(ch), 32, 64, 176, 176);
+  if (!ch.alive) {
+    g.save();
+    g.translate(120, 152);
+    g.rotate(-0.2);
+    g.strokeStyle = g.fillStyle = COL.blood;
+    g.lineWidth = 4;
+    g.textAlign = "center";
+    g.strokeRect(-92, -24, 184, 40);
+    g.font = "700 24px Silkscreen";
+    g.fillText("DECEASED", 0, 6);
+    g.restore();
+  }
+  g.textAlign = "left";
+  g.fillStyle = COL.bone;
+  g.font = "30px DotGothic16";
+  let y = wrap(g, ch.name, x, 92, W - x - 32, 34);
+  g.fillStyle = COL.sulfur;
+  g.font = "700 16px Silkscreen";
+  g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("CASE FILE", x, y + 34);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("INJURIES", 32, y);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  wrap(g, ch.injuries || "None.", 32, y + 26, W - 64, 26);
+  const [footer, color] = !ch.alive
+    ? ["THIS ROOM IS EMPTY", COL.rust]
+    : S.picks.includes(ch.id)
+      ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
+      : ["PRESS OK TO REQUEST", COL.sulfur];
+  g.textAlign = "center";
+  g.fillStyle = color;
+  g.font = "700 22px Silkscreen";
+  g.fillText(footer, W / 2, 456);
+}
 function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -1632,6 +1681,9 @@ function drawTV(): void {
     weight = 700,
   ): void => {
     g.font = `${weight} ${size}px ${face}`;
+    const width = g.measureText(t).width,
+      max = W - 64;
+    if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -1750,18 +1802,12 @@ function drawTV(): void {
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
       text(S.picks.length === 2 ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
     } else {
-      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-      const n = +T.buf,
-        ch = T.buf.length === 2 ? S.chars[n - 1] : null;
-      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-      else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
-      else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
-      else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
+      const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+      if (ch) drawCaseFile(ch);
       else {
-        g.font = "24px DotGothic16";
-        g.fillStyle = COL.bone;
-        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
-        text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
+        text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+        if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+        else text("NO SUCH RESIDENT", 280, 28, COL.rust);
       }
     }
   } else {
@@ -1946,6 +1992,7 @@ function press(id: string): void {
   if (/^\d$/.test(id)) {
     if (S.phase === "vote" && !S.cast) {
       T.reveal = -1;
+      T.held = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
     }
   } else if (id === "clr") {
