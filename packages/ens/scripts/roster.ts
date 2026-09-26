@@ -31,11 +31,166 @@ export const MAX_LOG_CHUNK_BLOCKS = 10000n;
 export const MAX_RECENT_LOG_CHUNKS = 4;
 /** Lowest block number this dashboard will query. Never block 0. */
 export const MIN_LOG_BLOCK = 1n;
+/** Attempts per eth_getTransactionByHash before giving up on 429. */
+export const GET_TX_MAX_ATTEMPTS = 8;
+/** First backoff after a 429, doubled each retry up to GET_TX_MAX_BACKOFF_MS. */
+export const GET_TX_INITIAL_BACKOFF_MS = 500;
+export const GET_TX_MAX_BACKOFF_MS = 16_000;
+/** Pause between sequential getTransaction calls to stay under Infura rate limits. */
+export const GET_TX_GAP_MS = 150;
 
 export type BlockRange = {
   fromBlock: bigint;
   toBlock: bigint;
 };
+
+export type SleepFn = (ms: number) => Promise<void>;
+
+export async function defaultSleep(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** True when the RPC rejected the call for rate limiting (HTTP 429). */
+export function isRateLimitError(error: unknown): boolean {
+  if (error !== null && typeof error === "object" && "status" in error) {
+    if ((error as { status: unknown }).status === 429) {
+      return true;
+    }
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  return /\b429\b/.test(msg);
+}
+
+export type RateLimitRetryOptions = {
+  sleep?: SleepFn;
+  maxAttempts?: number;
+  initialBackoffMs?: number;
+  maxBackoffMs?: number;
+};
+
+/**
+ * Run `fn` again after backoff when the RPC returns HTTP 429.
+ * Non-429 errors are rethrown immediately (wrapped by the caller if needed).
+ */
+export async function withRateLimitRetry<T>(
+  opLabel: string,
+  fn: () => Promise<T>,
+  options: RateLimitRetryOptions = {},
+): Promise<T> {
+  const sleep = options.sleep ?? defaultSleep;
+  const maxAttempts = options.maxAttempts ?? GET_TX_MAX_ATTEMPTS;
+  const initialBackoffMs = options.initialBackoffMs ?? GET_TX_INITIAL_BACKOFF_MS;
+  const maxBackoffMs = options.maxBackoffMs ?? GET_TX_MAX_BACKOFF_MS;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error(
+      `withRateLimitRetry: maxAttempts must be a positive integer. Got: ${String(maxAttempts)}`,
+    );
+  }
+  let backoffMs = initialBackoffMs;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRateLimitError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      console.error(
+        `discover: ${opLabel} rate-limited (429), attempt ${String(attempt)}/${String(maxAttempts)}, waiting ${String(backoffMs)}ms`,
+      );
+      await sleep(backoffMs);
+      backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+/**
+ * Sequential eth_getTransactionByHash with gap pacing and 429 backoff.
+ * Does not switch RPC or invent labels.
+ */
+export async function fetchTransactionInputs(
+  hashes: readonly Hex[],
+  getTransaction: (args: { hash: Hex }) => Promise<{ input: Hex }>,
+  options: RateLimitRetryOptions & { gapMs?: number } = {},
+): Promise<Hex[]> {
+  const sleep = options.sleep ?? defaultSleep;
+  const gapMs = options.gapMs ?? GET_TX_GAP_MS;
+  const inputs: Hex[] = [];
+  for (let i = 0; i < hashes.length; i++) {
+    const hash = hashes[i]!;
+    if (i > 0 && gapMs > 0) {
+      await sleep(gapMs);
+    }
+    try {
+      const input = await withRateLimitRetry(
+        `getTransaction(${hash})`,
+        async () => (await getTransaction({ hash })).input,
+        { ...options, sleep },
+      );
+      inputs.push(input);
+    } catch (error) {
+      throw new Error(
+        `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return inputs;
+}
+
+/**
+ * Decode register() labels from transfer tx inputs and keep those still registered.
+ * Used by discovery; injectable for unit tests (no live RPC).
+ */
+export async function labelsFromTransferTxHashes(
+  txHashes: readonly Hex[],
+  deps: {
+    getTransaction: (args: { hash: Hex }) => Promise<{ input: Hex }>;
+    getStatus: (label: string) => Promise<number>;
+    sleep?: SleepFn;
+    gapMs?: number;
+  },
+): Promise<string[]> {
+  const inputs = await fetchTransactionInputs(txHashes, deps.getTransaction, {
+    sleep: deps.sleep,
+    gapMs: deps.gapMs,
+  });
+  const candidateLabels = new Set<string>();
+  for (const input of inputs) {
+    const label = decodeRegisterLabel(input);
+    if (label !== null) {
+      candidateLabels.add(label);
+    }
+  }
+  if (candidateLabels.size === 0) {
+    throw new Error(
+      `No register() labels found in ${String(txHashes.length)} transfer transaction(s)`,
+    );
+  }
+  const labels = [...candidateLabels].sort();
+  const registered: string[] = [];
+  for (const label of labels) {
+    let status: number;
+    try {
+      status = await withRateLimitRetry(
+        `getStatus(${label})`,
+        () => deps.getStatus(label),
+        { sleep: deps.sleep },
+      );
+    } catch (error) {
+      throw new Error(
+        `UserRegistry.getStatus(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (status === STATUS_REGISTERED) {
+      registered.push(label);
+    }
+  }
+  return registered;
+}
 
 /**
  * Inclusive block windows walking backward from `latestBlock`.
@@ -289,51 +444,31 @@ async function discoverRegisteredLabels(
     latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
-  // Sequential: Infura rate-limits parallel eth_getTransactionByHash.
-  const inputs: Hex[] = [];
-  for (const hash of txHashes) {
-    try {
-      inputs.push((await publicClient.getTransaction({ hash })).input);
-    } catch (error) {
-      throw new Error(
-        `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-  const candidateLabels = new Set<string>();
-  for (const input of inputs) {
-    const label = decodeRegisterLabel(input);
-    if (label !== null) {
-      candidateLabels.add(label);
-    }
-  }
-
-  if (candidateLabels.size === 0) {
-    throw new Error(
-      `No register() labels found in TransferSingle logs for ${subregistry} in blocks ${fromBlock.toString()}..${toBlock.toString()}`,
-    );
-  }
-
-  const labels = [...candidateLabels].sort();
-  const statuses = await Promise.all(
-    labels.map(async (label) => {
-      try {
-        return Number(
+  console.error(
+    `discover: unique transfer txs=${String(txHashes.length)} (sequential getTransaction with 429 backoff)`,
+  );
+  try {
+    return await labelsFromTransferTxHashes(txHashes, {
+      getTransaction: (args) => publicClient.getTransaction(args),
+      getStatus: async (label) =>
+        Number(
           await publicClient.readContract({
             address: subregistry,
             abi: userRegistryAbi,
             functionName: "getStatus",
             args: [labelId(label)],
           }),
-        );
-      } catch (error) {
-        throw new Error(
-          `UserRegistry.getStatus(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }),
-  );
-  return labels.filter((_, i) => statuses[i] === STATUS_REGISTERED);
+        ),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.startsWith("No register() labels found")) {
+      throw new Error(
+        `No register() labels found in TransferSingle logs for ${subregistry} in blocks ${fromBlock.toString()}..${toBlock.toString()}`,
+      );
+    }
+    throw error;
+  }
 }
 
 async function readText(
@@ -349,12 +484,14 @@ async function readText(
   });
   let encoded: Hex;
   try {
-    encoded = (await publicClient.readContract({
-      address: resolverAddress,
-      abi: permissionedResolverAbi,
-      functionName: "resolve",
-      args: [dnsName, data],
-    })) as Hex;
+    encoded = await withRateLimitRetry(`resolve(text ${key})`, async () =>
+      (await publicClient.readContract({
+        address: resolverAddress,
+        abi: permissionedResolverAbi,
+        functionName: "resolve",
+        args: [dnsName, data],
+      })) as Hex,
+    );
   } catch (error) {
     throw new Error(
       `PermissionedResolver.resolve(text ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -377,43 +514,45 @@ async function loadCharacterSheets(
   resolver: Address,
   labels: readonly string[],
 ): Promise<CharacterSheet[]> {
-  return Promise.all(
-    labels.map(async (label): Promise<CharacterSheet> => {
-      const name = subname(label, ensLabel);
-      const dnsName = dnsEncodeName(name);
-      const readOwner = async (): Promise<Address> => {
-        try {
-          const state = await publicClient.readContract({
+  // Sequential per label: Infura rate-limits bursts of resolve/getState after getTransaction.
+  const sheets: CharacterSheet[] = [];
+  for (const label of labels) {
+    const name = subname(label, ensLabel);
+    const dnsName = dnsEncodeName(name);
+    const readOwner = async (): Promise<Address> => {
+      try {
+        const state = await withRateLimitRetry(`getState(${label})`, async () =>
+          publicClient.readContract({
             address: subregistry,
             abi: userRegistryAbi,
             functionName: "getState",
             args: [labelId(label)],
-          });
-          return getAddress(state.latestOwner);
-        } catch (error) {
-          throw new Error(
-            `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      };
-      const textKeys = [
-        "display_name",
-        "look",
-        "brief",
-        "injury_places",
-        "injuries",
-        "status",
-        "icon",
-      ] as const;
-      const [owner, texts] = await Promise.all([
-        readOwner(),
-        Promise.all(
-          textKeys.map((key) => readText(publicClient, resolver, dnsName, key)),
-        ),
-      ]);
-      const [display_name, look, brief, injury_places, injuries, status, icon] =
-        texts;
-      return characterSheetFromTexts(label, name, owner, {
+          }),
+        );
+        return getAddress(state.latestOwner);
+      } catch (error) {
+        throw new Error(
+          `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    };
+    const textKeys = [
+      "display_name",
+      "look",
+      "brief",
+      "injury_places",
+      "injuries",
+      "status",
+      "icon",
+    ] as const;
+    const owner = await readOwner();
+    const texts: string[] = [];
+    for (const key of textKeys) {
+      texts.push(await readText(publicClient, resolver, dnsName, key));
+    }
+    const [display_name, look, brief, injury_places, injuries, status, icon] = texts;
+    sheets.push(
+      characterSheetFromTexts(label, name, owner, {
         display_name,
         look,
         brief,
@@ -421,14 +560,15 @@ async function loadCharacterSheets(
         injuries,
         status,
         icon,
-      });
-    }),
-  );
+      }),
+    );
+  }
+  return sheets;
 }
 
 /**
  * Browser-safe: no node imports. Contract reads may multicall; eth_getLogs and
- * eth_getTransaction stay unbatched so Infura does not return broken batch bodies.
+ * eth_getTransaction stay unbatched. getTransaction is sequential with 429 backoff.
  */
 export async function readRosterFromChain(
   ensLabel: string,
