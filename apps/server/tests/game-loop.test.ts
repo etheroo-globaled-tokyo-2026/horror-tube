@@ -8,7 +8,6 @@ import {
 } from "@horror-tube/fight/battle-queue";
 
 import type { BattleBettingPorts } from "../src/battle-betting.js";
-import { readSkipBattleSettlement } from "../src/env.js";
 import type { FightJobRequest, FightJobResult } from "../src/fight-job.js";
 import {
   readGameLoopConfig,
@@ -134,7 +133,7 @@ function sampleAgentInsert(
   };
 }
 
-function unusedSettleDeps(skipSettlement = true) {
+function unusedSettleDeps() {
   const calls: string[] = [];
   const betCalls: string[] = [];
   return {
@@ -144,7 +143,6 @@ function unusedSettleDeps(skipSettlement = true) {
     battleBetting: trackingBattleBetting(betCalls),
     // Hang so tests that drive setOutcome/setVideoReady themselves are not raced.
     fightJob: async () => new Promise(() => {}),
-    skipSettlement,
     calls,
     betCalls,
   };
@@ -226,19 +224,6 @@ describe("game loop config", () => {
       ["alpha", "bravo", "zebra"],
     );
   });
-
-  it("reads SKIP_BATTLE_SETTLEMENT as 0 or 1 only", () => {
-    assert.equal(readSkipBattleSettlement({ SKIP_BATTLE_SETTLEMENT: "1" }), true);
-    assert.equal(readSkipBattleSettlement({ SKIP_BATTLE_SETTLEMENT: "0" }), false);
-    assert.throws(
-      () => readSkipBattleSettlement({}),
-      /SKIP_BATTLE_SETTLEMENT is required\. Set it in \.env\. See \.env\.example\./u,
-    );
-    assert.throws(
-      () => readSkipBattleSettlement({ SKIP_BATTLE_SETTLEMENT: "yes" }),
-      /SKIP_BATTLE_SETTLEMENT must be "0" or "1"/u,
-    );
-  });
 });
 
 describe("World ID vote gate", () => {
@@ -258,7 +243,6 @@ describe("World ID vote gate", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: settle.skipSettlement,
     });
     await assert.rejects(
       () => loop.vote({ fake: true }, [0, 1]),
@@ -279,7 +263,6 @@ describe("GameLoop ENS status", () => {
       roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "dead-vote" }),
     });
     assert.equal(loop.getState().chars[1]?.alive, false);
@@ -300,7 +283,6 @@ describe("GameLoop ENS status", () => {
       roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
-      skipSettlement: true,
     });
     assert.equal(loop.getState().chars[0]?.alive, true);
   });
@@ -318,7 +300,6 @@ describe("GameLoop ENS status", () => {
           roundStore: new MemoryRoundStore(),
           chainWritePorts: settle.chainWritePorts,
           battleBetting: settle.battleBetting,
-          skipSettlement: true,
         }),
       /bravo.*ghost|ghost.*bravo/u,
     );
@@ -326,7 +307,7 @@ describe("GameLoop ENS status", () => {
 
   it("resetFromOver keeps characters that started dead on chain not alive", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const trio = ["alpha", "bravo", "charlie"];
     const loop = new GameLoop({
       config: {
@@ -345,7 +326,6 @@ describe("GameLoop ENS status", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "reset-dead" }),
     });
     assert.equal(loop.getState().chars[2]?.alive, false);
@@ -381,7 +361,7 @@ describe("GameLoop phases", () => {
   it("waits in vote until quorum, then countdown, then bet→fight→settle→next bet via rotation", async () => {
     let now = 1_000_000;
     let nullifierSeq = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -399,7 +379,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => {
         nullifierSeq += 1;
         return { nullifier: `n-${String(nullifierSeq)}` };
@@ -466,7 +445,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().chars[0]?.alive, false);
     assert.equal(loop.getState().chars[1]?.kills, 1);
     assert.equal(loop.getState().chars[1]?.damage, 3);
-    assert.deepEqual(settle.calls, ["injuries", "status"]);
+    assert.deepEqual(settle.calls, ["injuries", "status", "settle:99"]);
 
     now += 3_000;
     await loop.tick(now);
@@ -509,7 +488,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: settle.skipSettlement,
       verifyWorldId: async () => {
         nullifierSeq += 1;
         return { nullifier: `n-${String(nullifierSeq)}` };
@@ -543,10 +521,18 @@ describe("GameLoop phases", () => {
     );
   });
 
-  it("calls settleBattle when skipSettlement is false", async () => {
+  it("keeps a failed pool settle on the round with the battle id and resumes at settle", async () => {
     let now = 0;
     let n = 0;
-    const settle = unusedSettleDeps(false);
+    let settleFails = true;
+    const settle = unusedSettleDeps();
+    settle.chainWritePorts.settleBattle = async (battleId) => {
+      if (settleFails) {
+        throw new Error(`Battle ${battleId}: settle on pool 0xpool-${battleId} for side 0 failed. rpc timeout`);
+      }
+      settle.calls.push(`settle:${battleId}`);
+      return "0xsettle";
+    };
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -564,7 +550,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: false,
       verifyWorldId: async () => {
         n += 1;
         return { nullifier: `settle-call-${String(n)}` };
@@ -582,6 +567,22 @@ describe("GameLoop phases", () => {
     now += 1;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "settle");
+    assert.equal(loop.getState().endsAt, null);
+    assert.match(
+      loop.getState().error ?? "",
+      /settle step settlement failed \(battleId=99\)\. Battle 99: settle on pool 0xpool-99/u,
+    );
+    const saved = await settle.battleQueueStore.get("settle-on");
+    assert.equal(saved?.statusTxHash, "0xstatus");
+    assert.equal(saved?.settlementTxHash, null);
+    now += 10_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "settle");
+
+    settleFails = false;
+    await loop.retrySettle();
+    assert.equal(loop.getState().error, null);
+    assert.equal((await settle.battleQueueStore.get("settle-on"))?.settlementTxHash, "0xsettle");
     assert.deepEqual(settle.calls, ["injuries", "status", "settle:99"]);
   });
 
@@ -624,7 +625,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: ports,
       battleBetting: trackingBattleBetting([]),
       fightJob: async () => new Promise(() => {}),
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "ens-fail" }),
     });
     await loop.vote({}, [0, 1]);
@@ -653,7 +653,7 @@ describe("GameLoop phases", () => {
     await loop.retrySettle();
     assert.equal(loop.getState().error, null);
     assert.equal((await store.get("fail-status"))?.statusTxHash, "0xstatus");
-    assert.deepEqual(calls, ["injuries", "status"]);
+    assert.deepEqual(calls, ["injuries", "status", "settle:99"]);
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
@@ -661,7 +661,7 @@ describe("GameLoop phases", () => {
 
   it("refuses an agent result that names a different winner than the bout", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -679,7 +679,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "mismatch" }),
     });
     await loop.vote({}, [0, 1]);
@@ -704,7 +703,7 @@ describe("GameLoop phases", () => {
 
   it("refuses a playback report when no agent result is attached", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -722,7 +721,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "no-agent" }),
     });
     await loop.vote({}, [0, 1]);
@@ -740,7 +738,7 @@ describe("GameLoop phases", () => {
 
   it("rejects duplicate nullifier and dead picks in stage 1", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -758,14 +756,13 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "same" }),
     });
     await loop.vote({}, [0, 1]);
     await assert.rejects(() => loop.vote({}, [2, 3]), /already voted/u);
 
     let n = 0;
-    const settle2 = unusedSettleDeps(true);
+    const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
       config: {
         ...baseConfig,
@@ -783,7 +780,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
         return { nullifier: `uniq-${String(n)}` };
@@ -808,7 +804,7 @@ describe("GameLoop phases", () => {
     // Winner alpha(0); living non-winners charlie,delta (bravo dead) → pickFirst → charlie(2)
     assert.deepEqual(loop2.getState().fighters, [0, 2]);
     assert.equal(loop2.getState().chars[1]?.alive, false);
-    assert.deepEqual(settle2.calls, ["injuries", "status"]);
+    assert.deepEqual(settle2.calls, ["injuries", "status", "settle:99"]);
   });
 
   it("rejects empty video url", async () => {
@@ -830,7 +826,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "y" }),
     });
     await loop2.vote({}, [0, 1]);
@@ -851,7 +846,7 @@ describe("GameLoop phases", () => {
 
   it("requires randomInt before starting a stage-2 bout", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -868,7 +863,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "z" }),
     });
     await loop.vote({}, [0, 1]);
@@ -891,7 +885,7 @@ describe("GameLoop phases", () => {
 
   it("after failVideo cancels the Sui pool and leaves bet for over", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -909,7 +903,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "fail-video" }),
     });
     await loop.vote({}, [0, 1]);
@@ -931,7 +924,7 @@ describe("GameLoop phases", () => {
 
   it("fight job success attaches result and sets video + outcome", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const requests: FightJobRequest[] = [];
     const loop = new GameLoop({
       config: {
@@ -964,7 +957,6 @@ describe("GameLoop phases", () => {
           frameUrl: "https://cdn.example/frames/job.jpg",
         };
       },
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "job-ok" }),
     });
     await loop.vote({}, [0, 1]);
@@ -991,7 +983,7 @@ describe("GameLoop phases", () => {
 
   it("fight job failure runs failVideo and leaves bet for over", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -1010,7 +1002,6 @@ describe("GameLoop phases", () => {
       fightJob: async () => {
         throw new Error("FAL_KEY is required. Set it in .env. See .env.example.");
       },
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "job-fail" }),
     });
     await loop.vote({}, [0, 1]);
@@ -1030,7 +1021,7 @@ describe("GameLoop phases", () => {
 
   it("a late fight job result is not applied to the next bout", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const requests: FightJobRequest[] = [];
     const pending: Array<(result: FightJobResult) => void> = [];
     let n = 0;
@@ -1048,7 +1039,6 @@ describe("GameLoop phases", () => {
         requests.push(request);
         return new Promise((resolve) => pending.push(resolve));
       },
-      skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
         return { nullifier: `late-${String(n)}` };
@@ -1088,7 +1078,7 @@ describe("GameLoop phases", () => {
 
   it("stage 2 fight job receives priorFrameUrl for image-to-video", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const requests: FightJobRequest[] = [];
     let call = 0;
     const loop = new GameLoop({
@@ -1157,7 +1147,6 @@ describe("GameLoop phases", () => {
           frameUrl: "https://cdn.example/frames/r2.jpg",
         };
       },
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "prior-frame" }),
     });
     await loop.vote({}, [0, 1]);
@@ -1187,7 +1176,7 @@ describe("GameLoop phases", () => {
 
   it("video timeout failVideo also leaves bet and refuses further stakes", async () => {
     let now = 0;
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -1205,7 +1194,6 @@ describe("GameLoop phases", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "timeout-video" }),
     });
     await loop.vote({}, [0, 1]);
@@ -1228,7 +1216,7 @@ describe("betting cutoff", () => {
     overrides: { battleBetting?: BattleBettingPorts; battleQueueStore?: MemoryBattleQueueStore } = {},
   ) {
     const clock = { now: 1_000_000 };
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     let n = 0;
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
@@ -1241,7 +1229,6 @@ describe("betting cutoff", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: overrides.battleBetting ?? settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
         return { nullifier: `cutoff-${String(n)}` };
@@ -1350,7 +1337,7 @@ describe("betting cutoff", () => {
 describe("stored vote and tally", () => {
   function tallyLoop(roundStore: MemoryRoundStore, quorumVotes = 2) {
     const clock = { now: 5_000_000 };
-    const settle = unusedSettleDeps(true);
+    const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes, voteCountdownSeconds: 1 },
       ensLabels: labels,
@@ -1362,7 +1349,6 @@ describe("stored vote and tally", () => {
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
-      skipSettlement: true,
     });
     const states: RoundState[] = [];
     loop.subscribe((state) => states.push(state));
