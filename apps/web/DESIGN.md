@@ -5,15 +5,15 @@ about death, and the house already knows the winner. The flow is `docs/PLAN.md`.
 
 You sit alone in a rusty room in front of an old TV, with a TV remote in your hand.
 
-| File                    | What it is                                                           |
-| ----------------------- | -------------------------------------------------------------------- |
-| `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote. |
-| `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                   |
-| `wallet.ts`             | The burner wallet (EVM today, Sui next). Vite serves the TypeScript. |
-| `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).      |
-| `ht.css`                | Tokens, plus the World ID and wallet gate styles.                    |
-| `system.html`           | The specimen page for the tokens.                                    |
-| `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.          |
+| File                    | What it is                                                            |
+| ----------------------- | --------------------------------------------------------------------- |
+| `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote.  |
+| `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                    |
+| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`. Vite serves the TypeScript. |
+| `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).       |
+| `ht.css`                | Tokens, plus the World ID and wallet gate styles.                     |
+| `system.html`           | The specimen page for the tokens.                                     |
+| `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.           |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
@@ -26,14 +26,14 @@ winners **claim**) → vote again, until one is left.
 
 Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, Frankenstein wins, to match the video.
 
-
 ## The wallet
 
 Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC**. Researched 2026-09-26.
 
-**Now:** `wallet.ts` is still the old EVM (viem) burner. It gets replaced by a Sui burner:
+**Now:** `wallet.ts` is a Sui burner. `getGameWallet()` returns `{ address, signer, client }`, and `getUsdcBalance()`
+reads the meter:
 
-- `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage`, load with
+- `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
 - Bets and claims: `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`.
@@ -41,6 +41,10 @@ Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC
   coin).
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
   Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
+- **USDsui** (Sui's own dollar, issued by Bridge) is the coin for mainnet:
+  `0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI`, 6 decimals. It is **not on
+  testnet** (checked 2026-09-26: no coin metadata there). So testnet uses Circle USDC. Moving to USDsui changes one
+  constant, `USDC_TYPE`.
 - Gas: the burner needs a little SUI. After World ID verifies, the server sends testnet SUI and the first USDC coin, one
   time per nullifier. Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
   co-signs), so users hold only USDC.

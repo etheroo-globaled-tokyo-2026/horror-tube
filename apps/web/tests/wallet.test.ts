@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { verifyMessage } from "viem";
-import { sepolia } from "viem/chains";
+import { verifyPersonalMessageSignature } from "@mysten/sui/verify";
 
 import {
   BURNER_KEY_STORAGE_KEY,
   type KeyStore,
-  getWalletClient,
-  loadBurnerKey,
+  getGameWallet,
+  loadBurnerKeypair,
 } from "../wallet.ts";
 
 function memoryStore(): KeyStore {
@@ -20,30 +19,27 @@ function memoryStore(): KeyStore {
   };
 }
 
-describe("burner wallet", () => {
+describe("sui burner wallet", () => {
   it("creates one key and reuses it", async () => {
     const store = memoryStore();
-    const first = await getWalletClient(store);
-    const second = await getWalletClient(store);
-    assert.equal(second.account.address, first.account.address);
-    assert.equal(store.getItem(BURNER_KEY_STORAGE_KEY), loadBurnerKey(store));
-  });
-
-  it("targets Sepolia", async () => {
-    const client = await getWalletClient(memoryStore());
-    assert.equal(client.chain.id, sepolia.id);
+    const first = await getGameWallet(store);
+    const second = await getGameWallet(store);
+    assert.equal(second.address, first.address);
+    assert.match(store.getItem(BURNER_KEY_STORAGE_KEY) ?? "", /^suiprivkey1/u);
   });
 
   it("signs with no wallet prompt", async () => {
-    const client = await getWalletClient(memoryStore());
-    const signature = await client.signMessage({ message: "bet" });
-    assert.ok(await verifyMessage({ address: client.account.address, message: "bet", signature }));
+    const wallet = await getGameWallet(memoryStore());
+    const message = new TextEncoder().encode("bet");
+    const { signature } = await wallet.signer.signPersonalMessage(message);
+    const publicKey = await verifyPersonalMessageSignature(message, signature);
+    assert.equal(publicKey.toSuiAddress(), wallet.address);
   });
 
   it("refuses to overwrite a broken stored key", () => {
     const store = memoryStore();
     store.setItem(BURNER_KEY_STORAGE_KEY, "not-a-key");
-    assert.throws(() => loadBurnerKey(store), /Refusing to overwrite/u);
+    assert.throws(() => loadBurnerKeypair(store), /Refusing to overwrite/u);
     assert.equal(store.getItem(BURNER_KEY_STORAGE_KEY), "not-a-key");
   });
 });

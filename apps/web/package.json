@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "three": "0.186.1",
-    "viem": "^2.56.8"
+    "@mysten/sui": "^2.33.0",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
