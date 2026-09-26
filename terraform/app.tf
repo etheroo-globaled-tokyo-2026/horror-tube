@@ -3,6 +3,12 @@
 # Spaces/Postgres use var.region sgp1). Push to main redeploys via github.deploy_on_push.
 
 resource "digitalocean_app" "game" {
+  # App Platform Docker builds often exceed the provider default 30m wait.
+  timeouts {
+    create = "60m"
+    update = "60m"
+  }
+
   spec {
     name   = var.app_name
     region = var.app_region
