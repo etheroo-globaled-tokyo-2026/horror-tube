@@ -299,8 +299,8 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS"
-        value = tostring(var.betting_close_after_video_start_seconds)
+        key   = "BETTING_WINDOW_SECONDS"
+        value = tostring(var.betting_window_seconds)
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
