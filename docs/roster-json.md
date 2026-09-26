@@ -3,17 +3,18 @@
 Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
 and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
 
-| Command       | Chain?  | Role                                                                 |
-| ------------- | ------- | -------------------------------------------------------------------- |
-| `propose`     | no      | Build roster JSON from Fandom `api.php`                              |
-| `import`      | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
-| `plan-remove` | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
-| `register`    | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
-| `remove`      | **yes** | `UserRegistry.unregister` for each label                             |
-| `icons`       | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
+| Command        | Chain?  | Role                                                                 |
+| -------------- | ------- | -------------------------------------------------------------------- |
+| `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
+| `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
+| `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
+| `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
+| `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
+| `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
+| `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
 
-`import` / `plan-remove` never send transactions. `register` / `remove` always hit
-chain (after validating input). Do not confuse them.
+`import` / `plan-remove` never send transactions. `register` / `remove` /
+`icons-chain` always hit chain (after validating input). Do not confuse them.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
@@ -22,6 +23,7 @@ via `python-dotenv` when present. `propose` does not require ENS env vars.
 `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
+`icons-chain` requires both the ENS write vars and the Together/Spaces vars.
 
 ## Schemas
 
@@ -153,6 +155,19 @@ python3 -m roster icons \
   --out-dir /tmp/horror-tube-icons \
   --out /tmp/pinhead-with-icon.json \
   --override
+```
+
+### icons-chain (Together + Spaces + ENS icon only)
+
+Discovers every registered character under `ENS_LABEL.eth` from chain. For each
+character whose on-chain `icon` is empty, generates a face PNG from the on-chain
+`look`, uploads to Spaces, and `setText`s **only** the `icon` key to the https
+CDN URL. Does not rewrite `look`, `brief`, `injuries`, or `status`. Skips
+characters that already have a non-empty https icon unless `--override`. Fails
+if `look` is empty (names the label). One failure stops the command.
+
+```bash
+python3 -m roster icons-chain
 ```
 
 ### remove (sends transactions)

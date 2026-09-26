@@ -31,6 +31,7 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
+import { readRosterFromChain } from "./dashboard.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
@@ -51,7 +52,18 @@ const textResolverAbi = parseAbi([
   "function text(bytes32 node, string key) view returns (string)",
 ]);
 
-type Command = "ensure" | "snapshot" | "apply-register" | "unregister";
+type Command =
+  | "ensure"
+  | "snapshot"
+  | "apply-register"
+  | "unregister"
+  | "list"
+  | "set-icon";
+
+type IconUpdate = {
+  label: string;
+  icon: string;
+};
 
 type CharacterSheet = {
   label: string;
@@ -121,20 +133,58 @@ function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
     fail(
-      "Command is required. Use: ensure | snapshot | apply-register | unregister.",
+      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | set-icon.",
     );
   }
   if (
     arg === "ensure" ||
     arg === "snapshot" ||
     arg === "apply-register" ||
-    arg === "unregister"
+    arg === "unregister" ||
+    arg === "list" ||
+    arg === "set-icon"
   ) {
     return arg;
   }
   fail(
-    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister.`,
+    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | set-icon.`,
   );
+}
+
+function parseIconUpdates(path: string): IconUpdate[] {
+  const raw = readJson(path);
+  if (!Array.isArray(raw)) {
+    fail(`--updates must be a JSON array of {label, icon}. Got: ${path}`);
+  }
+  const updates: IconUpdate[] = [];
+  for (const entry of raw) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      typeof (entry as IconUpdate).label !== "string" ||
+      typeof (entry as IconUpdate).icon !== "string"
+    ) {
+      fail(
+        `--updates entries must be objects with string label and icon. Got: ${JSON.stringify(entry)}`,
+      );
+    }
+    const label = (entry as IconUpdate).label.trim();
+    const icon = (entry as IconUpdate).icon.trim();
+    if (label === "") {
+      fail(`--updates entry has a blank label in ${path}`);
+    }
+    if (!icon.startsWith("https://")) {
+      fail(
+        `set-icon for ${label}: icon must be an https URL. Got: ${icon}`,
+      );
+    }
+    updates.push({ label, icon });
+  }
+  if (updates.length === 0) {
+    fail(`${path}: set-icon updates list must not be empty.`);
+  }
+  return updates;
 }
 
 function requireFlag(argv: string[], name: string): string {
@@ -759,6 +809,100 @@ async function main(): Promise<void> {
         ),
       );
     }
+    return;
+  }
+
+  if (command === "list") {
+    const outPath = requireFlag(process.argv, "--out");
+    let roster: Awaited<ReturnType<typeof readRosterFromChain>>;
+    try {
+      roster = await readRosterFromChain(ensLabel, rpcUrl);
+    } catch (error) {
+      fail(
+        `list registered characters failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    const byLabel: Record<string, CharacterSheet> = {};
+    for (const sheet of roster.sheets) {
+      byLabel[sheet.label] = {
+        label: sheet.label,
+        look: sheet.look,
+        brief: sheet.brief,
+        injuries: sheet.injuries,
+        status: sheet.status,
+        icon: sheet.icon,
+      };
+    }
+    writeFileSync(outPath, `${JSON.stringify(byLabel, null, 2)}\n`);
+    console.log(`Wrote registered roster snapshot: ${outPath}`);
+    console.log(`registered=${String(roster.sheets.length)}`);
+    for (const sheet of roster.sheets) {
+      console.log(`label=${sheet.label} icon=${sheet.icon === "" ? "(empty)" : sheet.icon}`);
+    }
+    return;
+  }
+
+  if (command === "set-icon") {
+    const updatesPath = requireFlag(process.argv, "--updates");
+    const outPath = requireFlag(process.argv, "--out");
+    const updates = parseIconUpdates(updatesPath);
+    const ensured = await ensureParentInfrastructure();
+    const results: { label: string; icon: string; txHash: Hex }[] = [];
+
+    for (const update of updates) {
+      const id = labelId(update.label);
+      let status: number;
+      try {
+        status = Number(
+          await publicClient.readContract({
+            address: ensured.subregistry,
+            abi: userRegistryAbi,
+            functionName: "getStatus",
+            args: [id],
+          }),
+        );
+      } catch (error) {
+        fail(
+          `UserRegistry.getStatus(${update.label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (status !== STATUS_REGISTERED) {
+        fail(
+          `Cannot set-icon for ${subname(update.label, ensLabel)}: getStatus=${status}, expected REGISTERED(${STATUS_REGISTERED}).`,
+        );
+      }
+
+      const dnsName = dnsEncodeName(subname(update.label, ensLabel));
+      let textHash: Hex;
+      try {
+        textHash = await walletClient.writeContract({
+          address: ensured.resolver,
+          abi: permissionedResolverAbi,
+          functionName: "setText",
+          args: [dnsName, "icon", update.icon],
+        });
+      } catch (error) {
+        fail(
+          `PermissionedResolver.setText(${update.label}, icon) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      console.log(
+        `setTextTxHash=${textHash} label=${update.label} key=icon icon=${update.icon}`,
+      );
+      await waitSuccess(
+        publicClient,
+        textHash,
+        `setText ${update.label} icon`,
+      );
+      results.push({
+        label: update.label,
+        icon: update.icon,
+        txHash: textHash,
+      });
+    }
+
+    writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`);
+    console.log(`Wrote set-icon results: ${outPath}`);
     return;
   }
 
