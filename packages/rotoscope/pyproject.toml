@@ -5,6 +5,7 @@ description = "Fight videos as FAITH-style line drawings, served over HTTP"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.3",
+    "pillow>=12",
     # headless, with the contrib modules: the people drawing thins lines with cv2.ximgproc
     "opencv-contrib-python-headless>=4.12",
     "starlette>=1.0.1",
@@ -19,6 +20,8 @@ dependencies = [
     "transformers==5.17.0",
     "pyobjc-framework-Vision>=12.2; sys_platform == 'darwin'",
     "pyobjc-framework-Quartz>=12.2; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreML>=12.2; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=12.2; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -43,3 +46,4 @@ override-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: runs models on the GPU"]

@@ -82,12 +82,14 @@ def summary(scenes: Sequence[rules.Scene]) -> str:
 
 
 def prompts(shots: ShotList, cfg: Config) -> list[Prompt]:
-    """Everything SAM is asked to find, once each: every shot's cast and props, blood, lights and hands."""
+    """Everything SAM is asked to find, once each: every shot's cast and props, blood and lights, and hands when a
+    shot puts a prop in someone's hands (only the hold rules use them)."""
     asks = [Prompt("cast", c.id, c.find) for s in shots.shots for c in s.cast]
     asks += [Prompt("prop", p.find, p.find) for s in shots.shots for p in s.props]
     asks += [Prompt("blood", t, t) for t in cfg.gore.blood_prompts]
     asks += [Prompt("light", t, t) for t in cfg.gore.light_prompts]
-    asks.append(Prompt("hand", cfg.rules.hand_prompt, cfg.rules.hand_prompt))
+    if any(s.held() for s in shots.shots):
+        asks.append(Prompt("hand", cfg.rules.hand_prompt, cfg.rules.hand_prompt))
     return list(dict.fromkeys(asks))
 
 
@@ -115,12 +117,15 @@ def rotoscope(video_path: Path, shots: ShotList, cfg: Config, segmenter: Segment
         log.info("segmenter: %d finds in %.1f s", sum(len(f) for f in finds), time.monotonic() - t0)
         with steps.step("keeping finds"):
             kept = rules.decisions(finds, runs, cfg.rules)
+        if not any(s.held() for s in shots.shots):
+            log.info("no shot puts a prop in someone's hands, so no hands are looked for")
         scenes = []
         for k in range(n):
-            with steps.step("finding hands and who holds what", k):
-                scenes.append(rules.assign(kept[k], hands.hands(np.asarray(frames[k])),
-                                           rules.sam_hands(finds[k], cfg.rules), listed[k], cfg.rules))
-            steps.progress("hands", k + 1, n)
+            with steps.step("finding who holds what", k):
+                joints = hands.hands(np.asarray(frames[k])) if listed[k].held() else []
+                scenes.append(rules.assign(kept[k], joints, rules.sam_hands(finds[k], cfg.rules), listed[k],
+                                           cfg.rules))
+            steps.progress("who holds what", k + 1, n)
         with steps.step("carrying holds and dropping set dressing"):
             scenes = rules.in_play(rules.carry(scenes, runs, cfg.rules), listed, cfg.rules)
         log.info("rules: %s", summary(scenes))

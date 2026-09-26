@@ -79,7 +79,11 @@ class FakeSegmenter:
 
 
 class FakeHands:
+    def __init__(self):
+        self.calls = 0
+
     def hands(self, frame):
+        self.calls += 1
         return [A_HAND]
 
 

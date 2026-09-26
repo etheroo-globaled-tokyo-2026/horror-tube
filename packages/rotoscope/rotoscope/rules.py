@@ -302,8 +302,8 @@ def assign(d: Decision, hands: Sequence[Joints], sam_hand_masks: Sequence[np.nda
     far = [f for f in d.kept if f.kind == "cast" and not foreground(f, cfg)]
     props = sorted((f for f in d.kept if f.kind == "prop"), key=lambda f: -f.score)
     ids = identity(figures, shot.cast)
-    play = shot.play()
-    holds = owners([f.mask for f in figures], [p.mask for p in props], [play.get(p.key) == "held" for p in props],
+    held = shot.held()
+    holds = owners([f.mask for f in figures], [p.mask for p in props], [p.key in held for p in props],
                    hands, sam_hand_masks, cfg)
     first: dict[tuple[int | None, str], Find] = {}
     keep, own, rejected = [], [], list(d.rejected)

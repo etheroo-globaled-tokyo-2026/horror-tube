@@ -28,8 +28,9 @@ def held(scene):
 def test_a_hand_on_a_prop_holds_it_only_when_the_shot_list_says_it_is_held():
     frame = [find("cast", "A", A_MASK), find("prop", "knife", KNIFE)]
     in_hand = scenes([frame], shot(props=(("knife", "A"),)), hands=[[A_HAND]])[0]
+    one_of_two = scenes([frame], shot(props=(("knife", "A"), ("knife", "loose"))), hands=[[A_HAND]])[0]
     on_table = scenes([frame], shot(props=(("knife", "loose"),)), hands=[[A_HAND]])[0]
-    assert held(in_hand) == [("knife", "A")]
+    assert held(in_hand) == held(one_of_two) == [("knife", "A")]
     assert held(on_table) == [("knife", None)]
 
 
