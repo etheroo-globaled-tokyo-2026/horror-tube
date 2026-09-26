@@ -9,7 +9,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------------- | -------------------------------------------------------------------- |
 | `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote. |
 | `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                   |
-| `wallet.ts`             | The burner wallet: `getWalletClient()`. Vite serves the TypeScript.  |
+| `wallet.ts`             | The burner wallet (EVM today, Sui next). Vite serves the TypeScript. |
 | `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).      |
 | `ht.css`                | Tokens, plus the World ID and wallet gate styles.                    |
 | `system.html`           | The specimen page for the tokens.                                    |
@@ -19,7 +19,7 @@ Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
 ## The flow (game.js)
 
-World ID (Orb, 18+) → wallet (a real burner wallet on Sepolia, `check_funds`, with an empty-wallet path: vote only) → **vote** (free, top two living
+World ID (Orb, 18+) → wallet (a burner wallet, USDC on Sui testnet, `check_funds`, with an empty-wallet path: vote only) → **vote** (free, top two living
 fight) → **story** (the LLM writes the fight; the winner and damage are known from here) → **bet** (while the video
 renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage and may lose a capability,
 winners **claim**) → vote again, until one is left.
@@ -29,36 +29,44 @@ Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, F
 
 ## The wallet
 
-Bets must not open a wallet popup. `wallet.ts` makes a burner wallet: a viem private key in `localStorage`
-(`horror-tube.burner-key`), on Sepolia. It signs with no prompt. The rest of the game only calls
-`getWalletClient()`, which returns a viem wallet client (with public actions). Only that function changes when we move
-to Privy. Bets and claims in `game.js` are still simulated; there is no contract yet.
+Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC**. Researched 2026-09-26.
 
-**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. OK for test ETH only.
-Option for later: send winnings to a payout address that the user owns.
+**Now:** `wallet.ts` is still the old EVM (viem) burner. It gets replaced by a Sui burner:
 
-**Later: Privy** (researched 2026-09-26, about one day of work):
+- `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage`, load with
+  `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
+  gone, and JSON-RPC is already off on public testnet nodes.
+- Bets and claims: `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`.
+  No popup. Send one transaction at a time (two at once fight over the gas coin).
+- USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
+  Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
+- Gas: the burner needs a little SUI. After World ID verifies, the server sends testnet SUI and the first USDC coin, one
+  time per nullifier. Later: our backend sponsors gas (Sui sponsored transactions), so users hold only USDC.
+- The game only calls one function that returns the signer and the client. Only that function changes later.
 
-- Keep World ID as the only login with Privy **JWT-based auth**: after the World ID check, our server signs a JWT
-  (`sub` = nullifier hash) and serves a JWKS URL. **Blocker:** custom auth must be requested in the Privy Dashboard, and
-  the wait is unknown.
-- Use `@privy-io/js-sdk-core` (no React, no UI, the same engine as `@privy-io/react-auth`):
-  `privy.auth.customProvider.syncWithToken(jwt)` → `embeddedWallet.create()` → `embeddedWallet.getEthereumProvider()` →
-  `createWalletClient({ account, chain: sepolia, transport: custom(provider) })`. Turn off confirmation modals in the
-  Dashboard. The Privy docs call the vanilla SDK "low-level", and it pins `viem` 2.56.0.
-- Move funds by sending the burner ETH to the new address, or with `embeddedWallet.importWallet({ privateKey })`.
-- No smart wallet and no gas sponsorship: users bet with ETH, so they already have gas.
-- Free up to 499 MAU (monthly active users). Stripe owns Privy since 2025.
+**Deposits (the coin box):**
 
-**Options we did not pick:**
+- Coin slot: the Wallet Standard (`@mysten/wallet-standard`, `getWallets()`), or `@mysten/dapp-kit-core` (no React).
+  The extension signs one transfer: `coinWithBalance({ type: USDC, balance })` to the in-game address. Use Slush.
+  Phantom dropped Sui on 2026-09-24.
+- PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
+  but we did not confirm that Slush mobile opens it. Plain address first.
+- The meter: poll the USDC balance every few seconds. Websocket subscriptions are gone. The public node allows 100
+  requests per 30 seconds, so keep a spare RPC URL for the demo.
+- Coin return: the in-game wallet sends USDC back with `tx.coin` + `transferObjects`.
 
-| Option                                   | Why not                                                                |
-| ---------------------------------------- | ---------------------------------------------------------------------- |
-| World App mini-app wallet (MiniKit)      | A confirm screen for every transaction; World Chain, not Sepolia.      |
-| blink.cash                               | A deposit tool on top of a wallet; it does not sign bets. No testnets. |
-| MetaMask Advanced Permissions (ERC-7715) | No popups after one grant, but the user needs the MetaMask extension.  |
-| Base Account sub-accounts                | No popups within a spend limit, Sepolia listed. A second new service.  |
-| Dynamic, Turnkey, thirdweb, Coinbase CDP | They also work with no popups. Privy fits our World ID login best.     |
+**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. OK for testnet.
+
+**Later: a real login wallet.** It must keep World ID as the only login, with no popups:
+
+- **Privy** (pick): our server signs a JWT after World ID (Privy JWT-based auth). Sui is "Tier 2": raw signing only, so
+  we write a small `Signer` adapter (`rawSign` over the blake2b intent digest).
+- **Turnkey:** the same idea, if Privy's Tier 2 gets in the way.
+- **Not zkLogin / Enoki:** zkLogin only takes fixed providers (Google, Apple, Twitch…). No custom issuer, so World ID
+  cannot be the only login, and it opens an OAuth popup.
+
+**Options we did not pick:** blink.cash (ignored). World App wallet (a confirm screen per transaction). Enoki gas
+sponsorship (paid tiers only; testnet pricing unclear).
 
 ## Onboarding: the waiver
 
@@ -74,7 +82,8 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
-Not done yet: the wallet step is still the old full-screen panel. Vote and bet stay on the remote.
+Not done yet: the wallet step is still the old full-screen panel. It goes away: after VERIFIED, cut straight to the TV.
+Money lives on the coin box (below). Vote and bet stay on the remote.
 
 ## The room
 
@@ -84,16 +93,33 @@ Not done yet: the wallet step is still the old full-screen panel. Vote and bet s
   - Typing a number: the number and a one-line hint, never a face. The name shows after OK.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
     PROGRAM", the loser, and OK to collect.
-- **The remote:** the only thing you use. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
+- **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
+- **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` skips the phase, `V` shows the records.
 
 Rules from review:
 
-- **The TV is never interactive.** You act with the remote.
+- **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Picking must not feel like a treat.** No glamour, no vote races, no faces before you choose.
 - **Copy is short and human**, not technical.
 - **Readable first.** The room renders at 1/1.6 resolution and the TV picture at 640×480, with big type.
+
+## The coin box
+
+Old motel TVs took coins: pay to keep watching, pull the lever to get your coins back. Ours sits on the table, next to
+the TV. Everyone knows how it works, so it needs no explanation. The money is USDC on Sui testnet.
+
+- **The meter:** your credit, `CREDIT 12.50`. It counts up when money lands and down when you bet. You watch it drain.
+- **The coin slot:** deposit from a browser wallet. Click the slot, pick a coin ($5 / $10 / $20). Your wallet extension
+  opens once to approve. A coin drops, the meter counts up.
+- **The sticker, PAY BY PHONE:** deposit from a phone wallet. A QR code on a peeling sticker. Scan it and send USDC. The
+  meter counts up when the money lands.
+- **The coin return lever:** withdraw. The credit goes back to the wallet that paid in.
+- **Empty:** the meter reads `CREDIT 0.00`. You can vote. A and B on the remote do nothing, and the TV says `NO STAKE`.
+- A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
+  in-game wallet signs them.
+- Demo: the house drops the first coin, one time per World ID human (the faucet).
 
 ## Colour
 

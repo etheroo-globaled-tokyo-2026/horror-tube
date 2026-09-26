@@ -3,7 +3,7 @@
 A battle royale of famous horror movie characters. AI makes each fight as a video.
 Verified humans vote on who fights next (free). Users bet on who wins (paid).
 
-ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit) and **ENS** (ENSv2).
+ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Sui** (DeFi & Payments).
 
 ## Art direction
 
@@ -13,16 +13,16 @@ See `apps/web/DESIGN.md`.
 
 - **ENS name**: character state (subnames and text records) on Sepolia.
 - **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
-- **Smart contract**: the betting pool.
-- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a Privy embedded wallet later. No wallet popups. See "The wallet" in `apps/web/DESIGN.md`.
+- **Smart contract**: the betting pool, a Move package on Sui testnet.
+- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a Privy embedded wallet later. Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
    This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
-2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
-   Default until we decide: if the wallet is empty, the backend sends it test ETH, one time per World ID nullifier.
+2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
+   Deposits go through the coin box (see `apps/web/DESIGN.md`). Demo: the backend sends testnet SUI (gas) and the first USDC, one time per World ID nullifier.
    Open: this step is still a full-screen panel. It must move into the room too.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
@@ -37,7 +37,7 @@ See `apps/web/DESIGN.md`.
 10. **Update ENS**:
     - The loser's subname moves to the dead pool. (Open: see question 3.)
     - The winner takes damage. Its ENS text records update.
-    - The contract reads the loser's ENS status. If it is `dead`, bets on the other fighter win, and the winners can claim.
+    - The backend reads the loser's ENS status on Sepolia and settles the Sui contract. If it is `dead`, bets on the other fighter win, and the winners can claim. (A Sui contract cannot read ENS.)
 11. Go back to the vote (step 3), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
@@ -96,7 +96,7 @@ ENS holds the game state of the characters. It is central to the game, not decor
 | `status`, `kills`, `damage` | Text records on a Permissioned Resolver |
 | Capabilities lost to damage | Open: Enhanced Access Control roles, or a text record (open question 2) |
 | Loser goes to the dead pool | Move or alias the subname (open question 3) |
-| The contract pays out from ENS state | The betting contract reads the loser's `status` |
+| The contract pays out from ENS state | The backend reads the loser's `status` and settles the Sui contract |
 | Bonus: fighters as AI agents | Each character is an agent namespace with its own permissions (ENSIP-25/26) |
 
 **Requirements:** ENSv2 on Sepolia, no hard-coded values, a live demo link, and open-source code.
