@@ -31,7 +31,55 @@ const STATUS_REGISTERED = 2;
 export const REGISTER_SELECTOR = "0x85f3e643" as const;
 export const TRANSFER_SINGLE_TOPIC0 =
   "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
-const LOG_CHUNK_SIZE = 40000n;
+/** Inclusive block count per eth_getLogs window. Never larger than this. */
+export const MAX_LOG_CHUNK_BLOCKS = 49999n;
+/** Cap on backward windows from chain head. */
+export const MAX_RECENT_LOG_CHUNKS = 4;
+/** Lowest block number this dashboard will query. Never block 0. */
+export const MIN_LOG_BLOCK = 1n;
+
+export type BlockRange = {
+  fromBlock: bigint;
+  toBlock: bigint;
+};
+
+/**
+ * Inclusive block windows walking backward from `latestBlock`.
+ * Each window spans at most `maxChunkBlocks` blocks. Never includes block 0.
+ */
+export function recentLogScanChunks(
+  latestBlock: bigint,
+  maxChunks: number = MAX_RECENT_LOG_CHUNKS,
+  maxChunkBlocks: bigint = MAX_LOG_CHUNK_BLOCKS,
+): BlockRange[] {
+  if (!Number.isInteger(maxChunks) || maxChunks < 1) {
+    throw new Error(
+      `recentLogScanChunks: maxChunks must be a positive integer. Got: ${String(maxChunks)}`,
+    );
+  }
+  if (maxChunkBlocks < 1n) {
+    throw new Error(
+      `recentLogScanChunks: maxChunkBlocks must be >= 1. Got: ${maxChunkBlocks.toString()}`,
+    );
+  }
+  if (latestBlock < MIN_LOG_BLOCK) {
+    return [];
+  }
+  const chunks: BlockRange[] = [];
+  let toBlock = latestBlock;
+  for (let i = 0; i < maxChunks && toBlock >= MIN_LOG_BLOCK; i++) {
+    let fromBlock = toBlock - (maxChunkBlocks - 1n);
+    if (fromBlock < MIN_LOG_BLOCK) {
+      fromBlock = MIN_LOG_BLOCK;
+    }
+    chunks.push({ fromBlock, toBlock });
+    if (fromBlock <= MIN_LOG_BLOCK) {
+      break;
+    }
+    toBlock = fromBlock - 1n;
+  }
+  return chunks;
+}
 
 const textResolverAbi = parseAbi([
   "function text(bytes32 node, string key) view returns (string)",
@@ -272,96 +320,73 @@ ${cards}
 `;
 }
 
-async function findContractBirthBlock(
+async function collectRecentTransferSingleLogs(
   publicClient: PublicClient,
   address: Address,
-): Promise<bigint> {
-  const latest = await publicClient.getBlockNumber();
-  const latestCode = await publicClient.getBytecode({ address, blockNumber: latest });
-  if (latestCode === undefined || latestCode === "0x") {
+): Promise<{
+  logs: readonly { transactionHash: Hex }[];
+  fromBlock: bigint;
+  toBlock: bigint;
+}> {
+  const latestBlock = await publicClient.getBlockNumber();
+  const planned = recentLogScanChunks(latestBlock);
+  if (planned.length === 0) {
     throw new Error(
-      `Subregistry ${address} has no bytecode at latest block ${latest.toString()}`,
+      `Cannot scan TransferSingle logs: latest block ${latestBlock.toString()} is below MIN_LOG_BLOCK ${MIN_LOG_BLOCK.toString()}`,
     );
   }
-  let lo = 0n;
-  let hi = latest;
-  while (lo < hi) {
-    const mid = (lo + hi) / 2n;
-    const code = await publicClient.getBytecode({ address, blockNumber: mid });
-    if (code === undefined || code === "0x") {
-      lo = mid + 1n;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
 
-async function getLogsChunked(
-  publicClient: PublicClient,
-  address: Address,
-  fromBlock: bigint,
-  toBlock: bigint,
-): Promise<readonly { transactionHash: Hex }[]> {
-  if (fromBlock > toBlock) {
-    return [];
-  }
-  try {
-    return await publicClient.getLogs({
-      address,
-      fromBlock,
-      toBlock,
-      topics: [TRANSFER_SINGLE_TOPIC0],
-    });
-  } catch (error) {
-    if (fromBlock === toBlock) {
+  console.error(
+    `discover: subregistry=${address} latestBlock=${latestBlock.toString()} maxChunks=${String(MAX_RECENT_LOG_CHUNKS)} maxChunkBlocks=${MAX_LOG_CHUNK_BLOCKS.toString()}`,
+  );
+
+  const all: { transactionHash: Hex }[] = [];
+  let seenAnyLog = false;
+  let searchedFrom = planned[0]!.fromBlock;
+  let searchedTo = planned[0]!.toBlock;
+
+  for (const { fromBlock, toBlock } of planned) {
+    searchedFrom = fromBlock < searchedFrom ? fromBlock : searchedFrom;
+    searchedTo = toBlock > searchedTo ? toBlock : searchedTo;
+
+    let chunk: readonly { transactionHash: Hex }[];
+    try {
+      chunk = await publicClient.getLogs({
+        address,
+        fromBlock,
+        toBlock,
+        topics: [TRANSFER_SINGLE_TOPIC0],
+      });
+    } catch (error) {
       throw new Error(
-        `eth_getLogs failed for ${address} at block ${fromBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+        `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const mid = (fromBlock + toBlock) / 2n;
-    const left = await getLogsChunked(publicClient, address, fromBlock, mid);
-    const right = await getLogsChunked(publicClient, address, mid + 1n, toBlock);
-    return [...left, ...right];
-  }
-}
 
-async function collectTransferSingleLogs(
-  publicClient: PublicClient,
-  address: Address,
-  birthBlock: bigint,
-  latestBlock: bigint,
-): Promise<readonly { transactionHash: Hex }[]> {
-  const all: { transactionHash: Hex }[] = [];
-  let start = birthBlock;
-  while (start <= latestBlock) {
-    let end = start + LOG_CHUNK_SIZE - 1n;
-    if (end > latestBlock) {
-      end = latestBlock;
+    console.error(
+      `discover: eth_getLogs fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()} logs=${String(chunk.length)}`,
+    );
+
+    if (chunk.length > 0) {
+      seenAnyLog = true;
+      for (const log of chunk) {
+        all.push({ transactionHash: log.transactionHash });
+      }
+    } else if (seenAnyLog) {
+      break;
     }
-    const chunk = await getLogsChunked(publicClient, address, start, end);
-    for (const log of chunk) {
-      all.push({ transactionHash: log.transactionHash });
-    }
-    start = end + 1n;
   }
-  return all;
+
+  return { logs: all, fromBlock: searchedFrom, toBlock: searchedTo };
 }
 
 async function discoverRegisteredLabels(
   publicClient: PublicClient,
   subregistry: Address,
 ): Promise<string[]> {
-  const birthBlock = await findContractBirthBlock(publicClient, subregistry);
-  const latestBlock = await publicClient.getBlockNumber();
-  console.error(
-    `discover: subregistry=${subregistry} birthBlock=${birthBlock.toString()} latestBlock=${latestBlock.toString()}`,
-  );
-  const logs = await collectTransferSingleLogs(
+  const { logs, fromBlock, toBlock } = await collectRecentTransferSingleLogs(
     publicClient,
     subregistry,
-    birthBlock,
-    latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
   const candidateLabels = new Set<string>();
@@ -378,6 +403,12 @@ async function discoverRegisteredLabels(
     if (label !== null) {
       candidateLabels.add(label);
     }
+  }
+
+  if (candidateLabels.size === 0) {
+    throw new Error(
+      `No register() labels found in TransferSingle logs for ${subregistry} in blocks ${fromBlock.toString()}..${toBlock.toString()}`,
+    );
   }
 
   const registered: string[] = [];

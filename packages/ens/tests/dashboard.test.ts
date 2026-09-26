@@ -7,7 +7,11 @@ import { encodeFunctionData, type Hex } from "viem";
 
 import { userRegistryAbi } from "../scripts/abis.js";
 import {
+  MAX_LOG_CHUNK_BLOCKS,
+  MAX_RECENT_LOG_CHUNKS,
+  MIN_LOG_BLOCK,
   decodeRegisterLabel,
+  recentLogScanChunks,
   renderDashboardHtml,
   type CharacterSheet,
 } from "../scripts/dashboard.js";
@@ -35,6 +39,33 @@ describe("dashboard register calldata (unit, no network)", () => {
     const other: Hex =
       "0xabcdef010000000000000000000000000000000000000000000000000000000000000000";
     assert.equal(decodeRegisterLabel(other), null);
+  });
+});
+
+describe("dashboard recent log windows (unit, no network)", () => {
+  it("walks backward in chunks of at most 49999 blocks from head", () => {
+    const latest = 11_785_000n;
+    const chunks = recentLogScanChunks(latest);
+    assert.equal(chunks.length, MAX_RECENT_LOG_CHUNKS);
+    assert.equal(chunks[0]!.toBlock, latest);
+    assert.equal(chunks[0]!.fromBlock, latest - (MAX_LOG_CHUNK_BLOCKS - 1n));
+    for (const chunk of chunks) {
+      const span = chunk.toBlock - chunk.fromBlock + 1n;
+      assert.ok(span <= MAX_LOG_CHUNK_BLOCKS);
+      assert.ok(chunk.fromBlock >= MIN_LOG_BLOCK);
+    }
+    assert.equal(chunks[1]!.toBlock, chunks[0]!.fromBlock - 1n);
+    assert.equal(
+      chunks[3]!.fromBlock,
+      latest - 4n * MAX_LOG_CHUNK_BLOCKS + 1n,
+    );
+  });
+
+  it("never includes block 0 when head is near genesis", () => {
+    const chunks = recentLogScanChunks(100n, 4, 49999n);
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0]!.fromBlock, MIN_LOG_BLOCK);
+    assert.equal(chunks[0]!.toBlock, 100n);
   });
 });
 
