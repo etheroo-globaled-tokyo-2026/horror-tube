@@ -34,7 +34,7 @@ export const $ = (s: string): HTMLElement => {
   if (!el) throw new Error(`missing element ${s}`);
   return el;
 };
-export const hooks = { render: (): void => {} };
+export const hooks = { render: (): void => {}, collected: (): void => {} };
 export const countdown = { hold: false };
 const render = (): void => hooks.render();
 
@@ -224,6 +224,7 @@ async function sendBet(side: 0 | 1, amt: number): Promise<string> {
   if (poolId === null || !bookOpen(S)) throw new Error("The book is not open.");
   const digest = await placeBet(gameWallet, toContractIds(bettingIds), poolId, side, toUsdcUnits(amt));
   if (S.poolId === poolId) S.bet = { side, amt };
+  note("");
   log(`BET ${usd(amt)} ON ${side === 0 ? "A" : "B"} · ${digest.slice(0, 8)}`, "t-alive");
   return digest;
 }
@@ -236,6 +237,8 @@ async function collect(): Promise<void> {
   owedTickets = [];
   S.claim = 0;
   log(`CLAIMED +${usd(usdc)} USDC · ${digest.slice(0, 8)}`, "t-alive");
+  note("");
+  hooks.collected();
 }
 
 export async function loadBettingIds(
@@ -300,6 +303,10 @@ export function applyRoundState(state: ServerRoundState): void {
     local.alive = remote.alive;
     local.kills = remote.kills;
     local.damage = remote.damage;
+  }
+  if (state.phase !== prevPhase && S.noteKind === "bad") {
+    S.note = "";
+    S.noteKind = "";
   }
   if (winningsDue(prevPhase, state.phase)) void queueMoney(checkWinnings);
   if (state.error) {

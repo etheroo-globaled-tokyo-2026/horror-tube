@@ -23,8 +23,6 @@ export type WalkStep = {
 };
 export const walkRef = { n: -1 };
 
-export const esc = (text: string): string =>
-  text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export const num = (n: number): string => String(n).padStart(2, "0");
 
 export const T = {
