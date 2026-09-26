@@ -20,5 +20,11 @@ export type RoundState = {
   bettingClosesAt: number | null;
   frameUrl: string | null;
   error: string | null;
+  bots: {
+    address: string;
+    picks: number[] | null;
+    bet: { side: 0 | 1; units: number; digest: string } | null;
+    error: string | null;
+  }[];
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
 };

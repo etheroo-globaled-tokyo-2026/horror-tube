@@ -71,10 +71,12 @@ export function createBattleBettingPorts(
   };
 }
 
-export async function readHouseFeeBps(config: BettingConfig): Promise<number> {
+export async function readHouseTerms(
+  config: BettingConfig,
+): Promise<{ feeBps: number; minBet: bigint }> {
   try {
     const house = await getHouse(createClient(config), config);
-    return Number(house.feeBps);
+    return { feeBps: Number(house.feeBps), minBet: house.minBet };
   } catch (cause) {
     const detail = (cause instanceof Error ? cause.message : String(cause)).replace(/\.$/u, "");
     throw new Error(

@@ -32,6 +32,16 @@ const RoundStateSchema = v.object({
   bettingClosesAt: v.nullable(v.number()),
   frameUrl: v.nullable(v.string()),
   error: v.nullable(v.string()),
+  bots: v.array(
+    v.object({
+      address: v.string(),
+      picks: v.nullable(v.array(v.number())),
+      bet: v.nullable(
+        v.object({ side: v.picklist([0, 1]), units: v.number(), digest: v.string() }),
+      ),
+      error: v.nullable(v.string()),
+    }),
+  ),
   chars: v.array(
     v.object({ id: v.number(), alive: v.boolean(), kills: v.number(), damage: v.number() }),
   ),

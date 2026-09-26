@@ -111,6 +111,7 @@ describe("migration SQL shape", () => {
       "002_battle_results.sql",
       "003_betting_closes_at.sql",
       "004_sui_pools.sql",
+      "005_house_bot_votes.sql",
     ]);
   });
 
