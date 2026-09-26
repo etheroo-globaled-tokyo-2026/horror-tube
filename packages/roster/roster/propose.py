@@ -12,6 +12,7 @@ from roster.fandom import (
     LOOK_SECTION_RES,
     FandomError,
     PageLore,
+    PageRef,
     fetch_page_lore,
     fetch_section,
     resolve_page,
@@ -99,6 +100,23 @@ def sheet_from_lore(lore: PageLore, *, injury_places: str | None = None) -> Char
     return parse_characters(character, source=str(lore.ref))[0]
 
 
+def sheet_from_page_pair(look_ref: PageRef, brief_ref: PageRef) -> Character:
+    """One fighter: look from one page, brief from another. Both must share a label."""
+    look_title, appearance = fetch_section(look_ref, LOOK_SECTION_RES, name="look")
+    brief_title, powers = fetch_section(brief_ref, BRIEF_SECTION_RES, name="brief")
+    look_label = label_from_title(look_title)
+    brief_label = label_from_title(brief_title)
+    if look_label != brief_label:
+        raise FandomError(
+            f"Look page {look_title!r} is label {look_label!r} but "
+            f"brief page {brief_title!r} is label {brief_label!r}. "
+            "Refusing to pair different characters."
+        )
+    return sheet_from_lore(
+        PageLore(ref=look_ref, title=look_title, appearance=appearance, powers=powers)
+    )
+
+
 def propose_one(entry: dict[str, Any], *, wiki: str | None) -> Character:
     source = entry.get("source")
     look_source = entry.get("look_source")
@@ -113,20 +131,9 @@ def propose_one(entry: dict[str, Any], *, wiki: str | None) -> Character:
         raise FandomError(f"Cast entry needs source or look_source. Got: {entry!r}")
     if not isinstance(brief_source, str) or brief_source.strip() == "":
         raise FandomError(f"Cast entry needs brief_source with look_source. Got: {entry!r}")
-    look_ref = resolve_page(look_source, wiki=wiki)
-    brief_ref = resolve_page(brief_source, wiki=wiki)
-    look_title, appearance = fetch_section(look_ref, LOOK_SECTION_RES, name="look")
-    brief_title, powers = fetch_section(brief_ref, BRIEF_SECTION_RES, name="brief")
-    look_label = label_from_title(look_title)
-    brief_label = label_from_title(brief_title)
-    if look_label != brief_label:
-        raise FandomError(
-            f"Look page {look_title!r} is label {look_label!r} but "
-            f"brief page {brief_title!r} is label {brief_label!r}. "
-            "Refusing to pair different characters."
-        )
-    return sheet_from_lore(
-        PageLore(ref=look_ref, title=look_title, appearance=appearance, powers=powers)
+    return sheet_from_page_pair(
+        resolve_page(look_source, wiki=wiki),
+        resolve_page(brief_source, wiki=wiki),
     )
 
 

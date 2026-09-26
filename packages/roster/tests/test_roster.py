@@ -7,6 +7,8 @@ import os
 import tempfile
 import unittest
 import urllib.parse
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -17,8 +19,11 @@ from roster.plan import build_import_plan, build_register_plan, build_removal_pl
 from roster.propose import (
     display_name_from_title,
     injury_places_json_for_label,
+    load_cast,
+    propose_one,
     propose_sheets,
     sheet_from_lore,
+    sheet_from_page_pair,
     sheets_payload,
 )
 from roster.validate import (
@@ -383,12 +388,21 @@ class ProposeTests(unittest.TestCase):
         with mock.patch("roster.fandom.fetch_api", return_value=parse):
             with self.assertRaises(FandomError) as ctx:
                 fetch_page_lore(resolve_page("Only Biography", wiki=WIKI))
-        self.assertIn("no look section", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("no look section", message)
+        self.assertIn("Sections: Biography", message)
+        self.assertIn(
+            "python -m roster sections --source "
+            "'https://villains.fandom.com/wiki/Only_Biography'",
+            message,
+        )
 
     def test_disambiguation_page_fails(self):
         with self.assertRaises(FandomError) as ctx:
             _lore("Freddy Krueger")
-        self.assertIn("disambiguation", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("disambiguation", message)
+        self.assertIn("--look-source", message)
 
     def test_duplicate_labels_fail(self):
         lore = _lore("Pinhead (Hellraiser)")
@@ -528,6 +542,189 @@ class TestRegisterRejectsFixtures(unittest.TestCase):
     def test_register_refuses_fixture_path(self):
         code = cli.main(["register", "--input", str(FIXTURE)])
         self.assertEqual(code, 1)
+
+
+FRANK_LOOK_URL = "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)"
+FRANK_BRIEF_URL = "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)"
+DRACULA_URL = "https://villains.fandom.com/wiki/Dracula_(Castlevania)"
+FRANK_DISAMBIGUATION_URL = "https://villains.fandom.com/wiki/Frankenstein"
+
+
+def _pair_api(_host, params):
+    """Invented api.php replies for two-page tests. Headings mirror this branch's matchers."""
+    if params.get("prop") == "text":
+        if params["pageid"] == "1":
+            body = "<p>A huge man with green skin and bolts in his neck. He wears a dark coat.</p>"
+        else:
+            body = "<p>Superhuman Strength: He tears a man limb from limb. He is fast.</p>"
+        return {"parse": {"text": body}}
+    title = params["page"]
+    if title == "Frankenstein":
+        return {
+            "parse": {
+                "title": "Frankenstein",
+                "pageid": 7337,
+                "properties": {"disambiguation": ""},
+                "categories": [{"category": "Disambiguation_pages"}],
+                "sections": [{"index": "1", "line": "Similar characters"}],
+            }
+        }
+    if "Universal" in title:
+        pageid, sections = 1, [{"index": "4", "line": "Physical Appearance"}]
+    elif "Mary Shelley" in title:
+        pageid, sections = 2, [{"index": "7", "line": "Abilities and Attributes"}]
+    elif "Dracula" in title:
+        pageid, sections = 3, [{"index": "2", "line": "Powers and Abilities"}]
+    else:
+        raise AssertionError(f"unexpected page {title!r}")
+    return {
+        "parse": {
+            "title": title,
+            "pageid": pageid,
+            "properties": {},
+            "categories": [],
+            "sections": sections,
+        }
+    }
+
+
+class PagePairTests(unittest.TestCase):
+    def test_look_and_brief_from_two_pages_share_frankenstein(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            sheet = sheet_from_page_pair(
+                resolve_page(FRANK_LOOK_URL, wiki=None),
+                resolve_page(FRANK_BRIEF_URL, wiki=None),
+            )
+        self.assertEqual(sheet["label"], "frankenstein")
+        self.assertEqual(sheet["display_name"], "Frankenstein's Monster")
+        self.assertEqual(sheet["look"], "A huge man with green skin and bolts in his neck.")
+        self.assertEqual(sheet["brief"], "Superhuman Strength: He tears a man limb from limb.")
+        self.assertGreaterEqual(len(json.loads(sheet["injury_places"])), 1)
+        self.assertEqual(sheet["injuries"], "[]")
+        self.assertEqual(sheet["status"], "alive")
+
+    def test_mismatched_labels_fail_and_name_both(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            with self.assertRaises(FandomError) as ctx:
+                sheet_from_page_pair(
+                    resolve_page(FRANK_LOOK_URL, wiki=None),
+                    resolve_page(DRACULA_URL, wiki=None),
+                )
+        message = str(ctx.exception)
+        self.assertIn("Frankenstein's Monster (Universal Monsters)", message)
+        self.assertIn("Dracula (Castlevania)", message)
+        self.assertIn("'frankenstein'", message)
+        self.assertIn("'dracula'", message)
+
+    def test_disambiguation_look_page_fails(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            with self.assertRaises(FandomError) as ctx:
+                sheet_from_page_pair(
+                    resolve_page(FRANK_DISAMBIGUATION_URL, wiki=None),
+                    resolve_page(FRANK_BRIEF_URL, wiki=None),
+                )
+        self.assertIn("disambiguation", str(ctx.exception))
+
+    def test_brief_page_without_brief_heading_names_sections_command(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            with self.assertRaises(FandomError) as ctx:
+                sheet_from_page_pair(
+                    resolve_page(FRANK_LOOK_URL, wiki=None),
+                    resolve_page(FRANK_LOOK_URL, wiki=None),
+                )
+        message = str(ctx.exception)
+        self.assertIn("no brief section", message)
+        self.assertIn("python -m roster sections --source", message)
+
+    def test_cast_entry_with_look_and_brief_source(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            sheet = propose_one(
+                {"look_source": FRANK_LOOK_URL, "brief_source": FRANK_BRIEF_URL},
+                wiki=None,
+            )
+        self.assertEqual(sheet["label"], "frankenstein")
+
+    def test_cast_json_frankenstein_is_two_pages(self):
+        entries = [e for e in load_cast() if "Frankenstein" in json.dumps(e)]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(set(entries[0]), {"look_source", "brief_source"})
+
+
+class PagePairCliTests(unittest.TestCase):
+    def _propose(self, extra):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out.json"
+            stderr = StringIO()
+            with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+                with redirect_stderr(stderr):
+                    code = cli.main(["propose", *extra, "--out", str(out)])
+            payload = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
+        return code, payload, stderr.getvalue()
+
+    def test_propose_pair_writes_one_sheet(self):
+        code, payload, _ = self._propose(
+            ["--n", "1", "--look-source", FRANK_LOOK_URL, "--brief-source", FRANK_BRIEF_URL]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["label"], "frankenstein")
+        self.assertIn("green skin", payload["look"])
+
+    def test_propose_look_without_brief_fails(self):
+        code, payload, err = self._propose(["--n", "1", "--look-source", FRANK_LOOK_URL])
+        self.assertEqual(code, 1)
+        self.assertIsNone(payload)
+        self.assertIn("both --look-source and --brief-source", err)
+
+    def test_propose_pair_requires_n_1(self):
+        code, payload, err = self._propose(
+            ["--n", "2", "--look-source", FRANK_LOOK_URL, "--brief-source", FRANK_BRIEF_URL]
+        )
+        self.assertEqual(code, 1)
+        self.assertIsNone(payload)
+        self.assertIn("--n must be 1", err)
+
+    def test_propose_pair_with_source_fails(self):
+        code, payload, err = self._propose(
+            [
+                "--n",
+                "1",
+                "--source",
+                DRACULA_URL,
+                "--look-source",
+                FRANK_LOOK_URL,
+                "--brief-source",
+                FRANK_BRIEF_URL,
+            ]
+        )
+        self.assertEqual(code, 1)
+        self.assertIsNone(payload)
+        self.assertIn("Do not pass --source", err)
+
+    def test_propose_pair_disambiguation_fails(self):
+        code, payload, err = self._propose(
+            [
+                "--n",
+                "1",
+                "--look-source",
+                FRANK_DISAMBIGUATION_URL,
+                "--brief-source",
+                FRANK_BRIEF_URL,
+            ]
+        )
+        self.assertEqual(code, 1)
+        self.assertIsNone(payload)
+        self.assertIn("disambiguation", err)
+
+    def test_sections_command_prints_headings(self):
+        stdout = StringIO()
+        with mock.patch("roster.fandom.fetch_api", side_effect=_pair_api):
+            with redirect_stdout(stdout):
+                code = cli.main(["sections", "--source", FRANK_DISAMBIGUATION_URL])
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["title"], "Frankenstein")
+        self.assertTrue(payload["disambiguation"])
+        self.assertEqual(payload["sections"], [{"index": "1", "line": "Similar characters"}])
 
 
 if __name__ == "__main__":
