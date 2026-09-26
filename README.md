@@ -8,7 +8,7 @@
 ![Horror](https://img.shields.io/badge/Horror-86101A?style=flat-square)
 
 A battle royale of famous horror characters. AI makes each fight as a video. Verified humans watch; the winner stays
-on against a living challenger a person picks. Users bet on who wins (paid). ETHGlobal Tokyo 2026.
+on against a living challenger the viewers vote for. Users bet on who wins (paid). ETHGlobal Tokyo 2026.
 
 The banner was generated with FLUX.1 [dev] (`fal-ai/flux/dev`).
 

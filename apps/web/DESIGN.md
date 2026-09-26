@@ -10,7 +10,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
 | `main.ts`         | The 3D room (Three.js from npm), the TV picture and the remote.                                             |
 | `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
-| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
+| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /vote`.                                                     |
 | `wallet.ts`       | The server-held Shinami wallet: `getGameWallet()`, USDC balance, and `runKind` → `POST /tx`.                |
 | `coinbox.ts`      | The slot meter: credit window, coin dial, Sui token tray, PAY BY PHONE sticker, padlocked drawer.           |
 | `room-power.ts`   | The remote's POWER key (`O`): the set dies, films you from the TV, and a face lunges at you when you turn.  |
@@ -39,7 +39,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **panel** (a person picks one fighter for the first match and the other is random. Later, a person picks the next fighter and the champion stays) → **vote** (the room and house bots pick who they think wins; voting closes at quorum or after 15 seconds) → **bet** (hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **pick** (the room votes for the next fighter: OK casts one ballot per viewer for the first match, the other fighter drawn at random, or later for the challenger while the champion stays; once enough viewers have voted, a short countdown closes the poll and the server books the top-voted fighter) → **bet** (hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
 House bots play too (`RoundState.bots`, rules in `docs/game-loop.md`). A bot bets against the human stake once a
 human has started the bout. The room never hides it: the bet screen prints `HOUSE BOT 0.50 USDC` under the side it
@@ -65,9 +65,11 @@ Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC
   `runKind` → `POST /tx`. `runKind` waits for the digest and throws the chain's error when the transaction failed
   (a bet that lands after `close_betting` aborts with `EBettingClosed`). IDs come from `GET /betting`. Odds use
   `RoundState.pool` and `feeBps`.
-- Winnings: `game.ts` reads the wallet's tickets on every phase change and on every update during settle, because
-  the server announces settle before the Sui pool is settled. Tickets in open pools wait. `YOU LOST` counts only the
-  stake lost in this round's pool (`RoundState.poolId`), and the result and the claim reset when a new season's first bout opens.
+- Winnings: at settle the room calls your bet at once from your side, the winner and `RoundState.pool`, with the
+  pool's own payout rule (`betOutcome`): `YOU WON · ABOUT …`, `YOU LOST …`, or `NO TAKERS · … RETURNED`, also written
+  to the log. The Sui pool settles after the ENS writes, so `game.ts` reads the wallet's tickets on every phase change
+  and, after a win or refund, every 3s for up to 2 minutes until `COLLECT` shows the exact amount. Tickets in open
+  pools wait. The call and the claim reset with the next bout.
 - One money move at a time: a bet or a collect sets `S.pending` before it is sent and clears it when it lands or
   fails. Meanwhile A/B and OK do nothing, and the TV and the hint say `PLACING YOUR BET…` or `COLLECTING…`. Bets,
   claims and winnings reads run in order, never side by side.
@@ -182,17 +184,21 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Waiting and `pick`: the top half loops the newest bout tape once one has aired; before that, it cycles
+  - Waiting, `over` and `pick`: the top half loops the newest bout tape once one has aired; before that, it cycles
     through the residents (face, name, `brief`, injuries). A typed number shows that resident instead. The bottom
-    half shows every resident's face and room number, the dead crossed out and the champion faded, under
-    THE PROGRAMME MAY BEGIN, or in `pick` the matchup (champion face, `<CHAMPION> VS`, then a `?` box that
-    becomes the typed resident's face), then TYPE A ROOM NUMBER. OK books that fighter; on a fresh game the other
-    fighter is drawn at random. A failed booking shows the server's reason.
-  - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
+    half shows every resident's face and fighter number, a vote count on any fighter with one, the dead crossed
+    out and the champion faded, under THE PROGRAMME MAY BEGIN, or in `pick` the matchup (champion face,
+    `<CHAMPION> VS`, then a `?` box that becomes the typed resident's face), then TYPE A FIGHTER'S NUMBER and a
+    `voters / quorum VOTES` line that adds a closing countdown once quorum is met. OK casts the room's one ballot.
+  - After the room votes: YOUR VOTE IS IN with the voted face (beside the champion in `pick`), the top vote counts,
+    and WAITING FOR OTHER VIEWERS until quorum, then THE VOTE CLOSES IN m:ss. When the poll closes, the server books
+    the top-voted fighter, drawing the opponent at random on a fresh game. A failed booking returns to the choice
+    screen with the server's reason.
   - Typing a number: the resident's case file: face, name, kills and damage, `brief`, injuries. Typing puts down a
     held tape, so the TV stays in view. CLR goes back.
-  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the deceased
-    resident, the winner, and OK to collect.
+  - Bet: A and B with the odds and your stake, and `BETS CLOSE IN` once the fight is ready. The video loads but does
+    not play. Fight: the video from the start, for every room at once, with a warm, low-res filter. Settle: the
+    deceased resident, the winner, how your bet went, and OK to collect.
   - A tape in the VCR: the bout video with the same filter, PLAY and a play mark top left, the bout number and the
     counter at the bottom. A typed case file still shows over it.
 - **The remote:** the only thing you use for the game. One digit per room (rooms 1–9, then 0) for a case file, or

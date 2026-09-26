@@ -9,7 +9,6 @@ import {
   type Pool,
   type Ticket,
 } from "@horror-tube/betting";
-import { normalizeSuiObjectId } from "@mysten/sui/utils";
 import * as v from "valibot";
 
 import type { GameState, Phase } from "./game.ts";
@@ -52,7 +51,9 @@ export const placeBet = (
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> => runKind(wallet, betTx(ids, poolId, side, units), fetchImpl);
 
-export type Claim = { tickets: Ticket[]; units: bigint; lost: bigint };
+export type Claim = { tickets: Ticket[]; units: bigint };
+
+export type BetOutcome = { kind: "won" | "lost" | "refund"; usdc: number };
 
 export type BetGuard = Pick<GameState, "phase" | "poolId" | "error" | "bet" | "pending">;
 
@@ -68,31 +69,35 @@ export const canCollect = (state: Pick<GameState, "claim" | "pending">): boolean
 export const winningsDue = (prev: Phase, next: Phase): boolean =>
   next !== prev || next === "settle";
 
-export function tally(
-  tickets: Ticket[],
-  pools: ReadonlyMap<string, Pool>,
-  roundPool: string | null,
-): Claim {
-  const round = roundPool === null ? null : normalizeSuiObjectId(roundPool);
-  const claim: Claim = { tickets: [], units: 0n, lost: 0n };
+export function betOutcome(
+  bet: { side: number; amt: number },
+  winner: 0 | 1,
+  pool: [number, number],
+  feeBps: number,
+): BetOutcome {
+  const mine = pool[winner];
+  const theirs = pool[winner === 0 ? 1 : 0];
+  if (mine <= 0 || theirs <= 0) return { kind: "refund", usdc: bet.amt };
+  if (bet.side !== winner) return { kind: "lost", usdc: bet.amt };
+  const fee = (theirs * feeBps) / 10_000;
+  return { kind: "won", usdc: (bet.amt * (mine + theirs - fee)) / mine };
+}
+
+export function tally(tickets: Ticket[], pools: ReadonlyMap<string, Pool>): Claim {
+  const claim: Claim = { tickets: [], units: 0n };
   for (const ticket of tickets) {
     const pool = pools.get(ticket.poolId);
     if (pool === undefined || pool.status === PoolStatus.open) continue;
     const owed = payout(pool, ticket);
     claim.tickets.push(ticket);
     claim.units += owed;
-    if (owed === 0n && ticket.poolId === round) claim.lost += ticket.stake;
   }
   return claim;
 }
 
 const finishedPools = new Map<string, Pool>();
 
-export async function claimable(
-  wallet: GameWallet,
-  ids: ContractIds,
-  roundPool: string | null,
-): Promise<Claim> {
+export async function claimable(wallet: GameWallet, ids: ContractIds): Promise<Claim> {
   const tickets = await listTickets(wallet.client, ids, wallet.address);
   for (const id of new Set(tickets.map((ticket) => ticket.poolId))) {
     if (finishedPools.has(id)) continue;
@@ -101,7 +106,7 @@ export async function claimable(
       throw new Error(`Pool ${id} holds a ticket of ${wallet.address} but is not on chain.`);
     if (pool.status !== PoolStatus.open) finishedPools.set(id, pool);
   }
-  return tally(tickets, finishedPools, roundPool);
+  return tally(tickets, finishedPools);
 }
 
 export const claimAll = (

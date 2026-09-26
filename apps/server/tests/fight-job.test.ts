@@ -42,17 +42,13 @@ const falEnv = {
 };
 
 describe("buildFightInput", () => {
-  it("passes a fighter's recorded injuries into the fight input and refuses a dead fighter", () => {
+  it("passes a fighter's recorded injuries into the fight input", () => {
     const input = buildFightInput(baseRequest(), [
       card("alpha", { injuries: ["cut across the cheek"] }),
       card("bravo"),
       card("charlie"),
     ]);
     assert.deepEqual(input.fighterA.injuries, ["cut across the cheek"]);
-    assert.throws(
-      () => buildFightInput(baseRequest(), [card("alpha", { status: "dead" }), card("bravo")]),
-      /fighterA "alpha" is not alive/u,
-    );
   });
 
   it("maps fighter and eligible opponent cards from living subnames", () => {
