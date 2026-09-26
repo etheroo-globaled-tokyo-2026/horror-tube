@@ -32,6 +32,8 @@ def test_a_frontal_face_is_drawn_in_the_figures_colour(drawer, staged_frames):
     assert drawn[-1].faces == {"B"}
     drawer.reset()
     assert drawer.draw(frame, [fig]).faces == set(), "after a reset, face tracks start again"
+    empty = drawer.draw(frame, [])
+    assert not empty.canvas.any() and empty.faces == set()
 
 
 def test_the_apps_colour_is_refused(drawer, staged_frames):
