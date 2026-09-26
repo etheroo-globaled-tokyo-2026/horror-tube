@@ -155,3 +155,10 @@ scripts/.ens-commit-state/
 *.tfstate.*
 *.tfvars
 !terraform/terraform.tfvars.example
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/31337/
+contracts/broadcast/**/dry-run/
+contracts/broadcast/E2eBattleBetting.s.sol/
