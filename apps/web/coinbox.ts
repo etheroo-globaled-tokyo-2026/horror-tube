@@ -4,6 +4,7 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import QRCode from "qrcode";
 import * as THREE from "three";
 
+import { sfx } from "./sfx.ts";
 import { blotch, crack, drip, scratches, seeded } from "./sprites.ts";
 
 import {
@@ -490,6 +491,7 @@ export function createCoinBox(
   async function refresh(): Promise<void> {
     const next = fromUsdcUnits(await getUsdcBalance(wallet));
     if (next === credit) return;
+    sfx.meter();
     credit = next;
     onCredit(credit);
     draw();
@@ -511,6 +513,7 @@ export function createCoinBox(
       throw new Error(result.FailedTransaction.status.error?.message ?? "Deposit failed");
     await dAppKit.getClient().core.waitForTransaction({ digest: result.Transaction.digest });
     rememberPayout(payer);
+    sfx.coin();
     say(`${dollars} USDC in. The meter ticks up.`);
   }
 
@@ -523,6 +526,7 @@ export function createCoinBox(
     if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");
     await sendUsdc(wallet, to, units);
+    sfx.coins(10);
     say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
   }
 
@@ -530,7 +534,10 @@ export function createCoinBox(
     if (busy) return;
     busy = true;
     task()
-      .catch((error: Error) => onError(error.message))
+      .catch((error: Error) => {
+        sfx.spat();
+        onError(error.message);
+      })
       .finally(() => {
         busy = false;
         setStatus("");
@@ -544,6 +551,7 @@ export function createCoinBox(
   }
 
   function openDrawer(): void {
+    sfx.lever();
     lock.rotation.z = -0.6;
     drawer.position.z = 0.045;
     setTimeout(() => {

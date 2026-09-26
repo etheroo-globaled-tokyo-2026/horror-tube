@@ -36,6 +36,11 @@ body {
   background: var(--ground);
   color: var(--body);
 }
+html {
+  cursor:
+    url(assets/cursor.svg) 1 1,
+    default;
+}
 body {
   font-family: var(--f-body);
   font-size: 14px;
@@ -56,8 +61,33 @@ button {
   color: inherit;
   background: none;
   border: 0;
-  cursor: pointer;
   text-align: inherit;
+}
+button,
+[data-cursor="press"] {
+  cursor:
+    url(assets/cursor-press.svg) 12 2,
+    pointer;
+}
+[data-cursor="pen"] {
+  cursor:
+    url(assets/cursor-pen.svg) 2 30,
+    pointer;
+}
+[data-cursor="coin"] {
+  cursor:
+    url(assets/cursor-coin.svg) 16 16,
+    pointer;
+}
+[data-cursor="phone"] {
+  cursor:
+    url(assets/cursor-phone.svg) 16 16,
+    pointer;
+}
+[data-cursor="grab"] {
+  cursor:
+    url(assets/cursor-grab.svg) 16 16,
+    grab;
 }
 button:disabled {
   cursor: not-allowed;
