@@ -120,7 +120,10 @@ class _BlockText(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         if tag in _VOID_TAGS:
             return
-        if self._skip_depth > 0 or tag in _SKIP_TAGS:
+        # api.php adds a table of contents to a single-section render when that
+        # section has enough subheadings; its <li> items are headings, not prose.
+        is_toc = "toc" in (dict(attrs).get("class") or "").split()
+        if self._skip_depth > 0 or tag in _SKIP_TAGS or is_toc:
             self._skip_depth += 1
             return
         if tag in _BLOCK_TAGS:

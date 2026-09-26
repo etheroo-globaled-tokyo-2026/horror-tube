@@ -441,6 +441,24 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     );
   });
 
+  it("a repeat grant of roles already held passes without a new grant", async () => {
+    const wallet = createWalletClient({
+      account: bootstrap,
+      chain: foundry,
+      transport: http(rpcUrl),
+    });
+    assert.deepEqual(
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient: wallet,
+        resolver,
+        account: roster.address,
+        keys: [...ROSTER_TEXT_KEYS],
+      }),
+      [false, false, false],
+    );
+  });
+
   it("agent can overwrite status and injuries", async () => {
     const name = "agent-exercise.test.eth";
     assert.equal(await setTextAs(agent, name, "status", "alive"), "ok");
