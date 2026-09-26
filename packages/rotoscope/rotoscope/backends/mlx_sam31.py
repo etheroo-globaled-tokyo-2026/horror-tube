@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Sequence
+from collections import Counter
+from typing import Mapping, Sequence
 
 import cv2
 import numpy as np
@@ -34,6 +35,7 @@ START = 0.4              # a find this sure starts a track
 VISIBLE = 0.5            # the tracker's visibility at which a tracked object is kept from the tracker's own mask
 SAME = 0.3               # mask overlap (IoU) at which a find is an object already tracked
 RESEED = 8               # frames between tracker restarts
+MAX_TRACKS = 2           # live tracks per text: a phrase that fits both fighters would otherwise pile up tracks
 MIN_PX = 12              # masks smaller than this at 640x360 aren't returned
 PROGRESS_S = 5.0
 
@@ -56,6 +58,20 @@ def _match(track: np.ndarray, find: np.ndarray) -> float:
 def _box(m: np.ndarray) -> tuple[int, int, int, int]:
     ys, xs = np.nonzero(m)
     return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+def _starts(finds: list[dict], used: set[int], live: Mapping[str, int], tracked: set[str]) -> list[int]:
+    """The finds that start a track: per tracked text, its MAX_TRACKS highest-scoring sure finds no track covers, as
+    many as the text has room for beside its live tracks."""
+    by_text: dict[str, list[int]] = {}
+    for j, fd in enumerate(finds):
+        if j not in used and fd["score"] >= START and fd["text"] in tracked:
+            by_text.setdefault(fd["text"], []).append(j)
+    out = []
+    for text, js in by_text.items():
+        best = sorted(js, key=lambda j: -finds[j]["score"])[:MAX_TRACKS]
+        out += best[:max(0, MAX_TRACKS - live.get(text, 0))]
+    return out
 
 
 class MlxSam31:
@@ -134,9 +150,9 @@ class MlxSam31:
                     keep.append((tr, full))
                 elif best is not None:                               # lost for now: its weak find stays a plain find
                     used.discard(taken[t])
-            # a sure find no track covers starts one; it carries the new track's id from this frame on
-            new = {j: next_id + n for n, j in enumerate(
-                j for j, fd in enumerate(finds) if j not in used and fd["score"] >= START and fd["text"] in tracked)}
+            # a new track carries its id from this frame on
+            starts = _starts(finds, used, Counter(tr["text"] for tr, _ in keep), tracked)
+            new = {j: next_id + n for n, j in enumerate(starts)}
             next_id += len(new)
             now += [(fd["text"], fd["score"], new.get(j), False, fd["mask"])
                     for j, fd in enumerate(finds) if j not in used]
