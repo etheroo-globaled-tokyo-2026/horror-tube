@@ -8,6 +8,8 @@ import {
 } from "@horror-tube/fight";
 import type { BattleQueueInsert } from "@horror-tube/fight/battle-queue";
 
+import type { VideoStyle } from "./types.js";
+
 export type FightJobRequest = {
   /** On-chain BattleBetting id as a decimal string. */
   battleId: string;
@@ -25,6 +27,7 @@ export type FightJobResult = {
   winnerSide: 0 | 1;
   damage: number;
   videoUrl: string;
+  videoStyle: VideoStyle;
   durationMs: number;
   frameUrl: string;
 };
@@ -96,6 +99,7 @@ export function fightJobResultFromTurn(
     winnerInjuries: string[];
     nextOpponentSubname: string;
     videoUrl: string;
+    videoStyle: VideoStyle;
     frameUrl: string;
   },
   durationMs: number,
@@ -142,6 +146,7 @@ export function fightJobResultFromTurn(
     winnerSide,
     damage: turn.winnerInjuries.length,
     videoUrl: turn.videoUrl,
+    videoStyle: turn.videoStyle,
     durationMs,
     frameUrl: turn.frameUrl,
   };
@@ -185,6 +190,7 @@ export function createFightJobRunner(deps: {
         winnerInjuries: result.turn.winner_injuries,
         nextOpponentSubname: result.nextOpponentSubname,
         videoUrl: result.videoUrl,
+        videoStyle: result.videoStyle,
         frameUrl: result.frameUrl,
       },
       falConfig.durationSeconds * 1000,
