@@ -1466,4 +1466,37 @@ describe("chain call retries", () => {
     assert.match(state.error ?? "", /rpc timeout on the retry/u);
     assert.equal(deps.betCalls.filter((c) => c.startsWith("open:")).length, 1);
   });
+
+  it("retries a failed cancel from tick, backing off, until it lands", async () => {
+    const calls: string[] = [];
+    const battleBetting = trackingBattleBetting(calls);
+    let failures = 2;
+    battleBetting.cancelBattle = async (battleId) => {
+      calls.push(`cancel:${battleId}`);
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error("sui rpc 503");
+      }
+    };
+    const { loop, clock } = retryLoop({ battleBetting });
+    await openStageOneBout(loop, clock);
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId);
+    const cancels = () => calls.filter((c) => c === `cancel:${battleId}`).length;
+
+    await loop.failVideo("fal render failed: timeout");
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(cancels(), 1);
+    const failedAt = clock.now;
+    await loop.tick(failedAt + 1);
+    assert.equal(cancels(), 1, "the next tick waits out the backoff");
+    await loop.tick(failedAt + 60_000);
+    assert.equal(cancels(), 2);
+    await loop.tick(failedAt + 60_001);
+    assert.equal(cancels(), 2);
+    await loop.tick(failedAt + 180_000);
+    assert.equal(cancels(), 3);
+    await loop.tick(failedAt + 3_600_000);
+    assert.equal(cancels(), 3, "a landed cancel is not sent again");
+  });
 });
