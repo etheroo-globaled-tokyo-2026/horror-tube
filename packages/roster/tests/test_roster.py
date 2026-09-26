@@ -437,6 +437,31 @@ class ProposeTests(unittest.TestCase):
             self.assertEqual(len(plan["characters"]), 2)
 
 
+class RepoDotenvTests(unittest.TestCase):
+    def test_load_repo_dotenv_prefers_repo_root_over_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_env = root / ".env"
+            repo_env.write_text("ENS_LABEL=from-repo-root\n", encoding="utf-8")
+            cwd_dir = root / "packages" / "roster"
+            cwd_dir.mkdir(parents=True)
+            (cwd_dir / ".env").write_text("ENS_LABEL=from-cwd-shadow\n", encoding="utf-8")
+            previous = os.getcwd()
+            with mock.patch.object(cli, "REPO_ENV_PATH", repo_env):
+                os.environ.pop("ENS_LABEL", None)
+                try:
+                    os.chdir(cwd_dir)
+                    cli.load_repo_dotenv()
+                    self.assertEqual(os.environ.get("ENS_LABEL"), "from-repo-root")
+                finally:
+                    os.chdir(previous)
+                    os.environ.pop("ENS_LABEL", None)
+
+    def test_load_repo_dotenv_missing_file_is_ok(self):
+        with mock.patch.object(cli, "REPO_ENV_PATH", Path("/nonexistent/horror-tube/.env")):
+            cli.load_repo_dotenv()
+
+
 class CliTests(unittest.TestCase):
     def test_import_cli_writes_plan(self):
         with tempfile.TemporaryDirectory() as tmp:

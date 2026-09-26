@@ -12,6 +12,10 @@ from typing import Mapping, Optional, Sequence
 
 from dotenv import load_dotenv
 
+# packages/roster/roster/__main__.py -> repo root (not cwd).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ENV_PATH = REPO_ROOT / ".env"
+
 from roster.chain import (
     apply_register_plan,
     list_registered,
@@ -743,8 +747,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def load_repo_dotenv() -> None:
+    """Load the checkout root .env when it exists.
+
+    load_dotenv() with no path follows cwd, so an empty packages/roster/.env
+    can hide the real file. A missing file is fine. Commands that need a
+    variable still fail when that variable is blank.
+    """
+    if REPO_ENV_PATH.is_file():
+        load_dotenv(dotenv_path=REPO_ENV_PATH)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    load_dotenv()
+    load_repo_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
