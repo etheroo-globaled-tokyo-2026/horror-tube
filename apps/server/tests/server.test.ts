@@ -6,8 +6,39 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import type { AddressInfo } from "node:net";
 
-import { readGamePort, readStaticDir, requiredEnv } from "../src/env.js";
+import {
+  loadRepoDotenv,
+  readGamePort,
+  readStaticDir,
+  requiredEnv,
+} from "../src/env.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
+
+describe("loadRepoDotenv", () => {
+  it("does not require a .env file to exist", () => {
+    const missing = join(
+      tmpdir(),
+      `horror-tube-no-dotenv-${String(Date.now())}`,
+      ".env",
+    );
+    assert.deepEqual(loadRepoDotenv(missing), { loaded: false });
+  });
+
+  it("loads variables when the file exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "horror-tube-dotenv-"));
+    const envPath = join(dir, ".env");
+    const marker = `HT_DOTENV_TEST_${String(Date.now())}`;
+    try {
+      await writeFile(envPath, `${marker}=from-file\n`, "utf8");
+      delete process.env[marker];
+      assert.deepEqual(loadRepoDotenv(envPath), { loaded: true });
+      assert.equal(process.env[marker], "from-file");
+    } finally {
+      delete process.env[marker];
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("GAME_PORT", () => {
   it("throws and names GAME_PORT when missing", () => {

@@ -110,7 +110,7 @@ After `terraform apply`, copy the sensitive outputs into `.env` (and into 1Passw
 
 Also set `FIGHT_MEDIA_SPACES_ENDPOINT` to `https://<region>.digitaloceanspaces.com` for the same `region` tfvar (operator value `sgp1` → `https://sgp1.digitaloceanspaces.com`). If any of those variables is missing or blank, the upload package stops and names `.env.example`. Do not commit the secret.
 
-Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, app uploads use only `FIGHT_MEDIA_SPACES_*`.
+Creating the fight-media bucket via Terraform still needs Spaces credentials on the provider that can create buckets (often a fullaccess Spaces key for that one apply). The icons-only key cannot create a second bucket. After apply, App Platform gets `FIGHT_MEDIA_SPACES_*` from the fight-media resources; laptops copy the sensitive outputs into `.env` for local uploads (no 1Password path).
 
 ## Required tfvars (no defaults)
 
@@ -152,6 +152,8 @@ The app runtime `DATABASE_URL` is set in Terraform from `digitalocean_database_c
 
 ### App runtime secrets (TF_VAR from `.env`, never in tfvars)
 
+**Path:** 1Password is the human source of truth. The operator machine copies values into App Platform env at `terraform apply` via `TF_VAR_*` (sourced from the local `.env` for that one command). The App Platform instance does **not** read a `.env` (or any other secret file); DigitalOcean decrypts `type = "SECRET"` (and injects `GENERAL`) into `process.env` at runtime. DigitalOcean Secrets Manager (`doctl secrets`) is **not** the runtime path — there is no App Platform bind and no Terraform mount for those values.
+
 Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed), plus BUILD_TIME Vite env. Source them from the repo `.env` for that one command:
 
 | App env | Terraform variable | Notes |
@@ -175,8 +177,15 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
+| `FIGHT_MEDIA_SPACES_ACCESS_KEY_ID` | *(none)* | from `digitalocean_spaces_key.fight_media.access_key` |
+| `FIGHT_MEDIA_SPACES_SECRET` | *(none)* | from `digitalocean_spaces_key.fight_media.secret_key` |
+| `FIGHT_MEDIA_SPACES_BUCKET` | *(none)* | from `digitalocean_spaces_bucket.fight_media.name` |
+| `FIGHT_MEDIA_SPACES_CDN_HOST` | *(none)* | from `digitalocean_cdn.fight_media.endpoint` |
+| `FIGHT_MEDIA_SPACES_ENDPOINT` | *(none)* | `https://${var.region}.digitaloceanspaces.com` |
 
-`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet).
+The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops still copy the sensitive Terraform outputs into `.env` after apply for local uploads; there is still no 1Password path for those values.
+
+`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet). Laptop-only and one-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `SEPOLIA_RPC_URL`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them.
 
 Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
 
