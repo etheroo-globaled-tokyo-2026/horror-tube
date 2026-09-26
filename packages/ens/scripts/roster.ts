@@ -25,8 +25,8 @@ export const REGISTER_SELECTOR = "0x85f3e643" as const;
 const transferSingleEvent = parseAbiItem(
   "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
 );
-/** Inclusive block count per eth_getLogs window. Never larger than this. */
-export const MAX_LOG_CHUNK_BLOCKS = 49999n;
+/** Inclusive block count per eth_getLogs window. Never larger than this (Infura max is 10000). */
+export const MAX_LOG_CHUNK_BLOCKS = 10000n;
 /** Cap on backward windows from chain head. */
 export const MAX_RECENT_LOG_CHUNKS = 4;
 /** Lowest block number this dashboard will query. Never block 0. */
