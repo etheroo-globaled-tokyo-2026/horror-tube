@@ -114,7 +114,7 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
-- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
+- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV asks for proof of life with a World ID QR code. The hint names World App and offers COPY LINK.
 - **Opening the wallet:** once the proof verifies, the QR goes away and the TV says VERIFIED · OPENING YOUR WALLET
   while the game wallet session and the coin box open. If that fails, the TV and hint say which step failed and the
   server's reason; the player stays out.
