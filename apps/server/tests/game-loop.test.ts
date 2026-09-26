@@ -241,7 +241,7 @@ describe("GameLoop ENS status", () => {
     assert.equal(loop.getState().chars[1]?.alive, false);
     await assert.rejects(
       () => loop.voteWithNullifier("dead-vote", [1, 0]),
-      /Character 1 is dead and cannot receive votes/u,
+      /bravo \(character 1\) is dead and cannot receive votes/u,
     );
   });
 

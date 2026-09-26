@@ -25,12 +25,15 @@ const config = {
   settleSeconds: 8,
 };
 
-function testLoop(roundStore = new MemoryRoundStore()): GameLoop {
+function testLoop(
+  roundStore = new MemoryRoundStore(),
+  ensStatuses = ["alive", "alive", "alive"],
+): GameLoop {
   return new GameLoop({
     houseBots: NO_HOUSE_BOTS,
     config,
     ensLabels: ["jason", "freddy", "chucky"],
-    ensStatuses: ["alive", "alive", "alive"],
+    ensStatuses,
     randomInt: (max) => {
       throw new Error(`randomInt unused in vote tests. max=${String(max)}`);
     },
@@ -80,6 +83,17 @@ function testLoop(roundStore = new MemoryRoundStore()): GameLoop {
   });
 }
 
+function vote(base: string, picks: number[]): Promise<Response> {
+  return fetch(`${base}/vote`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
+    },
+    body: JSON.stringify({ picks }),
+  });
+}
+
 describe("POST /vote session", () => {
   const servers: ReturnType<typeof createGameServer>[] = [];
 
@@ -109,15 +123,7 @@ describe("POST /vote session", () => {
   it("counts a vote from a valid waiver session", async () => {
     const game = testLoop();
     const base = await listen(game, PEPPER);
-    const session = issueSession(NULLIFIER, PEPPER);
-    const res = await fetch(`${base}/vote`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${session}`,
-      },
-      body: JSON.stringify({ picks: [0, 1] }),
-    });
+    const res = await vote(base, [0, 1]);
     assert.equal(res.status, 200);
     const body = v.parse(StateJson, await res.json());
     assert.equal(body.ok, true);
@@ -132,17 +138,20 @@ describe("POST /vote session", () => {
     };
     const game = testLoop(store);
     const base = await listen(game, PEPPER);
-    const res = await fetch(`${base}/vote`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
-      },
-      body: JSON.stringify({ picks: [0, 1] }),
-    });
+    const res = await vote(base, [0, 1]);
     assert.equal(res.status, 500);
     const body = v.parse(ErrorJson, await res.json());
     assert.match(body.error, /Vote insert failed for round 1 .*too many clients already/u);
+    assert.equal(game.getState().voters, 0);
+  });
+
+  it("refuses a dead character with 400 naming it, and counts nothing", async () => {
+    const game = testLoop(new MemoryRoundStore(), ["alive", "dead", "alive"]);
+    const base = await listen(game, PEPPER);
+    const res = await vote(base, [0, 1]);
+    assert.equal(res.status, 400);
+    const body = v.parse(ErrorJson, await res.json());
+    assert.match(body.error, /freddy .*dead/u);
     assert.equal(game.getState().voters, 0);
   });
 
@@ -177,14 +186,7 @@ describe("POST /vote session", () => {
 
   it("rejects when WALLET_SECRET_PEPPER is missing", async () => {
     const base = await listen(testLoop(), undefined);
-    const res = await fetch(`${base}/vote`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
-      },
-      body: JSON.stringify({ picks: [0, 1] }),
-    });
+    const res = await vote(base, [0, 1]);
     assert.equal(res.status, 500);
     const body = v.parse(ErrorJson, await res.json());
     assert.equal(body.ok, false);
