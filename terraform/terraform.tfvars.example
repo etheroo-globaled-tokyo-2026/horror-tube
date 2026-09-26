@@ -3,8 +3,10 @@
 # for that one terraform command only. See README.md.
 #
 # App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*, SHINAMI_ACCESS_KEY,
-# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, DATABASE_CA_CERT, SEPOLIA_RPC_URL,
-# AGENT_PRIVATE_KEY, FAL_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY) and fight
+# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, SUI_OPERATOR_PRIVATE_KEY, DATABASE_CA_CERT,
+# SEPOLIA_RPC_URL, AGENT_PRIVATE_KEY, FAL_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)
+# and Sui betting public IDs (SUI_NETWORK, SUI_GRPC_URL, BETTING_PACKAGE_ID,
+# BETTING_HOUSE_ID, SUI_OPERATOR_CAP_ID, SUI_MIN_BET, BET_FEE_BPS) plus fight
 # config (FAL_MODEL, FAL_IMAGE_TO_VIDEO_MODEL, FIGHT_VIDEO_SECONDS,
 # FAL_VIDEO_RESOLUTION, FAL_PROMPT_EXPANSION_MODE, FAL_ASPECT_RATIO,
 # NARRATION_PROVIDER, NARRATION_MODEL) plus BUILD_TIME Vite env (ENS_LABEL,
@@ -35,12 +37,11 @@ vote_countdown_seconds = 15
 bet_min_seconds        = 10
 video_timeout_seconds  = 300
 settle_seconds         = 8
-# 1 skips BattleBetting settleBattle until that client exists; 0 calls it.
+# 1 skips Sui pool settle until ENS writes are ready; 0 calls operator.settle.
 skip_battle_settlement = "1"
-# Sepolia BattleBetting deploy the game uses for openBattle / placeBet (docs/battle-betting.md).
-battle_betting_address = "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
 # Comma-separated ENS labels (at least two). Same order does not matter; the server sorts them.
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 
 # WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: staging).
 # Do not put WORLD_ID_* secrets in this file.
+# Sui betting IDs and SUI_OPERATOR_PRIVATE_KEY are TF_VAR_* from .env (see README).

@@ -1,179 +1,95 @@
 import {
-  type Address,
-  type Hash,
-  type Hex,
-  createPublicClient,
-  createWalletClient,
-  getAddress,
-  http,
-  isAddress,
-  isHex,
-  parseAbi,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
-
-const battleBettingAbi = parseAbi([
-  "function minBet() view returns (uint256)",
-  "function openBattle(string fighterA, string fighterB, uint64 closesAt) returns (uint256)",
-  "function placeBet(uint256 battleId, uint8 fighter) payable",
-  "function cancelBattle(uint256 battleId)",
-]);
+  createChain,
+  createClient,
+  createOperator,
+  readBettingConfig,
+  requiredEnv,
+  readKeypair,
+  type Operator,
+  type BettingConfig,
+} from "@horror-tube/betting";
+import { randomUUID } from "node:crypto";
 
 export type BattleBettingPorts = {
-  /** Current contract minimum bet in wei. */
+  /** Current house minimum bet in USDC base units (from SUI_MIN_BET). */
   minBet: () => Promise<bigint>;
-  /** Operator: open a battle; returns the on-chain battle id. */
+  /**
+   * Operator: open a Sui pool for a fresh battle id.
+   * Returns the battle id string used as the pool key (not a Sepolia uint256).
+   */
   openBattle: (
     fighterA: string,
     fighterB: string,
     closesAtUnix: bigint,
-  ) => Promise<bigint>;
-  /** Anyone: stake `valueWei` on fighter 0 or 1. Returns the tx hash. */
-  placeBet: (
-    battleId: bigint,
-    fighter: 0 | 1,
-    valueWei: bigint,
-  ) => Promise<Hash>;
-  /** Operator: cancel an open battle so stakes can be claimed as refunds. */
-  cancelBattle: (battleId: bigint) => Promise<Hash>;
+  ) => Promise<string>;
+  /** Operator: cancel an open pool so stakes refund. */
+  cancelBattle: (battleId: string) => Promise<string>;
+  /** Operator: end betting early. */
+  closeBetting: (battleId: string) => Promise<void>;
+  /** Operator: settle with the winning side (0 or 1). */
+  settle: (battleId: string, side: 0 | 1) => Promise<void>;
+  /** Derived pool object id for a battle. */
+  poolIdFor: (battleId: string) => string;
+  /** Live pool totals in USDC base units. Throws if the pool is missing. */
+  readPoolTotals: (battleId: string) => Promise<[bigint, bigint]>;
+  /** Public config the web needs to build bet/claim kinds. */
+  config: BettingConfig;
 };
 
-function requiredBattleBettingEnv(
-  name: "BATTLE_BETTING_ADDRESS" | "SEPOLIA_RPC_URL" | "AGENT_PRIVATE_KEY",
-  env: NodeJS.ProcessEnv,
-): string {
-  const value = env[name];
-  if (value === undefined || value.trim() === "") {
+function readMinBet(env: NodeJS.ProcessEnv): bigint {
+  const fromEnv = requiredEnv("SUI_MIN_BET", env);
+  if (!/^[0-9]+$/u.test(fromEnv)) {
     throw new Error(
-      `${name} is required. Set it in .env. See .env.example.`,
+      `SUI_MIN_BET must be a whole number. Got ${JSON.stringify(fromEnv)}.`,
     );
   }
-  return value.trim();
-}
-
-function parsePrivateKey(value: string, envName: string): Hex {
-  const normalized = value.startsWith("0x") ? value : `0x${value}`;
-  if (!isHex(normalized) || normalized.length !== 66) {
-    throw new Error(
-      `${envName} must be a 32-byte hex string (0x + 64 hex chars). Got length ${String(normalized.length)}`,
-    );
-  }
-  return normalized;
-}
-
-function parseBattleBettingAddress(raw: string): Address {
-  if (!isAddress(raw)) {
-    throw new Error(
-      `BATTLE_BETTING_ADDRESS must be a 0x-prefixed 20-byte address. Got: ${JSON.stringify(raw)}. See .env.example.`,
-    );
-  }
-  return getAddress(raw);
+  return BigInt(fromEnv);
 }
 
 /**
- * Sepolia BattleBetting client for openBattle / placeBet.
- * Uses AGENT_PRIVATE_KEY (already on the game node). That address must hold
- * OPERATOR_ROLE to open battles; placeBet is permissionless for any funded key.
- * No fallback contract address — missing env fails by name.
+ * Sui betting operator for open / cancel / close / settle.
+ * Players place bets through POST /tx (Shinami), not through this port.
+ * Missing env fails by name — no Sepolia BATTLE_BETTING_ADDRESS fallback.
  */
 export function createBattleBettingPorts(
   env: NodeJS.ProcessEnv = process.env,
 ): BattleBettingPorts {
-  const address = parseBattleBettingAddress(
-    requiredBattleBettingEnv("BATTLE_BETTING_ADDRESS", env),
+  const config = readBettingConfig(env);
+  const operatorKey = readKeypair("SUI_OPERATOR_PRIVATE_KEY", env);
+  const operatorCap = requiredEnv("SUI_OPERATOR_CAP_ID", env);
+  const minBetValue = readMinBet(env);
+  const client = createClient(config);
+  const operator: Operator = createOperator(
+    createChain(client, operatorKey),
+    config,
+    operatorCap,
   );
-  const rpcUrl = requiredBattleBettingEnv("SEPOLIA_RPC_URL", env);
-  const privateKey = parsePrivateKey(
-    requiredBattleBettingEnv("AGENT_PRIVATE_KEY", env),
-    "AGENT_PRIVATE_KEY",
-  );
-  const account = privateKeyToAccount(privateKey);
-  const publicClient = createPublicClient({
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
-  const walletClient = createWalletClient({
-    account,
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
 
   return {
+    config,
+    poolIdFor: (battleId) => operator.poolId(battleId),
     async minBet() {
-      return publicClient.readContract({
-        address,
-        abi: battleBettingAbi,
-        functionName: "minBet",
-      });
+      return minBetValue;
     },
-    async openBattle(fighterA, fighterB, closesAtUnix) {
-      const { result: battleId, request } = await publicClient.simulateContract({
-        account,
-        address,
-        abi: battleBettingAbi,
-        functionName: "openBattle",
-        args: [fighterA, fighterB, closesAtUnix],
-      });
-      const hash = await walletClient.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error(
-          `BattleBetting.openBattle(${fighterA}, ${fighterB}) tx reverted: ${hash}`,
-        );
-      }
+    async openBattle(_fighterA, _fighterB, closesAtUnix) {
+      const battleId = randomUUID();
+      const closesAtMs = closesAtUnix * 1000n;
+      await operator.openPool(battleId, closesAtMs);
       return battleId;
     },
-    async placeBet(battleId, fighter, valueWei) {
-      const { request } = await publicClient.simulateContract({
-        account,
-        address,
-        abi: battleBettingAbi,
-        functionName: "placeBet",
-        args: [battleId, fighter],
-        value: valueWei,
-      });
-      const hash = await walletClient.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error(
-          `BattleBetting.placeBet(battleId=${String(battleId)}, fighter=${String(fighter)}) tx reverted: ${hash}`,
-        );
-      }
-      return hash;
-    },
     async cancelBattle(battleId) {
-      const { request } = await publicClient.simulateContract({
-        account,
-        address,
-        abi: battleBettingAbi,
-        functionName: "cancelBattle",
-        args: [battleId],
-      });
-      const hash = await walletClient.writeContract(request);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") {
-        throw new Error(
-          `BattleBetting.cancelBattle(battleId=${String(battleId)}) tx reverted: ${hash}`,
-        );
-      }
-      return hash;
+      await operator.cancel(battleId);
+      return battleId;
+    },
+    async closeBetting(battleId) {
+      await operator.closeBetting(battleId);
+    },
+    async settle(battleId, side) {
+      await operator.settle(battleId, side);
+    },
+    async readPoolTotals(battleId) {
+      const pool = await operator.read(battleId);
+      return pool.totals;
     },
   };
-}
-
-/**
- * Stake units from the room UI (1, 3, 5) map to `units * minBet` wei on chain.
- */
-export async function stakeWeiForUnits(
-  ports: Pick<BattleBettingPorts, "minBet">,
-  units: number,
-): Promise<bigint> {
-  if (!Number.isInteger(units) || units < 1) {
-    throw new Error(
-      `bet amount must be a positive integer stake unit. Got: ${String(units)}.`,
-    );
-  }
-  const minBet = await ports.minBet();
-  return minBet * BigInt(units);
 }

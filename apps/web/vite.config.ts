@@ -8,7 +8,7 @@ const devProxy = (gamePort: string) => ({
   "/events": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
   "/round": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
   "/vote": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
-  "/bet": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
+  "/betting": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
   "/health": { target: `http://127.0.0.1:${gamePort}`, changeOrigin: true },
 });
 

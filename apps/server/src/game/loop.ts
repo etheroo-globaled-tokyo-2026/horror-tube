@@ -13,10 +13,7 @@ import {
   type RandomInt,
 } from "@horror-tube/fight/rotation";
 
-import {
-  stakeWeiForUnits,
-  type BattleBettingPorts,
-} from "../battle-betting.js";
+import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
@@ -47,7 +44,7 @@ export type GameLoopOptions = {
   randomInt?: RandomInt;
   battleQueueStore: BattleQueueStore;
   chainWritePorts: ChainWritePorts;
-  /** Sepolia BattleBetting openBattle / placeBet. Required — no in-memory-only bet path. */
+  /** Sui betting operator (openPool / cancel / close / settle). Bets go through /tx. */
   battleBetting: BattleBettingPorts;
   /**
    * Starts when betting opens. Calls setOutcome / setVideoReady on success,
@@ -124,8 +121,10 @@ export class GameLoop {
   private nullifiers = new Set<string>();
   private fighters: [number, number] | null = null;
   private pool: [number, number] = [0, 0];
-  /** On-chain BattleBetting id while this bout's betting window is open. */
-  private onChainBattleId: bigint | null = null;
+  /** Sui pool battle id (UUID) while this bout's betting window is open. */
+  private onChainBattleId: string | null = null;
+  /** Derived Sui pool object id after openPool succeeds. */
+  private poolObjectId: string | null = null;
   private winner: 0 | 1 | null = null;
   private videoUrl: string | null = null;
   /** Last-frame CDN URL for the next bout's image-to-video seed. */
@@ -189,6 +188,8 @@ export class GameLoop {
       quorum: this.config.quorumVotes,
       votes: { ...this.votes },
       fighters: this.fighters,
+      battleId: this.onChainBattleId,
+      poolId: this.poolObjectId,
       pool: [...this.pool] as [number, number],
       winner: this.phase === "settle" || this.phase === "over" ? this.winner : null,
       videoUrl: this.videoUrl,
@@ -299,39 +300,20 @@ export class GameLoop {
   }
 
   /**
-   * Place a stake on fighter 0 or 1. Calls BattleBetting.placeBet, then mirrors
-   * the stake units into RoundState.pool. Bets are optional for the bout; this
-   * only runs when a player posts. No house/robot seed.
+   * Update poolId and totals from the Sui pool for the live battle.
    */
-  async bet(side: 0 | 1, amount: number): Promise<void> {
-    if (this.phase !== "bet") {
+  setPool(
+    battleId: string,
+    poolId: string,
+    totals: [number, number],
+  ): void {
+    if (this.onChainBattleId !== battleId) {
       throw new Error(
-        `bet is only allowed in the bet phase. Current phase: ${this.phase}.`,
+        `setPool battleId ${JSON.stringify(battleId)} does not match live battle ${JSON.stringify(this.onChainBattleId)}.`,
       );
     }
-    if (this.error !== null) {
-      throw new Error(
-        `bet is refused after a video failure: ${this.error}`,
-      );
-    }
-    if (side !== 0 && side !== 1) {
-      throw new Error(`bet side must be 0 or 1. Got: ${String(side)}.`);
-    }
-    if (this.onChainBattleId === null) {
-      throw new Error(
-        "bet requires an open BattleBetting battle. openBattle did not run for this bout.",
-      );
-    }
-    const valueWei = await stakeWeiForUnits(this.battleBetting, amount);
-    const hash = await this.battleBetting.placeBet(
-      this.onChainBattleId,
-      side,
-      valueWei,
-    );
-    console.log(
-      `BattleBetting.placeBet battleId=${String(this.onChainBattleId)} side=${String(side)} units=${String(amount)} wei=${String(valueWei)} tx=${hash}`,
-    );
-    this.pool[side] += amount;
+    this.poolObjectId = poolId;
+    this.pool = [totals[0], totals[1]];
     this.emit();
   }
 
@@ -424,20 +406,21 @@ export class GameLoop {
     this.videoUrl = null;
     this.videoDurationMs = null;
     this.onChainBattleId = null;
+    this.poolObjectId = null;
     this.betOpenedAt = null;
     this.endsAt = null;
     this.phase = "over";
     this.emit();
     if (battleId !== null) {
       try {
-        const hash = await this.battleBetting.cancelBattle(battleId);
+        const digest = await this.battleBetting.cancelBattle(battleId);
         console.log(
-          `BattleBetting.cancelBattle battleId=${String(battleId)} tx=${hash} (video failed)`,
+          `Sui betting cancelBattle battleId=${battleId} digest=${digest} (video failed)`,
         );
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause);
         console.error(
-          `BattleBetting.cancelBattle failed after video error (battleId=${String(battleId)}): ${detail}`,
+          `Sui betting cancelBattle failed after video error (battleId=${battleId}): ${detail}`,
         );
       }
     }
@@ -529,6 +512,7 @@ export class GameLoop {
     this.error = null;
     this.pool = [0, 0];
     this.onChainBattleId = null;
+    this.poolObjectId = null;
     this.queuedAgentResultId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
@@ -578,6 +562,20 @@ export class GameLoop {
     this.winner = this.outcome.winner;
     this.settleDamage = this.outcome.damage;
     this.bettingClosedGate = true;
+    if (this.onChainBattleId !== null) {
+      try {
+        await this.battleBetting.closeBetting(this.onChainBattleId);
+        console.log(
+          `Sui betting closeBetting battleId=${this.onChainBattleId}`,
+        );
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        console.error(
+          `Sui betting closeBetting failed (battleId=${this.onChainBattleId}): ${detail}`,
+        );
+        throw cause;
+      }
+    }
     this.phase = "fight";
     this.endsAt = now + this.videoDurationMs;
     this.emit();
@@ -698,6 +696,7 @@ export class GameLoop {
     this.winner = null;
     this.pool = [0, 0];
     this.onChainBattleId = null;
+    this.poolObjectId = null;
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
@@ -752,6 +751,7 @@ export class GameLoop {
     this.videoUrl = null;
     this.error = null;
     this.onChainBattleId = null;
+    this.poolObjectId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
     this.holdingCopyApplied = false;
@@ -764,8 +764,9 @@ export class GameLoop {
   }
 
   /**
-   * Operator openBattle for the current fighter pair. closesAt is a far upper
+   * Operator openPool for the current fighter pair. closesAt is a far upper
    * bound; the game still ends betting via closeBetting when the video path does.
+   * Fighters stay off Sui (ENS / RoundState).
    */
   private async openOnChainBattle(now: number): Promise<void> {
     if (this.fighters === null) {
@@ -789,8 +790,9 @@ export class GameLoop {
       fighterB,
       closesAtUnix,
     );
+    this.poolObjectId = this.battleBetting.poolIdFor(this.onChainBattleId);
     console.log(
-      `BattleBetting.openBattle battleId=${String(this.onChainBattleId)} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
+      `Sui betting openPool battleId=${this.onChainBattleId} poolId=${this.poolObjectId} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
     );
   }
 
@@ -806,7 +808,7 @@ export class GameLoop {
     });
   }
 
-  private isSameBetBout(onChainBattleId: bigint): boolean {
+  private isSameBetBout(onChainBattleId: string): boolean {
     return this.phase === "bet" && this.onChainBattleId === onChainBattleId;
   }
 
@@ -840,7 +842,7 @@ export class GameLoop {
         return label;
       });
     const onChainBattleId = this.onChainBattleId;
-    const battleId = String(onChainBattleId);
+    const battleId = onChainBattleId;
     const priorFrameUrl = this.frameUrl;
     console.log(
       `fight job start round=${String(this.round)} battleId=${battleId} fighters=${fighterA},${fighterB} priorFrame=${priorFrameUrl === null ? "none" : "set"}`,
