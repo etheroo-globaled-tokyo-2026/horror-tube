@@ -212,6 +212,7 @@ export function createCoinBox(
   const [drawerCanvas, dg] = layer(FW, DRAWER_H);
   const topTex = pixelTexture(topCanvas);
   const drawerTex = pixelTexture(drawerCanvas);
+  topTex.userData.text = true;
   function paintStatic(): void {
     enamel(tb, FW, TOP_H);
     tb.fillStyle = colors.soot;
