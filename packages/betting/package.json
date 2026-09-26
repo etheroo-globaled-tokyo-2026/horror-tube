@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "deploy": "tsx --env-file=../../.env src/cli/deploy.ts",
     "pool": "tsx --env-file=../../.env src/cli/pool.ts",
-    "e2e": "tsx --env-file=../../.env src/cli/e2e.ts"
+    "e2e": "tsx --env-file=../../.env src/cli/e2e.ts",
+    "player": "tsx --env-file=../../.env src/cli/player.ts"
   },
   "dependencies": {
     "@mysten/sui": "^2.33.0",

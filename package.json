@@ -16,6 +16,7 @@
     "betting:deploy": "pnpm --filter @horror-tube/betting run deploy",
     "betting:pool": "pnpm --filter @horror-tube/betting run pool",
     "betting:e2e": "pnpm --filter @horror-tube/betting run e2e",
+    "betting:player": "pnpm --filter @horror-tube/betting run player",
     "test-usdc:deploy": "pnpm --filter @horror-tube/test-usdc run deploy",
     "test-usdc:mint": "pnpm --filter @horror-tube/test-usdc run mint",
     "test-usdc:send": "pnpm --filter @horror-tube/test-usdc run send",
