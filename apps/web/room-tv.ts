@@ -414,6 +414,7 @@ tvGlow.position.set(0, TV_Y - 0.02, -0.8);
 scene.add(tvGlow);
 
 export const video = document.createElement("video");
+video.crossOrigin = "anonymous";
 video.playsInline = true;
 video.preload = "auto";
 video.muted = true;
