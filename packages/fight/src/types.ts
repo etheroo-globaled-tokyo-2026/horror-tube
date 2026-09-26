@@ -11,7 +11,7 @@ export type LivingCard = {
 export type FightInput = {
   fighterA: LivingCard;
   fighterB: LivingCard;
-  /** Living opponents the model may name next. Must not include the eventual winner. */
+  /** Living opponents still on the roster outside this bout. Used after the fight to pick a random next challenger; the model does not choose them. */
   eligibleOpponents: LivingCard[];
 };
 
@@ -33,6 +33,9 @@ export type NarrationTurn = {
   rationale: string;
   next_opponent_subname: string;
 };
+
+/** Structured model output. Next opponent is set by rotation after the fight. */
+export type NarrationModelTurn = Omit<NarrationTurn, "next_opponent_subname">;
 
 export type FightTurnResult = {
   turn: NarrationTurn;

@@ -1,5 +1,5 @@
 import { FightError } from "./env.js";
-import type { FightInput, NarrationTurn, Shot } from "./types.js";
+import type { FightInput, NarrationModelTurn, Shot } from "./types.js";
 import { formatShotList } from "./render.js";
 
 export function validateFightInput(input: FightInput): void {
@@ -31,7 +31,7 @@ export function validateFightInput(input: FightInput): void {
 }
 
 export function validateNarrationTurn(
-  turn: NarrationTurn,
+  turn: NarrationModelTurn,
   input: FightInput,
 ): void {
   validateFightInput(input);
@@ -75,24 +75,6 @@ export function validateNarrationTurn(
         `injury phrase missing from the shot list: ${JSON.stringify(injury)}`,
       );
     }
-  }
-  const eligible = new Set(
-    input.eligibleOpponents.map((c) => c.subname),
-  );
-  if (turn.next_opponent_subname === turn.winner_subname) {
-    throw new FightError(
-      `next opponent must not be the winner (${turn.winner_subname}).`,
-    );
-  }
-  if (turn.next_opponent_subname === turn.loser_subname) {
-    throw new FightError(
-      `next opponent must not be the dead loser (${turn.loser_subname}).`,
-    );
-  }
-  if (!eligible.has(turn.next_opponent_subname)) {
-    throw new FightError(
-      `next opponent ${JSON.stringify(turn.next_opponent_subname)} is missing from the eligible living subnames.`,
-    );
   }
   if (typeof turn.rationale !== "string" || turn.rationale.trim() === "") {
     throw new FightError("rationale must be a non-empty string.");

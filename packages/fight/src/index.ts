@@ -1,3 +1,5 @@
+import { randomInt as nodeCryptoRandomInt } from "node:crypto";
+
 import {
   loadFalVideoConfig,
   loadNarrationConfig,
@@ -10,7 +12,12 @@ import {
   type NarrationProviderClient,
   type NarrationResult,
 } from "./narrate.js";
-import type { FightInput, FightTurnResult } from "./types.js";
+import {
+  nextRotationPair,
+  type RandomInt,
+  type RosterEntry,
+} from "./rotation.js";
+import type { FightInput, FightTurnResult, LivingCard } from "./types.js";
 
 export * from "./types.js";
 export * from "./env.js";
@@ -20,6 +27,58 @@ export * from "./narrate.js";
 export * from "./fal-video.js";
 export * from "./rotation.js";
 
+/** Production random source for pairing. Tests inject their own. */
+export function cryptoRandomInt(maxExclusive: number): number {
+  if (!Number.isInteger(maxExclusive) || maxExclusive <= 0) {
+    throw new Error(
+      `cryptoRandomInt maxExclusive must be a positive integer. Got: ${maxExclusive}`,
+    );
+  }
+  return nodeCryptoRandomInt(0, maxExclusive);
+}
+
+/**
+ * Bout start: previous winner vs a random living non-winner.
+ * Builds FightInput so narration cannot pick a different pair.
+ */
+export function fightInputFromRotation(
+  livingCards: readonly LivingCard[],
+  winnerSubname: string,
+  randomInt: RandomInt,
+): FightInput {
+  const roster: RosterEntry[] = livingCards.map((card) => ({
+    subname: card.subname,
+    status: "alive" as const,
+  }));
+  const pair = nextRotationPair(roster, winnerSubname, randomInt);
+  const champion = livingCards.find(
+    (card) => card.subname === pair.championSubname,
+  );
+  const challenger = livingCards.find(
+    (card) => card.subname === pair.challengerSubname,
+  );
+  if (champion === undefined) {
+    throw new Error(
+      `fightInputFromRotation: champion ${JSON.stringify(pair.championSubname)} missing from living cards.`,
+    );
+  }
+  if (challenger === undefined) {
+    throw new Error(
+      `fightInputFromRotation: challenger ${JSON.stringify(pair.challengerSubname)} missing from living cards.`,
+    );
+  }
+  const eligibleOpponents = livingCards.filter(
+    (card) =>
+      card.subname !== champion.subname &&
+      card.subname !== challenger.subname,
+  );
+  return {
+    fighterA: champion,
+    fighterB: challenger,
+    eligibleOpponents,
+  };
+}
+
 export async function runFightTurn(
   input: FightInput,
   env: Record<string, string | undefined> = process.env,
@@ -28,14 +87,17 @@ export async function runFightTurn(
     fal?: FalClient;
     narrationConfig?: NarrationConfig;
     falConfig?: FalVideoConfig;
+    randomInt?: RandomInt;
   } = {},
 ): Promise<FightTurnResult> {
   const narrationConfig = deps.narrationConfig ?? loadNarrationConfig(env);
   const falConfig = deps.falConfig ?? loadFalVideoConfig(env);
+  const randomInt = deps.randomInt ?? cryptoRandomInt;
   const narrated: NarrationResult = await narrateFight(
     input,
     narrationConfig,
     deps.narration,
+    randomInt,
   );
   const video = await generateFightVideo(
     narrated.turn,
