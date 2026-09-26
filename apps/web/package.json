@@ -12,6 +12,7 @@
     "@horror-tube/ens": "workspace:*",
     "@mysten/dapp-kit-core": "^1.6.32",
     "@mysten/sui": "^2.33.0",
+    "@worldcoin/idkit-core": "4.3.0",
     "qrcode": "^1.5.4",
     "three": "0.186.1"
   },
