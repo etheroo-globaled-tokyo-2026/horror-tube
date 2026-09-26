@@ -77,9 +77,7 @@ function parseRoundState(source: string, json: string): ServerRoundState {
   return parsed.output;
 }
 
-export async function fetchReplayVideoUrl(
-  fetchImpl: typeof fetch = fetch,
-): Promise<string> {
+export async function fetchReplayVideoUrl(fetchImpl: typeof fetch = fetch): Promise<string> {
   const res = await fetchImpl("/replay");
   let body: unknown;
   try {

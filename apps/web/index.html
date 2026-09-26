@@ -112,6 +112,15 @@
         z-index: 20;
         background: var(--soot);
       }
+      .scare {
+        position: fixed;
+        inset: 0;
+        z-index: 21;
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        image-rendering: pixelated;
+      }
       .dark {
         position: fixed;
         inset: 0;
@@ -163,6 +172,7 @@
       <p>Press <b>ENTER</b> to try again.</p>
     </div>
     <div id="cut" class="cut" hidden></div>
+    <canvas id="scare" class="scare" hidden aria-hidden="true"></canvas>
     <canvas id="film"></canvas>
     <div hidden>
       <button data-act="bet" id="h-bet"></button
