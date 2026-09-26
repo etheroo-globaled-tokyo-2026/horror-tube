@@ -63,6 +63,24 @@ describe("generateFightVideo", () => {
     );
   });
 
+  it("surfaces fal ApiError status and body when message is empty", async () => {
+    await assert.rejects(
+      () =>
+        generateFightVideo(validTurn(), falCfg, {
+          subscribe: async () => {
+            const err = new Error("") as Error & {
+              status: number;
+              body: { detail: string };
+            };
+            err.status = 401;
+            err.body = { detail: "invalid key credentials" };
+            throw err;
+          },
+        }),
+      /status=401.*invalid key credentials/,
+    );
+  });
+
   it("fails when the fal response has no video.url", async () => {
     await assert.rejects(
       () =>
