@@ -1,8 +1,9 @@
 {
   "label": "smoke-alpha",
+  "display_name": "Smoke Alpha",
   "look": "Lean figure in a scratched leather jacket with a cracked white mask.",
   "brief": "Steps into frame and freezes until the camera commits.",
-  "injuries": "",
+  "injuries": "[]",
   "status": "",
   "icon": ""
 }

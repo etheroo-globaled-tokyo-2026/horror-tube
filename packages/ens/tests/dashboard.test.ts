@@ -8,6 +8,7 @@ import {
   MAX_RECENT_LOG_CHUNKS,
   MIN_LOG_BLOCK,
   DASHBOARD_PORT,
+  characterSheetFromTexts,
   decodeRegisterLabel,
   ensAppUrl,
   parseDashboardPort,
@@ -74,11 +75,12 @@ describe("dashboard HTML (unit, no network)", () => {
     const owner = "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02";
     const sheet: CharacterSheet = {
       label: "pinhead",
+      display_name: "Pinhead",
       name: "pinhead.horrortube.eth",
       owner,
       look: `<script>alert("x")</script>`,
       brief: `He said "boo" & left`,
-      injuries: "",
+      injuries: [],
       status: "alive",
       icon: "",
     };
@@ -90,6 +92,62 @@ describe("dashboard HTML (unit, no network)", () => {
     assert.ok(html.includes(`href="${ensAppUrl(sheet.name)}"`));
     assert.ok(html.includes(`href="${sepoliaAddressUrl(owner)}"`));
     assert.ok(html.includes(owner));
+    assert.ok(html.includes("<dt>injuries</dt><dd>none</dd>"));
+  });
+
+  it("uses display_name as title, ENS name as link, and separate injury lines", () => {
+    const sheet: CharacterSheet = {
+      label: "art",
+      display_name: "Art the Clown",
+      name: "art.horrortube.eth",
+      owner: "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02",
+      look: "A clown.",
+      brief: "Stalks silently.",
+      injuries: ["ripped left sleeve", "slower swing"],
+      status: "alive",
+      icon: "",
+    };
+    const html = renderDashboardHtml("horrortube.eth", [sheet]);
+    assert.ok(html.includes("<h2>Art the Clown</h2>"));
+    assert.ok(
+      html.includes(
+        `<a href="${ensAppUrl(sheet.name)}">${sheet.name}</a>`,
+      ),
+    );
+    assert.ok(html.includes("<li>ripped left sleeve</li>"));
+    assert.ok(html.includes("<li>slower swing</li>"));
+  });
+
+  it("fails closed for invalid injuries and blank display_name", () => {
+    const owner = "0x3B9Fd8d65B008709c9DF511295F56980E7C32D02";
+    const texts = {
+      display_name: "Pinhead",
+      look: "Pale figure.",
+      brief: "Summons chains.",
+      injuries: "scar on cheek",
+      status: "alive",
+      icon: "",
+    };
+    assert.throws(
+      () =>
+        characterSheetFromTexts(
+          "pinhead",
+          "pinhead.horrortube.eth",
+          owner,
+          texts,
+        ),
+      /pinhead.*"scar on cheek"/u,
+    );
+    assert.throws(
+      () =>
+        characterSheetFromTexts(
+          "pinhead",
+          "pinhead.horrortube.eth",
+          owner,
+          { ...texts, display_name: " ", injuries: "[]" },
+        ),
+      /pinhead.*display_name/u,
+    );
   });
 });
 

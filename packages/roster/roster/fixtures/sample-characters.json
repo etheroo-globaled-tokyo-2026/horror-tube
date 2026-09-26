@@ -1,17 +1,19 @@
 [
   {
     "label": "fixture-one",
+    "display_name": "Fixture One",
     "look": "Tall figure in a plain dark coat with a blank porcelain mask.",
     "brief": "Silent stalker who closes distance without speaking.",
-    "injuries": "",
+    "injuries": "[]",
     "status": "",
     "icon": ""
   },
   {
     "label": "fixture-two",
+    "display_name": "Fixture Two",
     "look": "Short fighter in a torn gray hoodie with one glowing red eye lens.",
     "brief": "Charges first and ignores pain until the fight ends.",
-    "injuries": "",
+    "injuries": "[]",
     "status": "",
     "icon": "https://cdn.example.test/fixtures/fixture-two.png"
   }

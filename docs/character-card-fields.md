@@ -6,13 +6,14 @@ Smallest ENS text set for a video LLM (not vision). Not product copy.
 
 | Key        | Who writes                         | Required | Purpose |
 | ---------- | ---------------------------------- | -------- | ------- |
+| `display_name` | roster key at import           | yes      | Human-readable character name shown to people. |
 | `look`     | roster key at import               | yes      | Visible body, costume, silhouette. One sentence. |
 | `brief`    | roster key at import               | yes      | One short lore line the fight can act on. |
 | `injuries` | `agent.horrortube.eth` after fight | yes\*    | LLM-written carried damage for the next clip. |
 | `status`   | `agent.horrortube.eth` on death    | yes\*    | `dead` removes the name from selection. |
 | `icon`     | roster key at import               | no       | HTTPS URL string to the CDN portrait. |
 
-\*At import: `injuries` blank means unhurt; `status` is `alive`. `dead` removes the name from selection (the name must still be `REGISTERED`). `""` is only for names written before `alive` was the default.
+\*At import: `injuries` is the string `[]`, meaning unhurt; `status` is `alive`. `dead` removes the name from selection (the name must still be `REGISTERED`). `""` is only allowed for legacy `status`.
 
 Drop: `strength`, `intelligence`, `luck`, `role`. Do not store bets, odds, HP, or numeric combat stats on ENS.
 
@@ -28,7 +29,7 @@ One action-usable lore line. Not a biography.
 
 ### `injuries`
 
-Replaced after each win with the current damage the winner carries. Empty when unhurt. The injury writer is an LLM that does not look at an image. Each value names body part, appearance, and movement change if any. On loss set `status` = `dead`; do not use `injuries` to mean dead.
+Replaced after each win with a JSON array of the current damage the winner carries. `[]` means unhurt. Each array item is one non-empty injury description or short label. The injury writer is an LLM that does not look at an image. On loss set `status` = `dead`; do not add death to `injuries`.
 
 ### `status`
 
@@ -45,14 +46,23 @@ No ENSv2 Sepolia millisecond measurement was found. An April 2024 ENS forum samp
 ## Prompt assembly
 
 ```text
+name: <display_name>
 look: <look>
 brief: <brief>
-injuries: <injuries or "none">
+injuries: none
+```
+
+For a non-empty injury list, replace `injuries: none` with one bullet per injury:
+
+```text
+injuries:
+- <first injury>
+- <second injury>
 ```
 
 Omit `status` when the name is already known living. Never send dropped RPG keys. `icon` is for the dashboard (and optional reference if a path accepts a URL); it is not a substitute for `look`.
 
 ## Permission split
 
-- Roster key: `look`, `brief`, `icon`. Cannot set `status` or `injuries`.
-- Agent: `status`, `injuries` only. Cannot rewrite `look` or `brief`.
+- Roster key: `display_name`, `look`, `brief`, `icon`. Cannot set `status` or `injuries`.
+- Agent: `status`, `injuries` only. Cannot rewrite `display_name`, `look`, or `brief`.

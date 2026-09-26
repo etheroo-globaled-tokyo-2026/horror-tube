@@ -94,9 +94,10 @@ def _sheet(directory: Path) -> Path:
         json.dumps(
             {
                 "label": "maskcoat",
+                "display_name": "Maskcoat",
                 "look": "Tall figure in a plain dark coat with a blank porcelain mask.",
                 "brief": "Silent stalker who closes distance without speaking.",
-                "injuries": "",
+                "injuries": "[]",
                 "status": "",
                 "icon": "",
             }
@@ -176,9 +177,10 @@ class IconUrlAndSkipTests(unittest.TestCase):
                 [
                     {
                         "label": "maskcoat",
+                        "display_name": "Maskcoat",
                         "look": "Tall figure in a plain dark coat.",
                         "brief": "Silent stalker.",
-                        "injuries": "",
+                        "injuries": "[]",
                         "status": "alive",
                         "icon": "",
                     }
@@ -227,9 +229,10 @@ class IconUrlAndSkipTests(unittest.TestCase):
                     [
                         {
                             "label": "maskcoat",
+                            "display_name": "Maskcoat",
                             "look": "Tall figure in a plain dark coat.",
                             "brief": "Silent stalker.",
-                            "injuries": "",
+                            "injuries": "[]",
                             "status": "alive",
                             "icon": "",
                         }
@@ -320,9 +323,10 @@ class IconResizeTests(unittest.TestCase):
                         [
                             {
                                 "label": "maskcoat",
+                                "display_name": "Maskcoat",
                                 "look": "Tall figure in a plain dark coat.",
                                 "brief": "Silent stalker.",
-                                "injuries": "",
+                                "injuries": "[]",
                                 "status": "alive",
                                 "icon": "",
                             }
@@ -450,17 +454,19 @@ class IconChainSyncTests(unittest.TestCase):
             [
                 {
                     "label": "art",
+                    "display_name": "Art the Clown",
                     "look": "A smiling clown in white face paint.",
                     "brief": "brief",
-                    "injuries": "",
+                    "injuries": "[]",
                     "status": "alive",
                     "icon": "https://cdn.example.test/art.png",
                 },
                 {
                     "label": "pinhead",
+                    "display_name": "Pinhead",
                     "look": "Bald pale face covered in pins.",
                     "brief": "brief",
-                    "injuries": "",
+                    "injuries": "[]",
                     "status": "alive",
                     "icon": "",
                 },
@@ -494,9 +500,10 @@ class IconChainSyncTests(unittest.TestCase):
             [
                 {
                     "label": "chucky",
+                    "display_name": "Chucky",
                     "look": "A scarred doll with orange hair.",
                     "brief": "brief",
-                    "injuries": "",
+                    "injuries": "[]",
                     "status": "alive",
                     "icon": "",
                 }
@@ -519,9 +526,10 @@ class IconChainSyncTests(unittest.TestCase):
                 [
                     {
                         "label": "michael",
+                        "display_name": "Michael Myers",
                         "look": "   ",
                         "brief": "brief",
-                        "injuries": "",
+                        "injuries": "[]",
                         "status": "alive",
                         "icon": "",
                     }
@@ -548,9 +556,10 @@ class IconChainSyncTests(unittest.TestCase):
                 [
                     {
                         "label": "candyman",
+                        "display_name": "Candyman",
                         "look": "A man in a fur-lined coat with a hook.",
                         "brief": "brief",
-                        "injuries": "",
+                        "injuries": "[]",
                         "status": "alive",
                         "icon": "",
                     }

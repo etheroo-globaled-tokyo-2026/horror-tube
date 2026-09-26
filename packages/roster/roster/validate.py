@@ -82,6 +82,34 @@ def _check_icon(icon: str, *, context: str) -> None:
         )
 
 
+def parse_injuries(value: Any, *, context: str) -> list[str]:
+    if not isinstance(value, str):
+        raise RosterValidationError(f"{context}: injuries must be a string.")
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise RosterValidationError(
+            f"{context}: injuries must be a JSON array of strings. Got: {value!r}"
+        ) from exc
+    if not isinstance(parsed, list):
+        raise RosterValidationError(
+            f"{context}: injuries must be a JSON array of strings. Got: {value!r}"
+        )
+    injuries: list[str] = []
+    for index, item in enumerate(parsed):
+        if not isinstance(item, str):
+            raise RosterValidationError(
+                f"{context}: injuries[{index}] must be a string. Got: {item!r}"
+            )
+        trimmed = item.strip()
+        if trimmed == "":
+            raise RosterValidationError(
+                f"{context}: injuries[{index}] must not be empty or whitespace-only."
+            )
+        injuries.append(trimmed)
+    return injuries
+
+
 def _check_character_rules(character: Mapping[str, Any], *, context: str) -> None:
     forbidden = FORBIDDEN_KEYS.intersection(character.keys())
     if forbidden:
@@ -89,7 +117,7 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
             f"{context}: forbidden keys present: {', '.join(sorted(forbidden))}. "
             "Do not include strength, intelligence, luck, or role."
         )
-    for key in ("label", "look", "brief", "injuries", "status", "icon"):
+    for key in ("label", "display_name", "look", "brief", "injuries", "status", "icon"):
         if key not in character:
             raise RosterValidationError(
                 f"{context}: missing required key {key!r}. "
@@ -100,12 +128,16 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
         raise RosterValidationError(
             f"{context}: status must be one of {sorted(STATUS_ALLOWED)!r}. Got: {status!r}"
         )
-    if not isinstance(character["injuries"], str):
-        raise RosterValidationError(f"{context}: injuries must be a string.")
+    parse_injuries(character["injuries"], context=context)
     label = character["label"]
     if not isinstance(label, str) or not _LABEL_RE.fullmatch(label):
         raise RosterValidationError(
             f"{context}: label must be a single lowercase DNS label. Got: {label!r}"
+        )
+    display_name = character["display_name"]
+    if not isinstance(display_name, str) or display_name.strip() == "":
+        raise RosterValidationError(
+            f"{context}: display_name must be a non-empty string."
         )
     if not isinstance(character["look"], str) or character["look"].strip() == "":
         raise RosterValidationError(f"{context}: look must be a non-empty string.")
@@ -117,11 +149,15 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
 
 
 def normalize_character(character: Mapping[str, Any]) -> Character:
+    injuries = parse_injuries(
+        character["injuries"], context=f"character {character.get('label')!r}"
+    )
     return {
         "label": character["label"],
+        "display_name": character["display_name"].strip(),
         "look": character["look"],
         "brief": character["brief"],
-        "injuries": character["injuries"],
+        "injuries": json.dumps(injuries, ensure_ascii=False),
         "status": character["status"],
         "icon": character["icon"],
     }
@@ -179,9 +215,8 @@ def is_dead_or_injured(character: Mapping[str, Any]) -> bool:
     injuries = character.get("injuries")
     if status == "dead":
         return True
-    if isinstance(injuries, str) and injuries != "":
-        return True
-    return False
+    label = character.get("label")
+    return len(parse_injuries(injuries, context=f"character {label!r}")) > 0
 
 
 def index_by_label(characters: Sequence[Mapping[str, Any]]) -> dict[str, Character]:
