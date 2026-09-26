@@ -9,7 +9,8 @@
     "format": "oxfmt",
     "ens:check": "pnpm --filter @horror-tube/ens check",
     "ens:register": "pnpm --filter @horror-tube/ens register",
-    "ens:subnames": "pnpm --filter @horror-tube/ens subnames"
+    "ens:subnames": "pnpm --filter @horror-tube/ens subnames",
+    "dashboard": "pnpm --filter @horror-tube/ens dashboard"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
