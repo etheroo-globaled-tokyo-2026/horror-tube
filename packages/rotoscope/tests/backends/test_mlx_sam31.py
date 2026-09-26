@@ -5,7 +5,7 @@ import pytest
 from rotoscope.types import ANALYSIS_H, ANALYSIS_W, Prompt
 
 pytest.importorskip("mlx_vlm")
-from rotoscope.backends.mlx_sam31 import FLOOR, MlxSam31  # noqa: E402
+from rotoscope.backends.mlx_sam31 import FLOOR, START, MlxSam31  # noqa: E402
 
 pytestmark = pytest.mark.slow
 PROMPTS = [Prompt("cast", "A", "man in a red and green striped sweater"), Prompt("cast", "B", "black alien creature"),
@@ -27,6 +27,9 @@ def test_finds_tracks_and_cuts(gore_frames):
             assert max((f.score for f in finds if f.kind == "cast" and f.key == key), default=0) >= 0.5, \
                 f"cast {key} found"
     assert any(f.kind == "blood" for finds in per for f in finds)
-    started = {f.track for f in per[1] if f.kind == "cast"}
-    assert started - {None}, "the cast found in the first frame is tracked into the second"
-    assert all(f.track is None for f in per[2]), "no track carries across the cut"
+    started = {f.track for f in per[0] if f.kind == "cast" and f.score >= START}
+    assert started and None not in started, "the find that starts a track carries its id"
+    assert started <= {f.track for f in per[1] if f.kind == "cast"}, "the cast is tracked into the next frame"
+    before = {f.track for finds in per[:2] for f in finds} - {None}
+    assert before.isdisjoint(f.track for f in per[2]), "no track carries across the cut"
+    assert {f.track for f in per[2] if f.kind == "cast" and f.score >= START} - {None}, "tracks start again at a cut"
