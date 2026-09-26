@@ -73,13 +73,14 @@ repository variables of the same names.
 
 ## Roles and keys
 
-| Role     | Key                                                  | Holds                            | Does                                                                                             |
-| -------- | ---------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Admin    | `SUI_ADMIN_PRIVATE_KEY`, laptop only                 | `AdminCap`, the e2e operator cap | Publishes, sets fee and minimum, issues and revokes operator caps, withdraws fees, funds the e2e |
-| Operator | `SUI_OPERATOR_PRIVATE_KEY`, on the server            | `OperatorCap`                    | Opens, closes, settles and cancels pools; pays its own gas in SUI                                |
-| Player   | Shinami Invisible Wallet, one per World ID nullifier | `Ticket`s                        | Bets and claims through `POST /tx`; Shinami's Gas Station pays the gas                           |
+| Role      | Key                                                  | Holds                            | Does                                                                                                |
+| --------- | ---------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Admin     | `SUI_ADMIN_PRIVATE_KEY`, laptop only                 | `AdminCap`, the e2e operator cap | Publishes, sets fee and minimum, issues and revokes operator caps, withdraws fees, funds the e2e    |
+| Operator  | `SUI_OPERATOR_PRIVATE_KEY`, on the server            | `OperatorCap`                    | Opens, closes, settles and cancels pools; pays its own gas in SUI                                   |
+| Player    | Shinami Invisible Wallet, one per World ID nullifier | `Ticket`s                        | Bets and claims through `POST /tx`; Shinami's Gas Station pays the gas                              |
+| House bot | `HOUSE_BOT_SUI_PRIVATE_KEYS`, on the server          | `Ticket`s                        | Bets against the human stake and claims after settle; pays its own gas in SUI (`docs/game-loop.md`) |
 
-- Both keys are in 1Password (paths in `.env.example`). If the operator key leaks, the admin revokes its cap and
+- The admin, operator and house bot keys are in 1Password (paths in `.env.example`). If the operator key leaks, the admin revokes its cap and
   issues a new one.
 - `POST /tx` requires the World ID session. The Move package doesn't check World ID: a wallet that calls `bet`
   directly can bet.
@@ -123,6 +124,8 @@ A missing or blank value stops the command or the server and names the variable.
 | `SUI_ADMIN_CAP_ID`                       | admin calls                                                                                 | Printed by `pnpm betting:deploy`                                                                   |
 | `SUI_OPERATOR_PRIVATE_KEY`               | server, `betting:deploy`                                                                    | Deploy sends the operator cap to its address                                                       |
 | `SUI_OPERATOR_CAP_ID`                    | server                                                                                      | Printed by `pnpm betting:deploy`                                                                   |
+| `HOUSE_BOT_SUI_PRIVATE_KEYS`             | server                                                                                      | Comma-separated keys, one per house bot; each needs SUI for gas and USDC in its address balance    |
+| `HOUSE_BOT_STAKE_UNITS`                  | server                                                                                      | House bot stake per bout in base units; at least the House `min_bet`                               |
 | `SUI_E2E_OPERATOR_CAP_ID`                | `betting:e2e`                                                                               | Printed by `pnpm betting:deploy`. Held by the admin key, so e2e runs never contend with the server |
 | `SHINAMI_ACCESS_KEY`                     | server, `betting:e2e`                                                                       | Needs Gas Station, Wallet Services and Node Service; the Testnet Gas Station fund needs SUI        |
 | `WALLET_SECRET_PEPPER`                   | server                                                                                      | Players' wallet secrets; losing it loses every wallet                                              |

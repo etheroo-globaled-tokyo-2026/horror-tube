@@ -40,6 +40,11 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
+House bots play too (`RoundState.bots`, rules in `docs/game-loop.md`). A bot votes after the first human, so one
+tester reaches the quorum, and bets against the human stake. The room never hides it: the countdown reads
+`1 human + house bot voted`, the bet screen prints `HOUSE BOT 0.50 USDC` under the side it backs, the log names each
+bot vote and bet, and a bot failure shows in the hint bar without stopping the round.
+
 ## The wallet
 
 Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC**. Researched 2026-09-26.
