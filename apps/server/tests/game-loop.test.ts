@@ -865,7 +865,7 @@ describe("GameLoop phases", () => {
           winnerSide: 0,
           damage: 1,
           videoUrl: "https://cdn.example/videos/job.mp4",
-          videoStyle: "film",
+          videoStyle: "rotoscope",
           durationMs: 2_000,
           frameUrl: "https://cdn.example/frames/job.jpg",
         };
@@ -884,6 +884,7 @@ describe("GameLoop phases", () => {
     assert.equal(requests[0]?.priorFrameUrl, null);
     assert.deepEqual(requests[0]?.livingSubnames, labels);
     assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/job.mp4");
+    assert.equal(loop.getState().videoStyle, "rotoscope");
     assert.equal(loop.getState().frameUrl, "https://cdn.example/frames/job.jpg");
     assert.equal(loop.getState().error, null);
     assert.equal(loop.getState().phase, "bet", "bet stays open until BET_MIN_SECONDS");

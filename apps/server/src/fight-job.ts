@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   loadFalVideoConfig,
+  loadVideoEffectsConfig,
   runFightTurn,
   type FightInput,
   type LivingCard,
@@ -154,8 +155,9 @@ export function fightJobResultFromTurn(
 
 /**
  * Builds the production fight runner. Loads living cards, calls runFightTurn,
- * and maps the result for GameLoop. Missing FAL/narration/Spaces env fails when
- * the job runs (named by those loaders). No demo-fight fallback.
+ * and maps the result for GameLoop. Missing FAL/narration/Spaces env, or a
+ * ROTOSCOPE / DEMON_SOUND switch that is not 0 or 1, fails when the job runs
+ * (named by those loaders). No demo-fight fallback and no default video style.
  */
 export function createFightJobRunner(deps: {
   loadLivingCards: LoadLivingCards;
@@ -175,9 +177,11 @@ export function createFightJobRunner(deps: {
         ? undefined
         : request.priorFrameUrl.trim();
     const falConfig = loadFalVideoConfig(env);
+    const videoEffects = loadVideoEffectsConfig(env);
     const result = await runTurn(input, env, {
       priorFrameUrl: prior,
       falConfig,
+      videoEffects,
     });
     return fightJobResultFromTurn(
       request,

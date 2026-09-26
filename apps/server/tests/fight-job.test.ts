@@ -41,6 +41,8 @@ const falEnv = {
   FAL_ASPECT_RATIO: "16:9",
 };
 
+const fightEnv = { ...falEnv, DEMON_SOUND: "0", ROTOSCOPE: "0" };
+
 describe("buildFightInput", () => {
   it("maps fighter and eligible opponent cards from living subnames", () => {
     const input = buildFightInput(baseRequest(), [
@@ -158,12 +160,12 @@ describe("createFightJobRunner", () => {
       rationale: "alpha by a cut",
       videoPrompt: "prompt",
       videoUrl: "https://cdn.example/videos/job.mp4",
-      videoStyle: "film",
+      videoStyle: "rotoscope",
       frameUrl: "https://cdn.example/frames/job.jpg",
       expandedPrompt: null,
     };
     const runner = createFightJobRunner({
-      env: falEnv,
+      env: fightEnv,
       loadLivingCards: async (subnames) => {
         seen.subnames = [...subnames].sort();
         return [card("alpha"), card("bravo"), card("charlie")];
@@ -182,6 +184,7 @@ describe("createFightJobRunner", () => {
     assert.equal(seen.priorFrameUrl, "https://cdn.example/frames/prior.jpg");
     assert.equal(seen.falModel, "minimax/h3-max/text-to-video");
     assert.equal(result.videoUrl, "https://cdn.example/videos/job.mp4");
+    assert.equal(result.videoStyle, "rotoscope");
     assert.equal(result.frameUrl, "https://cdn.example/frames/job.jpg");
     assert.equal(result.durationMs, 8000);
     assert.equal(result.winnerSide, 0);
@@ -210,10 +213,29 @@ describe("createFightJobRunner", () => {
     );
   });
 
+  it("fails closed when the ROTOSCOPE switch is missing or not 0 or 1", async () => {
+    const run = (env: Record<string, string>) =>
+      createFightJobRunner({
+        env,
+        loadLivingCards: async () => [card("alpha"), card("bravo"), card("charlie")],
+        runTurn: async () => {
+          throw new Error("runTurn must not run without a video style.");
+        },
+      })(baseRequest());
+    await assert.rejects(
+      () => run({ ...falEnv, DEMON_SOUND: "0" }),
+      /ROTOSCOPE is required/u,
+    );
+    await assert.rejects(
+      () => run({ ...fightEnv, ROTOSCOPE: "yes" }),
+      /ROTOSCOPE must be "0" or "1"/u,
+    );
+  });
+
   it("omits priorFrameUrl for text-to-video when prior is null", async () => {
     let prior: string | undefined = "sentinel";
     const runner = createFightJobRunner({
-      env: falEnv,
+      env: fightEnv,
       loadLivingCards: async () => [card("alpha"), card("bravo")],
       runTurn: async (_input, _env, opts) => {
         prior = opts?.priorFrameUrl;
