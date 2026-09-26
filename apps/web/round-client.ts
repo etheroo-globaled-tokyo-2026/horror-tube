@@ -39,7 +39,7 @@ export function connectRoundEvents(onState: RoundListener): () => void {
   };
 }
 
-function storedVoteSession(store: SessionStore): string {
+function storedSession(store: SessionStore): string {
   const session = store.getItem(WALLET_SESSION_KEY);
   if (session === null || session.trim() === "") {
     throw new Error("World ID session is required. Finish the waiver scan first.");
@@ -48,11 +48,11 @@ function storedVoteSession(store: SessionStore): string {
 }
 
 async function postWithSession(
-  path: "/vote" | "/playback-start",
-  payload: { picks: number[] } | { battleId: string },
+  path: "/playback-start",
+  payload: { battleId: string },
   store: SessionStore,
 ): Promise<ServerRoundState> {
-  const session = storedVoteSession(store);
+  const session = storedSession(store);
   const res = await fetch(apiUrl(path), {
     method: "POST",
     headers: {
@@ -75,13 +75,6 @@ async function postWithSession(
     throw new Error(`POST ${path} response missing state.`);
   }
   return body.state;
-}
-
-export function postVote(
-  picks: number[],
-  store: SessionStore = localStorage,
-): Promise<ServerRoundState> {
-  return postWithSession("/vote", { picks }, store);
 }
 
 /** Tell the server this room's fight video started playing; it stores betting_closes_at. */

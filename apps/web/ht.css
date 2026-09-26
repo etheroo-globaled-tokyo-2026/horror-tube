@@ -568,7 +568,7 @@ mysten-dapp-kit-connect-modal {
   -webkit-font-smoothing: none;
 }
 
-/* Placeholder vote and bet screens; the final UI deletes [data-placeholder]. */
+/* Placeholder bet screen; the final UI deletes [data-placeholder]. */
 .placeholder {
   position: fixed;
   bottom: 12px;

@@ -9,7 +9,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | ----------------- | ----------------------------------------------------------------------------------------------------------- |
 | `main.ts`         | The 3D room (Three.js from npm), the TV picture and the remote.                                             |
 | `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
-| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /vote`.                                                      |
+| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
 | `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
 | `coinbox.ts`      | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.                           |
 | `sfx.ts`          | Every sound, made live with Web Audio. No sound files.                                                      |
@@ -28,7 +28,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 - Name: the `display_name` record. A blank `display_name` stops the page load.
 - Face: the `icon` PNG, everywhere (tape, spine, guide, fight figures).
 - Case file: `brief` and current `injuries`. `injury_places` is the list of places that character can be injured. `look` is for the video model only.
-- `status=dead` shows the character crossed off and in black and white. It cannot get votes.
+- `status=dead` shows the character crossed off and in black and white.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
 - A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
@@ -37,7 +37,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **bet** (fresh bout is a random living pair; later bouts are winner-stays-on plus a random living challenger; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
 ## The wallet
 
@@ -173,7 +173,7 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     injuries. Typing never lifts a tape, so the TV stays in view. The name shows again after OK.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
     PROGRAM", the loser, and OK to collect.
-- **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
+- **The remote:** the only thing you use for the game. VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
@@ -215,7 +215,7 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
 - **The padlock and the drawer:** withdraw. Real meters had no coin return: the collector unlocked the drawer and paid
   back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, and the credit goes back to
   the wallet that paid in.
-- **Empty:** the needle rests at 0 and the drums read `00.00`. You can vote. A and B on the remote do nothing, the TV
+- **Empty:** the needle rests at 0 and the drums read `00.00`. A and B on the remote do nothing, the TV
   says `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
@@ -237,7 +237,7 @@ and buzzes when it flickers, and the TV hisses as loud as its static. Something 
 - The waiver: a pen scratch, the VERIFIED stamp, and on the fail path the TV clicks off, the paper burns, a deep boom.
 - The remote: a plastic click per key, a buzz when the TV says no, a ratchet while you hold A or B, a clunk when the bet
   locks.
-- The phases: a church bell opens the vote, a typewriter writes the story, a heartbeat while the bet is open,
+- The phases: a typewriter writes the story, a heartbeat while the bet is open,
   hits on the fight, the emergency-broadcast tone and a boom at "WE INTERRUPT THIS PROGRAM" (a tape stop if you lost),
   a 1 kHz test tone at END OF PROGRAMMING. The fight video plays its own sound.
 - The coin box: a coin drops in, the meter ticks, the padlock ratchets open, coins pour out, a buzz when the box

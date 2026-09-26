@@ -4,7 +4,6 @@ import {
   S,
   applyRoundState,
   char,
-  face,
   usd,
   film,
   living,
@@ -30,7 +29,7 @@ import {
   speckle,
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
-import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
+import { LOW, STAKES, T, W8, num } from "./room-state.ts";
 
 export const TW = 640,
   TH = 480;
@@ -514,112 +513,6 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     g.drawImage(small, 0, y + 10, w, h - y - 10, dx, dy + (y + 10) * sy, dw, (h - y - 10) * sy);
   } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
 }
-export function drawGuide(now: number): void {
-  const g = tvCtx,
-    W = TW,
-    H = TH,
-    top = 236;
-  g.fillStyle = COL.soot;
-  g.fillRect(0, 0, W, H);
-  const filmCanvas = film();
-  if (vidMode && video.readyState >= 2) videoFrame(0, 0, W, top);
-  else if (S.last && filmCanvas.width) {
-    g.imageSmoothingEnabled = false;
-    g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
-  } else {
-    const REEL_MS = 2600,
-      CUT_MS = 160,
-      ch = S.chars[Math.floor(now / REEL_MS) % S.chars.length];
-    g.fillStyle = COL.char;
-    g.fillRect(0, 0, W, top);
-    if (!LOW && now % REEL_MS < CUT_MS) {
-      for (let y = 0; y < top; y += 4) {
-        g.fillStyle = Math.random() < 0.5 ? COL.grime : COL.soot;
-        g.fillRect(0, y, W, 4);
-      }
-    } else if (ch) {
-      g.imageSmoothingEnabled = false;
-      g.drawImage(face(ch), 40, 28, 180, 180);
-      g.textAlign = "left";
-      g.font = "700 22px Silkscreen";
-      g.fillStyle = COL.sulfur;
-      g.fillText(`CH ${num(ch.id + 1)}`, 252, 88);
-      g.font = "30px DotGothic16";
-      g.fillStyle = COL.bone;
-      const y = wrap(g, ch.name.toUpperCase(), 252, 130, W - 276, 34);
-      g.font = "700 22px Silkscreen";
-      g.fillStyle = ch.alive ? COL.bone : COL.rust;
-      g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
-    }
-  }
-  if (S.last) {
-    g.textAlign = "left";
-    if ((now / 500) % 2 < 1) {
-      g.fillStyle = COL.blood;
-      g.beginPath();
-      g.arc(34, 38, 9, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.font = "700 24px Silkscreen";
-    g.fillStyle = COL.bone;
-    g.fillText("REC · LAST NIGHT", 52, 47);
-  }
-  g.fillStyle = COL.char;
-  g.fillRect(0, top, W, H - top);
-  g.fillStyle = COL.sulfur;
-  g.fillRect(0, top, W, 32);
-  g.fillStyle = COL.soot;
-  g.textAlign = "left";
-  g.font = "700 18px Silkscreen";
-  g.fillText(S.cast ? "GOOD NIGHT." : "TONIGHT'S RESIDENTS", 16, top + 23);
-  g.textAlign = "right";
-  g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
-  S.chars.forEach((ch) => {
-    if (
-      (S.phase === "vote" || S.phase === "countdown") &&
-      S.champion !== null &&
-      ch.id === S.champion
-    ) {
-      return;
-    }
-    const visibleIndex = S.chars
-      .filter(
-        (c) =>
-          !(
-            (S.phase === "vote" || S.phase === "countdown") &&
-            S.champion !== null &&
-            c.id === S.champion
-          ),
-      )
-      .indexOf(ch);
-    const x = visibleIndex < 5 ? 12 : W / 2 + 6,
-      y = top + 34 + (visibleIndex % 5) * 42,
-      mine = S.picks.includes(ch.id);
-    if (mine) {
-      g.fillStyle = COL.bone;
-      g.fillRect(x - 6, y, W / 2 - 12, 40);
-    }
-    g.imageSmoothingEnabled = false;
-    g.drawImage(face(ch), x, y + 2, 36, 36);
-    g.textAlign = "left";
-    g.font = "700 20px Silkscreen";
-    g.fillStyle = !ch.alive ? COL.grime : mine ? COL.soot : COL.sulfur;
-    g.fillText(num(ch.id + 1), x + 44, y + 28);
-    g.font = "22px DotGothic16";
-    g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    const nameW = W / 2 - 110;
-    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28, nameW);
-    if (!ch.alive) {
-      g.fillStyle = COL.rust;
-      g.fillRect(x + 86, y + 20, Math.min(g.measureText(ch.name).width, nameW) + 4, 2);
-    }
-    if (mine) {
-      g.font = "700 12px Silkscreen";
-      g.fillText("✓ PICKED", x + 88, y + 37);
-    }
-  });
-}
-
 export let tvNoise = 0;
 export function drawTV(): void {
   const g = tvCtx,
@@ -751,54 +644,12 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (
-    (S.phase === "vote" || S.phase === "countdown") &&
-    !S.cast &&
-    (T.buf || (T.reveal >= 0 && now < T.revealUntil))
-  ) {
-    fill(COL.soot);
-    noise = 0.14;
-    if (T.reveal >= 0 && now < T.revealUntil) {
-      const ch = char(T.reveal);
-      text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
-      text(ch.name.toUpperCase(), 230, 44, COL.blood);
-      text(S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
-    } else {
-      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-      const n = +T.buf,
-        ch = T.buf.length === 2 ? S.chars[n - 1] : null;
-      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-      else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
-      else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
-      else if (S.champion !== null && ch.id === S.champion)
-        text("THE CHAMPION STAYS ON", 280, 28, COL.rust);
-      else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
-      else {
-        g.font = "24px DotGothic16";
-        g.fillStyle = COL.bone;
-        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
-        text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
-      }
-    }
   } else {
     const filmCanvas = film();
-    if (S.phase === "vote" || S.phase === "countdown") drawGuide(now);
-    else if (vidMode && video.readyState >= 2) videoFrame();
+    if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "countdown") {
-      fill(COL.soot);
-      text("VOTING CLOSES", 120, 36, COL.sulfur);
-      text(mmss(S.t), 220, 64, COL.blood);
-      text(
-        `${String(S.voters)} / ${String(S.quorum)} humans in`,
-        300,
-        26,
-        COL.bone,
-        "DotGothic16",
-        400,
-      );
-    } else if (S.phase === "bet" && vidMode === "live") {
+    if (S.phase === "bet" && vidMode === "live") {
       band(H - 150, 100);
       text(
         S.bettingClosesAt === null

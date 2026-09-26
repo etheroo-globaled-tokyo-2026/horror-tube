@@ -119,10 +119,6 @@ export function drawTape(ch: Character): void {
 }
 export function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
-  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
-    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
-    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
-  }
   return S.chars[T.held] ?? null;
 }
 
@@ -311,12 +307,7 @@ export function updateShelf(shown: Character | null): void {
     slot.mesh.visible =
       shelf.visible &&
       !!ch &&
-      shown !== ch &&
-      !(
-        (S.phase === "vote" || S.phase === "countdown") &&
-        S.champion !== null &&
-        ch.id === S.champion
-      );
+      shown !== ch;
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);

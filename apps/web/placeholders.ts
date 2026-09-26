@@ -1,18 +1,9 @@
-// Placeholder vote and bet screens. The final UI replaces these roots: delete [data-placeholder].
-import { $, S, applyRoundState, submitBet } from "./game.ts";
-import {
-  placeholderView,
-  type BetView,
-  type TallyLine,
-  type VoteView,
-} from "./placeholder-view.ts";
+import { $, S, submitBet } from "./game.ts";
+import { placeholderView, type BetView } from "./placeholder-view.ts";
 import { STAKES } from "./room-state.ts";
-import { postVote } from "./round-client.ts";
 
-const voteRoot = $('[data-placeholder="vote"]');
 const betRoot = $('[data-placeholder="bet"]');
-const failure = { vote: "", bet: "" };
-let voteKey = "";
+const failure = { bet: "" };
 let betKey = "";
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -46,61 +37,13 @@ function frame(root: HTMLElement, title: string, parts: string[]): void {
   root.append(error, dismiss);
 }
 
-function showTally(root: HTMLElement, tally: TallyLine[] | null): void {
-  const box = part(root, "tally");
-  if (tally === null) {
-    box.replaceChildren(el("p", "Stored tally: not written yet."));
-    return;
-  }
-  const list = el("ol");
-  for (const line of tally) list.append(el("li", `${line.name}: ${String(line.votes)}`));
-  box.replaceChildren(el("p", "Stored tally (Postgres):"), list);
-}
-
-function showFailure(root: HTMLElement, screen: "vote" | "bet"): void {
-  part(root, "error").textContent = failure[screen];
-  part(root, "dismiss").hidden = failure[screen] === "";
-}
-
-function buildVote(view: VoteView): void {
-  frame(voteRoot, "VOTING PERIOD", ["picks", "tally", "submit"]);
-  const picks = part(voteRoot, "picks");
-  for (const c of view.candidates) {
-    const label = el("label");
-    const box = el("input");
-    box.type = "checkbox";
-    box.value = String(c.id);
-    const count = el("span");
-    count.dataset.count = String(c.id);
-    label.append(box, ` ${c.name} `, count);
-    picks.append(label, el("br"));
-  }
-  const send = el("button", "Submit vote");
-  send.addEventListener("click", () => {
-    const chosen = [...picks.querySelectorAll<HTMLInputElement>("input:checked")].map((b) =>
-      Number(b.value),
-    );
-    failure.vote = "";
-    renderPlaceholders();
-    postVote(chosen)
-      .then((state) => {
-        S.cast = "submitted";
-        applyRoundState(state);
-      })
-      .catch((error: unknown) => {
-        failure.vote = `VOTE REJECTED. ${error instanceof Error ? error.message : String(error)}`;
-        renderPlaceholders();
-      });
-  });
-  part(voteRoot, "submit").replaceChildren(send);
-  part(voteRoot, "dismiss").addEventListener("click", () => {
-    failure.vote = "";
-    renderPlaceholders();
-  });
+function showFailure(root: HTMLElement): void {
+  part(root, "error").textContent = failure.bet;
+  part(root, "dismiss").hidden = failure.bet === "";
 }
 
 function buildBet(view: BetView): void {
-  frame(betRoot, "BETTING PERIOD", ["closes", "sides", "stake", "tally", "submit"]);
+  frame(betRoot, "BETTING PERIOD", ["closes", "sides", "stake", "submit"]);
   const sides = part(betRoot, "sides");
   view.sides.forEach((side, i) => {
     const label = el("label");
@@ -138,26 +81,9 @@ function buildBet(view: BetView): void {
   });
 }
 
-/** Server phase picks the screen; a screen holding a rejection stays up until dismissed. */
 export function renderPlaceholders(): void {
   const view = placeholderView(S);
-  const vote = view?.screen === "vote" ? view : null;
   const bet = view?.screen === "bet" ? view : null;
-
-  if (vote !== null) {
-    const key = `${String(S.round)}:${vote.candidates.map((c) => c.id).join(",")}`;
-    if (key !== voteKey) {
-      buildVote(vote);
-      voteKey = key;
-    }
-    for (const c of vote.candidates) {
-      const count = voteRoot.querySelector<HTMLElement>(`[data-count="${String(c.id)}"]`);
-      if (count !== null) count.textContent = `(${String(c.votes)} stored)`;
-    }
-    showTally(voteRoot, vote.tally);
-  }
-  if (voteKey !== "") showFailure(voteRoot, "vote");
-  voteRoot.hidden = vote === null && failure.vote === "";
 
   if (bet !== null) {
     const key = `${String(S.round)}:${String(S.battleId)}`;
@@ -171,8 +97,7 @@ export function renderPlaceholders(): void {
       const pool = betRoot.querySelector<HTMLElement>(`[data-pool="${String(i)}"]`);
       if (pool !== null) pool.textContent = `(pool ${side.usdc} USDC)`;
     });
-    showTally(betRoot, bet.tally);
   }
-  if (betKey !== "") showFailure(betRoot, "bet");
+  if (betKey !== "") showFailure(betRoot);
   betRoot.hidden = bet === null && failure.bet === "";
 }
