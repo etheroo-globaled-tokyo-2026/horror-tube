@@ -18,13 +18,16 @@ def clip(tmp_path_factory):
     return write_clip(tmp_path_factory.mktemp("clip") / "clip.mp4", fight_frames(30, cut=15))
 
 
+def app(limit=600.0, delay_s=0.0):
+    return create_app(Config(server=Server(time_limit_s=limit)),
+                      lambda: (FakeSegmenter(delay_s), FakeHands(), FakeDrawer()), "mps")
+
+
 def post(clip, shots=None, limit=600.0, delay_s=0.0, parts=("video", "shots")):
-    app = create_app(Config(server=Server(time_limit_s=limit)), FakeSegmenter(delay_s), FakeHands(), FakeDrawer(),
-                     "mps")
     shots = shots if shots is not None else {"shots": [SHOT]}
     files = {"video": ("clip.mp4", clip.read_bytes(), "video/mp4")} if "video" in parts else None
     data = {"shots": shots if isinstance(shots, str) else json.dumps(shots)} if "shots" in parts else None
-    with TestClient(app) as c:
+    with TestClient(app(limit, delay_s)) as c:
         return c.post("/v1/rotoscope", files=files, data=data)
 
 
@@ -74,8 +77,7 @@ def test_a_job_past_the_time_limit_gets_504_at_the_limit(clip):
 
 
 def test_healthz_names_the_device_and_backends():
-    app = create_app(Config(), FakeSegmenter(), FakeHands(), FakeDrawer(), "mps")
-    with TestClient(app) as c:
+    with TestClient(app()) as c:
         body = c.get("/healthz").json()
     assert body == {"ok": True, "device": "mps",
                     "backends": {"segmenter": "FakeSegmenter", "hands": "FakeHands", "drawer": "FakeDrawer"}}

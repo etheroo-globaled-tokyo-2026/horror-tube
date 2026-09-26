@@ -2,8 +2,9 @@
     POST /v1/rotoscope   multipart/form-data: "video" (mp4) and "shots" (the shot list JSON) -> the drawing as mp4
     GET  /healthz        the device and backends
 Every error is JSON: {"error": what failed, "detail": {...}}. Jobs run one at a time on one worker thread, since each
-needs the whole GPU. A request's time limit counts from its arrival, waiting included: past it the reply is 504 and
-the job stops at its next step."""
+needs the whole GPU; the backends are built on that thread too, at startup, so each model is created and used on
+the same thread. A request's time limit counts from its arrival, waiting included: past it the reply is 504 and the
+job stops at its next step."""
 import asyncio
 import logging
 import shutil
@@ -13,6 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Callable
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -29,6 +31,7 @@ from rotoscope.types import HandFinder, PeopleDrawer, Segmenter
 
 log = logging.getLogger(__name__)
 SHOTS_MAX_BYTES = 1 << 20
+Backends = tuple[Segmenter, HandFinder, PeopleDrawer]
 
 
 def error(status: int, what: str, **detail) -> JSONResponse:
@@ -39,9 +42,10 @@ def _remove(job: str, path: Path) -> None:
     shutil.rmtree(path, onexc=lambda _fn, p, e: log.warning("job %s: couldn't remove %s: %s", job, p, e))
 
 
-def create_app(cfg: Config, segmenter: Segmenter, hands: HandFinder, drawer: PeopleDrawer, device: str) -> Starlette:
+def create_app(cfg: Config, build: Callable[[], Backends], device: str) -> Starlette:
+    """build: makes the segmenter, hand finder and people drawer; it runs once, on the worker, at startup."""
     worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rotoscope")
-    backends = {"segmenter": type(segmenter).__name__, "hands": type(hands).__name__, "drawer": type(drawer).__name__}
+    backends: list = []
     limit = cfg.server.time_limit_s
 
     def run_job(job: str, src: Path, shot_list: shots.ShotList, deadline: float) -> tuple[bytes, int]:
@@ -50,6 +54,7 @@ def create_app(cfg: Config, segmenter: Segmenter, hands: HandFinder, drawer: Peo
         try:
             if time.monotonic() > deadline:
                 raise TimeLimit("past the time limit while waiting for the job before it")
+            segmenter, hands, drawer = backends
             result = pipeline.rotoscope(src, shot_list, cfg, segmenter, hands, drawer, deadline)
             out = src.parent / "out.mp4"
             n = video.encode(result.frames, src, out, cfg.video)
@@ -64,7 +69,8 @@ def create_app(cfg: Config, segmenter: Segmenter, hands: HandFinder, drawer: Peo
             _remove(job, src.parent)
 
     async def healthz(_: Request) -> JSONResponse:
-        return JSONResponse({"ok": True, "device": device, "backends": backends})
+        names = dict(zip(("segmenter", "hands", "drawer"), (type(b).__name__ for b in backends)))
+        return JSONResponse({"ok": True, "device": device, "backends": names})
 
     async def rotoscope(request: Request) -> Response:
         job = uuid.uuid4().hex[:8]
@@ -128,6 +134,9 @@ def create_app(cfg: Config, segmenter: Segmenter, hands: HandFinder, drawer: Peo
 
     @asynccontextmanager
     async def lifespan(_: Starlette):
+        t0 = time.monotonic()
+        backends.extend(await asyncio.wrap_future(worker.submit(build)))
+        log.info("backends ready in %.1f s: %s", time.monotonic() - t0, ", ".join(type(b).__name__ for b in backends))
         yield
         worker.shutdown(wait=False, cancel_futures=True)
 

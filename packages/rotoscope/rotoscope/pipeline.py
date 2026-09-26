@@ -1,12 +1,14 @@
 """The rotoscope: a video and its shot list in, one palette frame per video frame out. The models come in through
 the Segmenter, HandFinder and PeopleDrawer protocols, so these steps are the same on any host."""
 import logging
+import re
 import tempfile
 import time
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Sequence
 
 import cv2
 import numpy as np
@@ -19,6 +21,7 @@ from rotoscope.types import ANALYSIS_H, ANALYSIS_W, Figure, HandFinder, PeopleDr
 
 log = logging.getLogger(__name__)
 PROGRESS_S = 5.0                    # seconds between progress lines in a per-frame step
+NUMBER = re.compile(r"\d+(\.\d+)?( px)?")
 
 
 @dataclass
@@ -66,6 +69,18 @@ class _Steps:
             self.last_log = time.monotonic()
 
 
+def summary(scenes: Sequence[rules.Scene]) -> str:
+    """For the log: in how many frames each character and prop was drawn, and why the rest of their finds were
+    dropped (numbers taken out, so each reason counts once)."""
+    counts: Counter[str] = Counter()
+    for s in scenes:
+        counts.update(f"{cid} drawn" for cid in s.ids)
+        counts.update(f"{p.key} {'loose' if s.holder(i) is None else 'held by ' + s.holder(i)}"
+                      for i, p in enumerate(s.props))
+        counts.update(f"{r.find.key} dropped, {NUMBER.sub('#', r.why)}" for r in s.rejected)
+    return "; ".join(f"{k}: {v} frames" for k, v in sorted(counts.items()))
+
+
 def prompts(shots: ShotList, cfg: Config) -> list[Prompt]:
     """Everything SAM is asked to find, once each: every shot's cast and props, blood, lights and hands."""
     asks = [Prompt("cast", c.id, c.find) for s in shots.shots for c in s.cast]
@@ -108,6 +123,7 @@ def rotoscope(video_path: Path, shots: ShotList, cfg: Config, segmenter: Segment
             steps.progress("hands", k + 1, n)
         with steps.step("carrying holds and dropping set dressing"):
             scenes = rules.in_play(rules.carry(scenes, runs, cfg.rules), listed, cfg.rules)
+        log.info("rules: %s", summary(scenes))
         out, faces, starts = [], [], {0, *cut_at}
         for k in range(n):
             with steps.step("drawing", k):

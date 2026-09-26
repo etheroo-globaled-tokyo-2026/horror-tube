@@ -144,17 +144,19 @@ def decisions(frames: Sequence[Sequence[Find]], shots: Sequence[int], cfg: Rules
         nearby = [x for j in range(max(0, k - cfg.near), min(n, k + cfg.near + 1))
                   if j != k and shots[j] == shots[k] for x in sure[j]]
         out.append(classify(fr, cfg, nearby, sure[k]))
-    sighted = [{f.track: f for f in fr if f.track is not None} for fr in clear]
-    kept_tracks = [{f.track for f in d.kept if f.track is not None} for d in out]
+    # a track is one object under one key: prompts that share a text share the segmenter's tracks
+    sighted = [{(f.key, f.track): f for f in fr if f.track is not None} for fr in clear]
+    kept_tracks = [{(f.key, f.track) for f in d.kept if f.track is not None} for d in out]
     for k, fr in enumerate(frames):
         d = out[k]
         for f in fr:
             if f.kind not in ("cast", "prop") or not weak(f):
                 continue
+            t = (f.key, f.track)
             j = next((j for step in range(1, n) for j in (k - step, k + step)
-                      if 0 <= j < n and shots[j] == shots[k] and f.track in sighted[j]), None)
-            ref = sighted[j][f.track] if j is not None else None
-            if ref is None or f.track not in kept_tracks[j]:
+                      if 0 <= j < n and shots[j] == shots[k] and t in sighted[j]), None)
+            ref = sighted[j][t] if j is not None else None
+            if ref is None or t not in kept_tracks[j]:
                 why = "tracked, but not kept where the finder saw it clearly"
             elif _area(f.mask) < cfg.shrink * _area(ref.mask):
                 why = f"tracked, but shrunk to {_area(f.mask)} px from {_area(ref.mask)} px: the tracker lost it"
