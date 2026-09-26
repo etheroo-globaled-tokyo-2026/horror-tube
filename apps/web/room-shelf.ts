@@ -77,19 +77,50 @@ export const tinted = (ch: Character): HTMLCanvasElement => {
   tints.set(key, cv);
   return cv;
 };
-export const TAPE = { key: "", at: 0, up: 0 };
+export const TAPE = {
+  key: "",
+  at: 0,
+  up: 0,
+  flat: 0,
+  dragging: false,
+  pointer: new THREE.Vector2(),
+};
+const HAND_Z = 0.62;
+const lerp = THREE.MathUtils.lerp;
+const handTurn = new THREE.Quaternion(),
+  slotTurn = new THREE.Quaternion(),
+  camTurn = new THREE.Quaternion(),
+  intoSlot = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(0, 1, 0),
+    ),
+  ),
+  handEuler = new THREE.Euler();
 export type InHand = { key: string; draw: () => void };
-export function updateTape(now: number, held: InHand | null): void {
+export function updateTape(now: number, held: InHand | null, deck: THREE.Object3D): void {
   shelf.visible = S.phase !== "gate" || W8.step === "done";
   if (held) {
     if (TAPE.key === "") TAPE.at = now;
     if (held.key !== TAPE.key) held.draw();
   }
   TAPE.key = held?.key ?? "";
-  const up = held ? 1 : 0;
+  const up = held ? 1 : 0,
+    flat = TAPE.dragging ? 1 : 0;
   TAPE.up = LOW ? up : TAPE.up + (up - TAPE.up) * 0.12;
-  const flip = LOW ? 1 : Math.min(1, (now - TAPE.at) / 380);
+  TAPE.flat = LOW ? flat : TAPE.flat + (flat - TAPE.flat) * 0.22;
+  const flip = LOW ? 1 : Math.min(1, (now - TAPE.at) / 380),
+    f = TAPE.flat * TAPE.flat * (3 - 2 * TAPE.flat),
+    half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * HAND_Z;
   tape.visible = TAPE.up > 0.01 && Z.at === null && walkRef.n < 0;
-  tape.position.set(-0.34, -0.48 + TAPE.up * 0.48, -0.62);
-  tape.rotation.y = 0.26 + Math.PI * (1 - flip) * (1 - flip);
+  tape.position.set(
+    lerp(-0.34, TAPE.pointer.x * half * camera.aspect, f),
+    lerp(-0.48 + TAPE.up * 0.48, TAPE.pointer.y * half - 0.07, f),
+    -HAND_Z,
+  );
+  handTurn.setFromEuler(handEuler.set(-0.12, 0.26 + Math.PI * (1 - flip) * (1 - flip), 0.06));
+  deck.getWorldQuaternion(slotTurn).multiply(intoSlot);
+  slotTurn.premultiply(camera.getWorldQuaternion(camTurn).invert());
+  tape.quaternion.slerpQuaternions(handTurn, slotTurn, f);
 }
