@@ -1538,12 +1538,30 @@ function drawGuide(now: number): void {
     g.imageSmoothingEnabled = false;
     g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
   } else {
+    const REEL_MS = 2600,
+      CUT_MS = 160,
+      ch = S.chars[Math.floor(now / REEL_MS) % S.chars.length];
     g.fillStyle = COL.char;
     g.fillRect(0, 0, W, top);
-    g.textAlign = "center";
-    g.font = "700 26px Silkscreen";
-    g.fillStyle = COL.bone;
-    g.fillText("NOTHING HAS AIRED YET", W / 2, top / 2 + 8);
+    if (!LOW && now % REEL_MS < CUT_MS) {
+      for (let y = 0; y < top; y += 4) {
+        g.fillStyle = Math.random() < 0.5 ? COL.grime : COL.soot;
+        g.fillRect(0, y, W, 4);
+      }
+    } else if (ch) {
+      g.imageSmoothingEnabled = false;
+      g.drawImage(face(ch), 40, 28, 180, 180);
+      g.textAlign = "left";
+      g.font = "700 22px Silkscreen";
+      g.fillStyle = COL.sulfur;
+      g.fillText(`CH ${num(ch.id + 1)}`, 252, 88);
+      g.font = "30px DotGothic16";
+      g.fillStyle = COL.bone;
+      const y = wrap(g, ch.name.toUpperCase(), 252, 130, W - 276, 34);
+      g.font = "700 22px Silkscreen";
+      g.fillStyle = ch.alive ? COL.bone : COL.rust;
+      g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
+    }
   }
   if (S.last) {
     g.textAlign = "left";
