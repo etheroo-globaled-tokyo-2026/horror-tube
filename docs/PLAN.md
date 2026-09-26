@@ -76,7 +76,11 @@ Based on *FAITH: The Unholy Trinity* (https://store.steampowered.com/app/1179080
 - Why this moment needs trust, and why Orb is the minimum credential.
 - A demo of one success and one fail path.
 - A short debrief: time to first success, problems, missing docs, the one fix with the most impact.
-- A link to World's rule that Orb users must be 18+ (TODO: find the exact docs link).
+- A link to World's rule that Orb users must be 18+:
+  - https://support.world.org/hc/en-us/articles/29167917477907-What-is-the-minimum-age-to-obtain-a-World-ID
+  - https://world.org/blog/policy/how-world-network-prevents-underage-access-and-usage
+  - https://world.org/legal/user-terms-and-conditions (section 3, Eligibility)
+  - Note: the World ID developer docs do not state this rule. Put it in the debrief as missing docs.
 
 Links:
 - https://docs.world.org/world-id/idkit/integrate
