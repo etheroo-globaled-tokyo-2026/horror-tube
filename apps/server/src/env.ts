@@ -1,16 +1,16 @@
 import { requiredEnv } from "@horror-tube/betting";
 import { config as loadDotenv } from "dotenv";
 import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
 
-export function loadRepoDotenv(envPath: string) {
-  if (!existsSync(envPath)) {
-    return { loaded: false };
-  }
-  const result = loadDotenv({ path: envPath });
+export function loadRepoDotenv(repoRoot: string): string[] {
+  const loaded = [".env.local", ".env"].filter((name) => existsSync(join(repoRoot, name)));
+  if (loaded.length === 0) return loaded;
+  const result = loadDotenv({ path: loaded.map((name) => join(repoRoot, name)), quiet: true });
   if (result.error !== undefined) {
     throw result.error;
   }
-  return { loaded: true };
+  return loaded;
 }
 
 export function readGamePort(env: NodeJS.ProcessEnv = process.env): number {
@@ -24,9 +24,7 @@ export function readGamePort(env: NodeJS.ProcessEnv = process.env): number {
   return port;
 }
 
-export function readStaticDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string | undefined {
+export function readStaticDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const raw = env.STATIC_DIR;
   if (raw === undefined || raw.trim() === "") {
     return undefined;
