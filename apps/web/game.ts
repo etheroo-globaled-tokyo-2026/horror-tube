@@ -1,6 +1,7 @@
 import { parsePinAddressesFromMarkdown } from "@horror-tube/ens/scripts/pin.ts";
 import pinMarkdown from "@horror-tube/ens/scripts/pin/sepolia-addresses.md?raw";
 import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
+import { readWebEnv } from "./env.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
 
 export const $ = (s: string): HTMLElement => {
@@ -141,12 +142,6 @@ export const note = (text: string, kind = ""): void => {
   render();
 };
 
-const env = (name: string): string => {
-  const value = String(import.meta.env[name] ?? "").trim();
-  if (!value)
-    throw new Error(`${name} is required. Set it in the repo-root .env. See .env.example.`);
-  return value;
-};
 async function loadIcon(name: string, url: string): Promise<HTMLImageElement> {
   if (!url.startsWith("https://"))
     throw new Error(
@@ -172,10 +167,11 @@ const isAlive = (name: string, status: string): boolean => {
   );
 };
 const ROSTER = (async () => {
+  const env = readWebEnv();
   const ethRegistry = parsePinAddressesFromMarkdown(pinMarkdown).ETHRegistry;
   const { parentName, sheets } = await readRosterFromChain(
-    env("ENS_LABEL"),
-    env("VITE_SEPOLIA_RPC_URL"),
+    env.ENS_LABEL,
+    env.VITE_SEPOLIA_RPC_URL,
     ethRegistry,
   );
   return {
