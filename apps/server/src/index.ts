@@ -6,6 +6,7 @@ import { createClient, getPool, requiredEnv } from "@horror-tube/betting";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { createBattleBettingPorts, readHouseFeeBps } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
+import { migrate } from "./db/migrate.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { PostgresRoundStore } from "./db/rounds.js";
 import { PostgresPoolLedger } from "./db/sui-pools.js";
@@ -44,6 +45,10 @@ const fightJob = createFightJobRunner({
 
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
+const migrations = await migrate();
+console.log(
+  `database: migrations applied [${migrations.applied.join(", ")}], ${String(migrations.skipped.length)} already applied`,
+);
 
 const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
