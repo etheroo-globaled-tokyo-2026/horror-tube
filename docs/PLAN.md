@@ -10,7 +10,7 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Part                         | Status                                                                                                                                                    |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Web game (`apps/web`)        | Built. The room, TV, remote, shelf, and coin box. The game loop is simulated in the browser (`game.ts`).                                                  |
-| World ID                     | Simulated. The waiver and QR screens exist; the scan is a timer. IDKit and server checks are not built.                                                   |
+| World ID                     | Live. Waiver starts a signed IDKit 4.0 Orb proof (`enter-room`); the server verifies at `POST /world-id/verify`. |
 | Wallet                       | Built. Sui testnet burner in the browser. A real USDC deposit is tested. The coin return is not.                                                          |
 | ENS parent and subnames      | Built. `horrortube.eth` on Sepolia ENSv2, subnames with text records, register/remove/icon CLIs (`docs/roster-json.md`).                                  |
 | Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                   |

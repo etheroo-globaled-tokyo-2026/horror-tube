@@ -2,12 +2,16 @@ import { config as loadDotenv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { readGamePort, readStaticDir } from "./env.js";
 import { createGameServer, listenGameServer } from "./server.js";
 import { createWalletHandlerFromEnv, failingWalletHandler } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 loadDotenv({ path: join(repoRoot, ".env") });
+
+// Fail closed before listen: the waiver gate needs a signed World ID request.
+loadWorldIdEnv();
 
 const port = readGamePort();
 const staticDir = readStaticDir();

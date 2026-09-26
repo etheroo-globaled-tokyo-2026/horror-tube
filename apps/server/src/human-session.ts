@@ -4,7 +4,7 @@ import * as v from "valibot";
 
 import { HttpError } from "./http-error.js";
 
-const NULLIFIER = /^0x[0-9a-fA-F]+$/u;
+const NULLIFIER = /^[0-9]+$/u;
 
 const SessionBody = v.object({
   nullifier: v.pipe(v.string(), v.regex(NULLIFIER)),

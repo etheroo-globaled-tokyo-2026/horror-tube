@@ -12,10 +12,9 @@ import { createGameServer, listenGameServer } from "../src/server.js";
 import type { ShinamiPort } from "../src/shinami-port.js";
 import { assertSponsorableKind } from "../src/tx-policy.js";
 import { createWalletHandler, createWalletHandlerFromEnv } from "../src/wallet-handler.js";
-import { nullifierFromWorldBody, verifyWorldIdProof } from "../src/world-verify.js";
 
 const PEPPER = "test-pepper";
-const NULLIFIER = "0xabc123";
+const NULLIFIER = "11256099";
 const USDC =
   "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
 const COIN_BOX = `0x${"11".repeat(32)}`;
@@ -48,14 +47,6 @@ function boundPort(server: Server): number {
     throw new Error("test server did not bind a TCP port");
   }
   return address.port;
-}
-
-function proofBody(nullifier: string): string {
-  return JSON.stringify({
-    success: true,
-    nullifier,
-    results: [{ identifier: "proof_of_human", success: true, nullifier }],
-  });
 }
 
 describe("session", () => {
@@ -121,43 +112,6 @@ describe("transaction allowlist", () => {
       () => assertSponsorableKind(txKind, COIN_BOX, USDC, undefined),
       (err: HttpError) => status(500)(err) && /BETTING_PACKAGE_ID/u.test(err.message),
     );
-  });
-});
-
-describe("World ID verify", () => {
-  it("returns the nullifier from a successful proof_of_human result", () => {
-    assert.equal(nullifierFromWorldBody(200, proofBody(NULLIFIER), "wallet", "production"), NULLIFIER);
-  });
-
-  it("rejects a proof that is not proof of human", () => {
-    const body = JSON.stringify({
-      success: true,
-      nullifier: NULLIFIER,
-      results: [{ identifier: "selfie", success: true, nullifier: NULLIFIER }],
-    });
-    assert.throws(() => nullifierFromWorldBody(200, body, "wallet", "production"), status(401));
-  });
-
-  it("forwards the raw proof to the World API", async () => {
-    const raw = "{\"protocol_version\":\"4.0\",\"nonce\":\"abc\",\"action\":\"wallet\"}";
-    let seenUrl = "";
-    let seenBody = "";
-    const fetchImpl: typeof fetch = (input, init) => {
-      seenUrl = String(input);
-      seenBody = String(init?.body);
-      return Promise.resolve(new Response(proofBody(NULLIFIER), { status: 200 }));
-    };
-    const nullifier = await verifyWorldIdProof(
-      raw,
-      "rp_test",
-      "https://developer.world.org/",
-      "wallet",
-      "production",
-      fetchImpl,
-    );
-    assert.equal(nullifier, NULLIFIER);
-    assert.equal(seenUrl, "https://developer.world.org/api/v4/verify/rp_test");
-    assert.equal(seenBody, raw);
   });
 });
 

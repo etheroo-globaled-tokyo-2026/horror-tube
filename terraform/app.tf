@@ -146,22 +146,8 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "WORLD_ID_API_URL"
-        value = var.world_id_api_url
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "WORLD_ID_ENVIRONMENT"
         value = var.world_id_environment
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
-        key   = "WORLD_ID_WALLET_ACTION"
-        value = var.world_id_wallet_action
         scope = "RUN_TIME"
         type  = "GENERAL"
       }
