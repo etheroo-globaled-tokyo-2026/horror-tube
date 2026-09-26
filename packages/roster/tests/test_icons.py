@@ -25,6 +25,7 @@ from roster.icons import (
     IconGenerationError,
     SpacesIconStore,
     _post_json,
+    build_icon_prompt_cache,
     canonical_icon_key,
     decode_image,
     face_prompt,
@@ -32,6 +33,7 @@ from roster.icons import (
     icon_object_key,
     image_b64,
     image_request_body,
+    load_icon_prompt_cache,
     override_icon_key,
     png_icon,
     required_env,
@@ -40,6 +42,7 @@ from roster.icons import (
     spaces_region_from_endpoint,
     spaces_store_from_env,
     sync_chain_icons,
+    write_cached_face_icons,
     write_face_icons,
 )
 
@@ -155,6 +158,185 @@ class IconPromptTests(unittest.TestCase):
         with self.assertRaises(IconGenerationError) as ctx:
             face_prompt("   ")
         self.assertIn("look", str(ctx.exception))
+
+    def test_prompt_drops_violent_words_without_changing_look(self):
+        look = "A killer carries a bloody chainsaw and a machete."
+        prompt = face_prompt(look)
+        self.assertEqual(look, "A killer carries a bloody chainsaw and a machete.")
+        self.assertNotIn("killer", prompt.lower())
+        self.assertNotIn("chainsaw", prompt.lower())
+        self.assertNotIn("machete", prompt.lower())
+        self.assertIn("no blood, no gore, no wounds, no weapons", prompt)
+
+    def test_prompt_fails_when_only_violent_words_remain(self):
+        with self.assertRaises(IconGenerationError) as ctx:
+            face_prompt("blood gore wounds weapons")
+        self.assertIn("no portrait words", str(ctx.exception))
+
+
+class IconPromptCacheTests(unittest.TestCase):
+    def test_build_cache_keeps_sheet_text_prompt_and_sources(self):
+        look = "A killer in a dark coat carries a machete."
+        payload = build_icon_prompt_cache(
+            [
+                {
+                    "label": "maskcoat",
+                    "display_name": "Maskcoat",
+                    "look": look,
+                    "brief": "A relentless stalker.",
+                }
+            ],
+            [{"source": "https://villains.fandom.com/wiki/Maskcoat"}],
+        )
+        entry = payload["characters"][0]
+        self.assertEqual(entry["look"], look)
+        self.assertEqual(entry["brief"], "A relentless stalker.")
+        self.assertEqual(entry["image_prompt"], face_prompt(look))
+        self.assertEqual(
+            entry["sources"],
+            {
+                "look": "https://villains.fandom.com/wiki/Maskcoat",
+                "brief": "https://villains.fandom.com/wiki/Maskcoat",
+            },
+        )
+
+    def test_build_cache_keeps_paired_sources(self):
+        payload = build_icon_prompt_cache(
+            [
+                {
+                    "label": "frankenstein",
+                    "display_name": "Frankenstein's Monster",
+                    "look": "A towering stitched figure.",
+                    "brief": "He has superhuman strength.",
+                }
+            ],
+            [
+                {
+                    "look_source": "https://villains.fandom.com/wiki/Monster",
+                    "brief_source": "https://villains.fandom.com/wiki/Novel_Monster",
+                }
+            ],
+        )
+        self.assertEqual(
+            payload["characters"][0]["sources"],
+            {
+                "look": "https://villains.fandom.com/wiki/Monster",
+                "brief": "https://villains.fandom.com/wiki/Novel_Monster",
+            },
+        )
+
+    def test_load_missing_cache_names_file(self):
+        path = Path("/tmp/horror-tube-definitely-missing-icon-prompt-cache.json")
+        with self.assertRaises(IconGenerationError) as ctx:
+            load_icon_prompt_cache(path)
+        self.assertIn(str(path), str(ctx.exception))
+
+    def test_load_cache_uses_saved_prompt_without_rebuilding_it(self):
+        saved_prompt = "Exact saved prompt that intentionally differs."
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cache.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "characters": [
+                            {
+                                "label": "maskcoat",
+                                "display_name": "Maskcoat",
+                                "look": "A figure in a coat.",
+                                "brief": "A relentless stalker.",
+                                "image_prompt": saved_prompt,
+                                "sources": {
+                                    "look": "https://villains.fandom.com/wiki/Maskcoat",
+                                    "brief": "https://villains.fandom.com/wiki/Maskcoat",
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            loaded = load_icon_prompt_cache(path)
+        self.assertEqual(loaded[0]["image_prompt"], saved_prompt)
+
+    def test_cached_generation_sends_exact_saved_prompt(self):
+        received: list[str] = []
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                received.append(payload["prompt"])
+                source = Image.new("RGB", (8, 8), (1, 2, 3))
+                raw = BytesIO()
+                source.save(raw, format="PNG")
+                encoded = base64.b64encode(raw.getvalue()).decode("ascii")
+                body = json.dumps({"data": [{"b64_json": encoded}]}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        saved_prompt = "Exact cached portrait prompt; do not rebuild this."
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                written, updated = write_cached_face_icons(
+                    [
+                        {
+                            "label": "maskcoat",
+                            "display_name": "Maskcoat",
+                            "look": "A killer in a coat.",
+                            "brief": "A relentless stalker.",
+                            "image_prompt": saved_prompt,
+                            "sources": {
+                                "look": "https://villains.fandom.com/wiki/Maskcoat",
+                                "brief": "https://villains.fandom.com/wiki/Maskcoat",
+                            },
+                        }
+                    ],
+                    Path(tmp),
+                    api_key="test-key",
+                    model="test-model",
+                    api_url=f"http://{host}:{port}/v1/images/generations",
+                    spaces=_MemorySpaces(),
+                    cdn_host="cdn.example.test",
+                    override=False,
+                )
+                self.assertEqual(len(written), 1)
+                self.assertEqual(updated[0]["look"], "A killer in a coat.")
+                self.assertEqual(
+                    updated[0]["icon"], "https://cdn.example.test/maskcoat.png"
+                )
+        finally:
+            server.shutdown()
+            server.server_close()
+        self.assertEqual(received, [saved_prompt])
+
+    def test_icons_cache_cli_missing_file_fails_and_names_file(self):
+        missing = "/tmp/horror-tube-missing-cache-for-cli.json"
+        stderr = StringIO()
+        with redirect_stderr(stderr):
+            code = cli.main(
+                [
+                    "icons-cache",
+                    "--cache",
+                    missing,
+                    "--out-dir",
+                    "/tmp/horror-tube-icons-cache-out",
+                    "--out",
+                    "/tmp/horror-tube-icons-cache.json",
+                ]
+            )
+        self.assertEqual(code, 1)
+        self.assertIn(missing, stderr.getvalue())
 
 
 class IconUrlAndSkipTests(unittest.TestCase):
