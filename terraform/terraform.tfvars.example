@@ -3,8 +3,9 @@
 # for that one terraform command only. See README.md.
 #
 # App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*, SHINAMI_ACCESS_KEY,
-# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, DATABASE_CA_CERT) and BUILD_TIME Vite env
-# (ENS_LABEL, VITE_SEPOLIA_RPC_URL) are also NOT set here. Pass them as TF_VAR_*
+# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, DATABASE_CA_CERT, SEPOLIA_RPC_URL,
+# AGENT_PRIVATE_KEY) and BUILD_TIME Vite env (ENS_LABEL, VITE_SEPOLIA_RPC_URL)
+# are also NOT set here. Pass them as TF_VAR_*
 # for that one apply, sourced from the repo .env. DATABASE_URL and
 # FIGHT_MEDIA_SPACES_* for the app are wired from Managed Postgres / fight-media
 # Spaces resources in Terraform (no VPC). See README.md.
@@ -31,6 +32,8 @@ vote_countdown_seconds = 15
 bet_min_seconds        = 10
 video_timeout_seconds  = 300
 settle_seconds         = 8
+# 1 skips BattleBetting settleBattle until that client exists; 0 calls it.
+skip_battle_settlement = "1"
 # Comma-separated ENS labels (at least two). Same order does not matter; the server sorts them.
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 

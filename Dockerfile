@@ -51,6 +51,8 @@ COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/migrations ./apps/server/migrations
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
+# ens-chain-write.ts reads this table at settle time (path is relative to dist/).
+COPY --from=build /app/packages/ens/scripts/pin/sepolia-addresses.md ./packages/ens/scripts/pin/sepolia-addresses.md
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 WORKDIR /app/apps/server
 CMD ["node", "dist/index.js"]
