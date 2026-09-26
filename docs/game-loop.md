@@ -199,9 +199,9 @@ holding copy as what pays out. Stakes are not defined here (no stake columns).
 ## Client
 
 The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow
-server `RoundState` (SSE `/events` and `GET /round`). After the waiver, a room that finds the game `waiting` sends
-`POST /start`; OK on the `OVER` screen sends it again. A failed start stays on the TV with the server's error until
-OK retries it. Bets go through `/tx`. The fight video is `RoundState.videoUrl`.
+server `RoundState` (SSE `/events` and `GET /round`). A room past the waiver sends `POST /start` whenever it sees
+the game enter `waiting` (first connect, or a server restart); OK on the `OVER` screen sends it again. A failed start
+stays on the TV with the server's error until OK retries it. Bets go through `/tx`. The fight video is `RoundState.videoUrl`.
 
 The placeholder bet screen (`apps/web/placeholders.ts`, root `[data-placeholder="bet"]`) stands in for the final bet
 UI. The server phase picks the screen; the client runs no timer. The bet screen shows the stored
