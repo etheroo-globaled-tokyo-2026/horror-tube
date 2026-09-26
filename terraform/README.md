@@ -7,12 +7,25 @@ Provisions Spaces buckets with CDN (character icons; fight videos/frames), a Man
 State is stored in a **private** DigitalOcean Spaces bucket via the Terraform `s3` backend (S3-compatible). That bucket is created once out-of-band — it cannot live in the same state it stores — and is not the icons bucket.
 
 1. Copy `backend.hcl.example` to `backend.hcl` (gitignored). Set `bucket` to the state bucket name and keep `key` / `endpoint` as shown.
-2. Put Spaces credentials that can read/write that bucket in the process environment as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for `terraform init` / plan / apply. Do **not** use the icons-only `ethtokyo-spaces` key. Do not commit those credentials.
+2. Take `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` from `TF_STATE_SPACES_ACCESS_KEY_ID` and `TF_STATE_SPACES_SECRET` in the repo-root `.env` (see `.env.example`). Unset `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, and `AWS_SESSION_TOKEN` before any terraform command. Do **not** use the icons-only `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET` (`ethtokyo-spaces`) for state. Do not commit those credentials.
 3. Init:
 
 ```bash
-cd terraform
-terraform init -backend-config=backend.hcl
+(
+  set -euo pipefail
+  root=$(git rev-parse --show-toplevel)
+  set -a
+  # shellcheck disable=SC1091
+  source "$root/.env"
+  set +a
+  : "${TF_STATE_SPACES_ACCESS_KEY_ID:?TF_STATE_SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${TF_STATE_SPACES_SECRET:?TF_STATE_SPACES_SECRET is required. See .env.example.}"
+  unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
+  export AWS_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
+  export AWS_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
+  cd "$root/terraform"
+  terraform init -backend-config=backend.hcl
+)
 ```
 
 `versions.tf` sets `region = "us-east-1"` inside the backend block. That string is the **AWS SDK dummy** Spaces requires for the S3 client; the bucket itself is in **sgp1**. It is not `var.region`, not `var.app_region`, and not where App Platform runs.
@@ -21,7 +34,7 @@ Skip flags (`skip_credentials_validation`, `skip_metadata_api_check`, `skip_regi
 
 **State locking:** Spaces has no DynamoDB. Terraform’s S3 `use_lockfile` needs Terraform **>= 1.10**. This module allows `>= 1.5.0`; on 1.9.x there is **no** state lock. Do not invent a second lock service. Avoid concurrent applies.
 
-`backend.hcl`, `*.tfstate`, and `.backend-credentials` are gitignored. Never commit state or Spaces keys.
+`backend.hcl` and `*.tfstate` are gitignored. `terraform/.backend-credentials` is the old two-line file (access key id, then secret); agents should read `TF_STATE_SPACES_*` from `.env` instead. Never commit state or Spaces keys.
 
 ## Auth (token never on disk, never pasted into shell history)
 
@@ -45,7 +58,7 @@ The secret stays in the child process environment for that invocation; it is not
 
 Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** in the repo `.env`. There are **no defaults** — if either is missing or blank, stop. Do not commit real values. `.env.example` lists only empty names, and the `# 1password:` comment above each name is the path to read once when `.env` is missing.
 
-`terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Copy `SPACES_SECRET` from `.env` into `SPACES_SECRET_ACCESS_KEY` for that command.
+For `terraform plan` / `apply`, the DigitalOcean provider also reads `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY` from the process environment to refresh buckets. For that one command, set those two from `TF_STATE_SPACES_*` (fullaccess). App Platform still gets the icons key via `TF_VAR_spaces_access_key_id` / `TF_VAR_spaces_secret` from `SPACES_ACCESS_KEY_ID` / `SPACES_SECRET` in `.env`.
 
 The AWS CLI profile **`ethtokyo-spaces`** reads those two `.env` values through `scripts/spaces-credential-process`. That script does not call 1Password. In `~/.aws/config`:
 
@@ -73,7 +86,7 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
 )
 ```
 
-`terraform apply` still loads the DigitalOcean API token from 1Password for that one command. Spaces keys come from `.env`:
+`terraform apply` still loads the DigitalOcean API token from 1Password for that one command. Remote state and the provider Spaces env come from `TF_STATE_SPACES_*`; App Platform icons vars still come from `SPACES_*`:
 
 ```bash
 (
@@ -83,12 +96,21 @@ Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-
   # shellcheck disable=SC1091
   source "$root/.env"
   set +a
+  : "${TF_STATE_SPACES_ACCESS_KEY_ID:?TF_STATE_SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${TF_STATE_SPACES_SECRET:?TF_STATE_SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
   : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
+  unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
+  export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
+  export TF_VAR_spaces_secret="$SPACES_SECRET"
+  export AWS_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
+  export AWS_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
+  export SPACES_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
+  export SPACES_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   : "${TF_VAR_do_token:?TF_VAR_do_token is required}"
-  export TF_VAR_do_token SPACES_ACCESS_KEY_ID
-  export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
+  export TF_VAR_do_token
+  cd "$root/terraform"
   terraform apply
 )
 ```
@@ -191,7 +213,7 @@ The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-me
 
 `FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; this service does not read them. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
 
-Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
+Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for the backend and the provider Spaces env, and keeps icons `SPACES_*` on `TF_VAR_spaces_*`:
 
 ```bash
 (
@@ -205,6 +227,8 @@ Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key r
   : "${VITE_SEPOLIA_RPC_URL:?VITE_SEPOLIA_RPC_URL is required. See .env.example.}"
   : "${SEPOLIA_RPC_URL:?SEPOLIA_RPC_URL is required. See .env.example.}"
   : "${AGENT_PRIVATE_KEY:?AGENT_PRIVATE_KEY is required. See .env.example.}"
+  : "${TF_STATE_SPACES_ACCESS_KEY_ID:?TF_STATE_SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${TF_STATE_SPACES_SECRET:?TF_STATE_SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
   : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
   : "${SPACES_BUCKET:?SPACES_BUCKET is required. See .env.example.}"
@@ -223,6 +247,7 @@ Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key r
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
   : "${SUI_USDC_TYPE:?SUI_USDC_TYPE is required. See .env.example.}"
+  unset AWS_PROFILE AWS_DEFAULT_PROFILE AWS_SESSION_TOKEN
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
@@ -247,8 +272,10 @@ Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key r
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
-  export SPACES_ACCESS_KEY_ID
-  export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
+  export AWS_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
+  export AWS_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
+  export SPACES_ACCESS_KEY_ID="$TF_STATE_SPACES_ACCESS_KEY_ID"
+  export SPACES_SECRET_ACCESS_KEY="$TF_STATE_SPACES_SECRET"
   cd "$root/terraform"
   terraform apply
 )
