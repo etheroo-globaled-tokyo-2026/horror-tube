@@ -1,15 +1,24 @@
-/** Object key under videos/ for one fight mp4. */
-export function videoObjectKey(id: string): string {
+function singleSegmentId(kind: "video" | "frame", id: string): string {
   const trimmed = id.trim();
   if (trimmed === "") {
-    throw new Error("video object id is blank. Refusing to build a Spaces key.");
+    throw new Error(`${kind} object id is blank. Refusing to build a Spaces key.`);
   }
   if (trimmed.includes("/") || trimmed.includes("..")) {
     throw new Error(
-      `video object id must be a single path segment. Got: ${JSON.stringify(id)}`,
+      `${kind} object id must be a single path segment. Got: ${JSON.stringify(id)}`,
     );
   }
-  return `videos/${trimmed}.mp4`;
+  return trimmed;
+}
+
+/** Object key under videos/ for one fight mp4. */
+export function videoObjectKey(id: string): string {
+  return `videos/${singleSegmentId("video", id)}.mp4`;
+}
+
+/** Object key under frames/ for one last-frame jpeg (next-fight seed). */
+export function frameObjectKey(id: string): string {
+  return `frames/${singleSegmentId("frame", id)}.jpg`;
 }
 
 export function fightMediaCdnUrl(cdnHost: string, objectKey: string): string {
@@ -24,12 +33,12 @@ export function fightMediaCdnUrl(cdnHost: string, objectKey: string): string {
   host = host.trim().replace(/\/+$/u, "");
   if (host === "") {
     throw new Error(
-      "FIGHT_MEDIA_SPACES_CDN_HOST is blank after normalization. Refusing to build a video URL.",
+      "FIGHT_MEDIA_SPACES_CDN_HOST is blank after normalization. Refusing to build a CDN URL.",
     );
   }
   const key = objectKey.trim().replace(/^\/+/u, "");
   if (key === "") {
-    throw new Error("video object key is blank. Refusing to build a video URL.");
+    throw new Error("object key is blank. Refusing to build a CDN URL.");
   }
   return `https://${host}/${key}`;
 }

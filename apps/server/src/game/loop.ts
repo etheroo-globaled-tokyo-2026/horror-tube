@@ -79,6 +79,8 @@ export class GameLoop {
   private pool: [number, number] = [0, 0];
   private winner: 0 | 1 | null = null;
   private videoUrl: string | null = null;
+  /** Last-frame CDN URL for the next bout's image-to-video seed. */
+  private frameUrl: string | null = null;
   private error: string | null = null;
   private betOpenedAt: number | null = null;
   private videoDurationMs: number | null = null;
@@ -144,6 +146,7 @@ export class GameLoop {
       pool: [...this.pool] as [number, number],
       winner: this.phase === "settle" || this.phase === "over" ? this.winner : null,
       videoUrl: this.videoUrl,
+      frameUrl: this.frameUrl,
       error: this.error,
       chars: this.chars.map((c) => ({
         id: c.id,
@@ -279,11 +282,11 @@ export class GameLoop {
   }
 
   /**
-   * Video job seam: record the CDN URL and playback duration (ms).
-   * Does not build a fal client. Bet closes when this is set, outcome is set,
-   * and BET_MIN_SECONDS has passed.
+   * Video job seam: record the CDN video URL, playback duration (ms), and the
+   * last-frame CDN URL that seeds the next bout. Does not build a fal client.
+   * Bet closes when this is set, outcome is set, and BET_MIN_SECONDS has passed.
    */
-  setVideoReady(url: string, durationMs: number): void {
+  setVideoReady(url: string, durationMs: number, frameUrl: string): void {
     if (this.phase !== "bet") {
       throw new Error(
         `setVideoReady is only allowed in the bet phase. Current phase: ${this.phase}.`,
@@ -292,12 +295,18 @@ export class GameLoop {
     if (url.trim() === "") {
       throw new Error("setVideoReady url must be non-empty. Refusing placeholder.");
     }
+    if (frameUrl.trim() === "") {
+      throw new Error(
+        "setVideoReady frameUrl must be non-empty. Refusing to continue without a next-fight seed frame.",
+      );
+    }
     if (!Number.isInteger(durationMs) || durationMs < 1) {
       throw new Error(
         `setVideoReady durationMs must be an integer >= 1. Got: ${String(durationMs)}.`,
       );
     }
     this.videoUrl = url.trim();
+    this.frameUrl = frameUrl.trim();
     this.videoDurationMs = durationMs;
     this.maybeLeaveBet(this.now());
   }
@@ -356,6 +365,7 @@ export class GameLoop {
     this.champion = null;
     this.round = 1;
     this.videoUrl = null;
+    this.frameUrl = null;
     this.error = null;
     this.winner = null;
     this.fighters = null;

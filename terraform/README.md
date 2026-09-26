@@ -262,7 +262,7 @@ The bucket is created with `acl = public-read` and a CDN is attached (`spaces_cd
 
 ## Spaces fight media: public read + CDN
 
-The fight-media bucket is created the same way (`acl = public-read`, CDN at `spaces_fight_media_cdn_endpoint`). Video object keys live under `videos/` (a new key per upload; never overwrite). Issue #53 will use `frames/` in this same bucket. Public URLs use `https://` + CDN endpoint + object key. Uploads must set object ACL **`public-read`**.
+The fight-media bucket is created the same way (`acl = public-read`, CDN at `spaces_fight_media_cdn_endpoint`). Video object keys live under `videos/` and last-frame JPEGs under `frames/` (a new key per upload; never overwrite). Public URLs use `https://` + CDN endpoint + object key. Uploads must set object ACL **`public-read`**.
 
 ## Validate
 

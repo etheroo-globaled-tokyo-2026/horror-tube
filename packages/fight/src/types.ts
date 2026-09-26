@@ -45,5 +45,11 @@ export type FightTurnResult = {
   videoPrompt: string;
   /** Durable Spaces CDN URL after upload. Never the expiring fal generator URL. */
   videoUrl: string;
+  /**
+   * Durable Spaces CDN URL of this fight's last frame under frames/.
+   * Stored on the round as RoundState.frameUrl; the next bout passes it as
+   * image_url to fal image-to-video.
+   */
+  frameUrl: string;
   expandedPrompt: string | null;
 };

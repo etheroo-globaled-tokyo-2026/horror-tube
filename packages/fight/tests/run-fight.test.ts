@@ -32,32 +32,38 @@ const fightMediaConfig = {
   region: "sgp1",
 };
 
+const falConfig = {
+  apiKey: "fal-test",
+  model: "minimax/h3-max/text-to-video",
+  imageToVideoModel: "minimax/h3-max/image-to-video",
+  durationSeconds: 8,
+  resolution: "768P",
+  promptExpansionMode: "balanced",
+  aspectRatio: "16:9",
+};
+
+const narrationConfig = {
+  provider: "anthropic" as const,
+  model: "claude-test",
+  fightVideoSeconds: 8,
+  apiKey: "sk-test",
+};
+
 describe("runFightTurn", () => {
-  it("narrates, downloads fal bytes, uploads to Spaces, returns the CDN URL", async () => {
+  it("narrates, downloads fal bytes, uploads video and frame, returns CDN URLs", async () => {
     const turn = validModelTurn();
     const saved = JSON.parse(readFileSync(fixturePath, "utf8")) as {
       video: { url: string };
       expanded_prompt: string;
     };
     const mp4Bytes = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+    const frameBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
     let downloadedUrl: string | undefined;
-    let putInput: PutFightVideoInput | undefined;
+    const puts: PutFightVideoInput[] = [];
 
     const result = await runFightTurn(sampleFightInput(), {}, {
-      narrationConfig: {
-        provider: "anthropic",
-        model: "claude-test",
-        fightVideoSeconds: 8,
-        apiKey: "sk-test",
-      },
-      falConfig: {
-        apiKey: "fal-test",
-        model: "minimax/h3-max/text-to-video",
-        durationSeconds: 8,
-        resolution: "768P",
-        promptExpansionMode: "balanced",
-        aspectRatio: "16:9",
-      },
+      narrationConfig,
+      falConfig,
       narration: { complete: async () => turn },
       fal: {
         subscribe: async () => ({
@@ -80,21 +86,30 @@ describe("runFightTurn", () => {
       },
       fightMediaConfig,
       putObject: async (input) => {
-        putInput = input;
+        puts.push(input);
       },
+      extractLastFrame: async () => frameBytes,
       randomInt: () => 0,
     });
 
     assert.equal(downloadedUrl, saved.video.url);
-    assert.ok(putInput !== undefined);
-    assert.equal(putInput.Bucket, fightMediaConfig.bucket);
-    assert.match(putInput.Key, /^videos\/[0-9a-f-]+\.mp4$/u);
-    assert.equal(putInput.ACL, "public-read");
-    assert.equal(putInput.ContentType, "video/mp4");
-    assert.deepEqual(putInput.Body, mp4Bytes);
+    assert.equal(puts.length, 2);
+    const videoPut = puts.find((p) => p.ContentType === "video/mp4");
+    const framePut = puts.find((p) => p.ContentType === "image/jpeg");
+    assert.ok(videoPut !== undefined);
+    assert.ok(framePut !== undefined);
+    assert.equal(videoPut.Bucket, fightMediaConfig.bucket);
+    assert.match(videoPut.Key, /^videos\/[0-9a-f-]+\.mp4$/u);
+    assert.match(framePut.Key, /^frames\/[0-9a-f-]+\.jpg$/u);
+    assert.deepEqual(videoPut.Body, mp4Bytes);
+    assert.deepEqual(framePut.Body, frameBytes);
     assert.equal(
       result.videoUrl,
-      `https://${fightMediaConfig.cdnHost}/${putInput.Key}`,
+      `https://${fightMediaConfig.cdnHost}/${videoPut.Key}`,
+    );
+    assert.equal(
+      result.frameUrl,
+      `https://${fightMediaConfig.cdnHost}/${framePut.Key}`,
     );
     assert.notEqual(result.videoUrl, saved.video.url);
     assert.equal(result.expandedPrompt, saved.expanded_prompt);
@@ -103,6 +118,48 @@ describe("runFightTurn", () => {
     assert.equal(result.rationale, turn.rationale);
     assert.equal(result.videoPrompt.includes(turn.rationale), false);
     assert.equal(result.videoPrompt.includes("status=dead"), false);
+  });
+
+  it("seeds the next fal request with image_url and the image-to-video model", async () => {
+    const turn = validModelTurn();
+    const priorFrameUrl =
+      "https://horror-tube-fight-media-test.sgp1.cdn.digitaloceanspaces.com/frames/prior.jpg";
+    let subscribedModel = "";
+    let subscribedInput: Record<string, unknown> | undefined;
+
+    await runFightTurn(sampleFightInput(), {}, {
+      narrationConfig,
+      falConfig,
+      priorFrameUrl,
+      narration: { complete: async () => turn },
+      fal: {
+        subscribe: async (model, opts) => {
+          subscribedModel = model;
+          subscribedInput = opts.input;
+          return {
+            data: {
+              video: { url: "https://v3b.fal.media/files/b/example/fight.mp4" },
+              expanded_prompt: "x",
+            },
+            requestId: "i2v-req",
+          };
+        },
+      },
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      }),
+      fightMediaConfig,
+      putObject: async () => {},
+      extractLastFrame: async () => new Uint8Array([0xff, 0xd8]),
+      randomInt: () => 0,
+    });
+
+    assert.equal(subscribedModel, "minimax/h3-max/image-to-video");
+    assert.equal(subscribedInput?.image_url, priorFrameUrl);
+    assert.equal(subscribedInput?.aspect_ratio, undefined);
   });
 
   it("does not return the fal URL when Spaces upload fails", async () => {
@@ -115,20 +172,8 @@ describe("runFightTurn", () => {
     await assert.rejects(
       () =>
         runFightTurn(sampleFightInput(), {}, {
-          narrationConfig: {
-            provider: "anthropic",
-            model: "claude-test",
-            fightVideoSeconds: 8,
-            apiKey: "sk-test",
-          },
-          falConfig: {
-            apiKey: "fal-test",
-            model: "minimax/h3-max/text-to-video",
-            durationSeconds: 8,
-            resolution: "768P",
-            promptExpansionMode: "balanced",
-            aspectRatio: "16:9",
-          },
+          narrationConfig,
+          falConfig,
           narration: { complete: async () => turn },
           fal: {
             subscribe: async () => ({
@@ -154,6 +199,39 @@ describe("runFightTurn", () => {
         assert.equal(err.message.includes(saved.video.url), false);
         return true;
       },
+    );
+  });
+
+  it("fails closed when last-frame extract fails after the video uploaded", async () => {
+    const turn = validModelTurn();
+    await assert.rejects(
+      () =>
+        runFightTurn(sampleFightInput(), {}, {
+          narrationConfig,
+          falConfig,
+          narration: { complete: async () => turn },
+          fal: {
+            subscribe: async () => ({
+              data: {
+                video: { url: "https://v3b.fal.media/files/b/example/fight.mp4" },
+              },
+              requestId: "fixture-req",
+            }),
+          },
+          fetch: async () => ({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+          }),
+          fightMediaConfig,
+          putObject: async () => {},
+          extractLastFrame: async () => {
+            throw new Error("ffmpeg exited 1 while extracting");
+          },
+          randomInt: () => 0,
+        }),
+      /ffmpeg exited 1/,
     );
   });
 });

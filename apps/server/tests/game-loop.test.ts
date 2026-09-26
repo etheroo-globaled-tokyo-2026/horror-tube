@@ -232,12 +232,20 @@ describe("GameLoop phases", () => {
 
     await loop.attachAgentResult(sampleAgentInsert());
     loop.setOutcome(0, 3);
-    loop.setVideoReady("https://cdn.example/videos/fight1.mp4", 4_000);
+    loop.setVideoReady(
+      "https://cdn.example/videos/fight1.mp4",
+      4_000,
+      "https://cdn.example/frames/fight1.jpg",
+    );
     assert.equal(loop.getState().phase, "bet");
     now += 2_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
     assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/fight1.mp4");
+    assert.equal(
+      loop.getState().frameUrl,
+      "https://cdn.example/frames/fight1.jpg",
+    );
 
     now += 4_000;
     await loop.tick(now);
@@ -257,6 +265,12 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().champion, 1);
     // Living non-winners in id order: charlie(2), delta(3). pickFirst → charlie.
     assert.deepEqual(loop.getState().fighters, [1, 2]);
+    // Previous last frame stays on the round for the next image-to-video job.
+    assert.equal(loop.getState().videoUrl, null);
+    assert.equal(
+      loop.getState().frameUrl,
+      "https://cdn.example/frames/fight1.jpg",
+    );
   });
 
   it("calls settleBattle when skipSettlement is false", async () => {
@@ -287,7 +301,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "settle-on" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -339,7 +353,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "fail-status" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -389,7 +403,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(sampleAgentInsert({ id: "wrong-winner" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -426,7 +440,7 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop.tick(now);
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop.tick(now);
     now += 1;
@@ -486,7 +500,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop2.getState().phase, "bet");
     await loop2.attachAgentResult(agentInsertForAlphaWin({ id: "dup-path" }));
     loop2.setOutcome(0, 0);
-    loop2.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop2.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop2.tick(now);
     now += 1;
@@ -534,7 +548,16 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
-    assert.throws(() => loop2.setVideoReady("  ", 1000), /non-empty/u);
+    assert.throws(() => loop2.setVideoReady("  ", 1000, "https://cdn.example/frames/seed.jpg"), /non-empty/u);
+    assert.throws(
+      () =>
+        loop2.setVideoReady(
+          "https://cdn.example/v.mp4",
+          1000,
+          "  ",
+        ),
+      /frameUrl must be non-empty/u,
+    );
   });
 
   it("requires randomInt before starting a stage-2 bout", async () => {
@@ -560,7 +583,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "no-random" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     now += 1_000;
     await loop.tick(now);
     now += 1;

@@ -98,7 +98,7 @@ describe("loadFalVideoConfig", () => {
     );
   });
 
-  it("loads fal config from env", () => {
+  it("loads fal config from env and leaves image-to-video model null when blank", () => {
     const cfg = loadFalVideoConfig({
       FAL_KEY: "fal-test",
       FAL_MODEL: "minimax/h3-max/text-to-video",
@@ -109,9 +109,23 @@ describe("loadFalVideoConfig", () => {
     });
     assert.equal(cfg.apiKey, "fal-test");
     assert.equal(cfg.model, "minimax/h3-max/text-to-video");
+    assert.equal(cfg.imageToVideoModel, null);
     assert.equal(cfg.durationSeconds, 8);
     assert.equal(cfg.resolution, "768P");
     assert.equal(cfg.promptExpansionMode, "balanced");
     assert.equal(cfg.aspectRatio, "16:9");
+  });
+
+  it("loads FAL_IMAGE_TO_VIDEO_MODEL when set", () => {
+    const cfg = loadFalVideoConfig({
+      FAL_KEY: "fal-test",
+      FAL_MODEL: "minimax/h3-max/text-to-video",
+      FAL_IMAGE_TO_VIDEO_MODEL: "minimax/h3-max/image-to-video",
+      FIGHT_VIDEO_SECONDS: "8",
+      FAL_VIDEO_RESOLUTION: "768P",
+      FAL_PROMPT_EXPANSION_MODE: "balanced",
+      FAL_ASPECT_RATIO: "16:9",
+    });
+    assert.equal(cfg.imageToVideoModel, "minimax/h3-max/image-to-video");
   });
 });

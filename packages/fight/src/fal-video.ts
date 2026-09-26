@@ -1,6 +1,10 @@
 import { fal } from "@fal-ai/client";
 
-import { FightError, type FalVideoConfig } from "./env.js";
+import {
+  FightError,
+  resolveFalSubscribeModel,
+  type FalVideoConfig,
+} from "./env.js";
 import { videoPromptFromTurn } from "./render.js";
 import type { NarrationTurn } from "./types.js";
 
@@ -19,25 +23,53 @@ export type FalClient = {
   ) => Promise<FalSubscribeResult>;
 };
 
-export type FalVideoInput = {
+/** Shared fal fields for both text-to-video and image-to-video H3 Max. */
+export type FalVideoInputBase = {
   prompt: string;
   duration: number;
   resolution: string;
   prompt_expansion_mode: string;
+};
+
+export type FalTextToVideoInput = FalVideoInputBase & {
   aspect_ratio: string;
 };
+
+export type FalImageToVideoInput = FalVideoInputBase & {
+  image_url: string;
+};
+
+export type FalVideoInput = FalTextToVideoInput | FalImageToVideoInput;
 
 export function buildFalInput(
   turn: NarrationTurn,
   config: FalVideoConfig,
+  options: { priorFrameUrl?: string } = {},
 ): FalVideoInput {
-  return {
-    prompt: videoPromptFromTurn(turn),
+  const prior =
+    options.priorFrameUrl === undefined
+      ? undefined
+      : options.priorFrameUrl.trim();
+  if (prior !== undefined && prior === "") {
+    throw new FightError(
+      "priorFrameUrl is blank. Pass a CDN frame URL or omit it for text-to-video. Refusing to build a fal input.",
+    );
+  }
+
+  const base: FalVideoInputBase = {
+    prompt: videoPromptFromTurn(turn, {
+      continueFromFrame: prior !== undefined,
+    }),
     duration: config.durationSeconds,
     resolution: config.resolution,
     prompt_expansion_mode: config.promptExpansionMode,
-    aspect_ratio: config.aspectRatio,
   };
+
+  if (prior !== undefined) {
+    // Image-to-video OpenAPI: image_url seeds the first frame; no aspect_ratio field.
+    return { ...base, image_url: prior };
+  }
+  return { ...base, aspect_ratio: config.aspectRatio };
 }
 
 export type FightVideoResult = {
@@ -45,17 +77,21 @@ export type FightVideoResult = {
   videoUrl: string;
   expandedPrompt: string | null;
   requestId: string;
+  /** fal endpoint id actually subscribed (text-to-video or image-to-video). */
+  model: string;
 };
 
 export async function generateFightVideo(
   turn: NarrationTurn,
   config: FalVideoConfig,
   client: FalClient = defaultFalClient(config.apiKey),
+  options: { priorFrameUrl?: string } = {},
 ): Promise<FightVideoResult> {
-  const input = buildFalInput(turn, config);
+  const model = resolveFalSubscribeModel(config, options.priorFrameUrl);
+  const input = buildFalInput(turn, config, options);
   let result: FalSubscribeResult;
   try {
-    result = await client.subscribe(config.model, { input });
+    result = await client.subscribe(model, { input });
   } catch (err) {
     throw new FightError(`fal video generation failed: ${formatFalError(err)}`, {
       cause: err,
@@ -73,6 +109,7 @@ export async function generateFightVideo(
     videoUrl: url,
     expandedPrompt: typeof expanded === "string" ? expanded : null,
     requestId: result.requestId,
+    model,
   };
 }
 

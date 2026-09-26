@@ -28,8 +28,16 @@ export const ARENA_VIDEO_PROMPT_PREFIX =
   "Use a terrifying battle royale arena for the battle, each fighter starting on opposite sides.";
 
 /** Prompt sent to fal. Omits rationale and ENS update lines. */
-export function videoPromptFromTurn(turn: NarrationTurn): string {
-  return `${ARENA_VIDEO_PROMPT_PREFIX}\n\n${formatShotList(turn.shots)}`;
+export function videoPromptFromTurn(
+  turn: NarrationTurn,
+  options: { continueFromFrame?: boolean } = {},
+): string {
+  const body = `${ARENA_VIDEO_PROMPT_PREFIX}\n\n${formatShotList(turn.shots)}`;
+  if (options.continueFromFrame !== true) {
+    return body;
+  }
+  // Start image can still show the previous loser; the model must not bring them back.
+  return `${body}\n\nContinue from the start image. Any character who died in the previous bout is gone from the arena and must not reappear.`;
 }
 
 const FORBIDDEN_ENS_KEYS = ["look", "brief", "icon"] as const;
