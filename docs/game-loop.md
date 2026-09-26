@@ -44,6 +44,18 @@ fills the challenger slot from rotation after settle.
 - A vote is final. The voter cannot change their picks.
 - When the quorum is reached, a 15s countdown starts. People can still vote during it. Voting closes when it ends.
 - **Ties:** the character that got to its vote total first wins the tie.
+- A vote counts only once its `votes` row is stored (Postgres). The round's
+  first vote creates its `seasons` and `rounds` rows. The
+  `votes_round_nullifier_unique` constraint is the one-vote rule. A failed
+  insert rejects the vote with the round and the database error; it is not
+  counted.
+- When the countdown ends, voting closes, in-flight inserts finish, and the
+  server writes `tallies` from the stored `votes` rows (`vote_count`, and
+  `reached_at` = the latest vote for that character). `RoundState.tally` carries
+  those stored rows before `phase` becomes `bet`, and the fighters are the top
+  two of that stored tally. If the tally insert fails, betting never opens: the
+  round goes to `over` with an error naming the round and the database error.
+- Votes are not on Sui. Sui holds only the betting pools.
 - While the vote waits, the TV replays the last fight.
 - Stage 2+ has no vote. After settle, the next bout opens with the champion and a random living challenger.
 
@@ -141,7 +153,8 @@ type RoundState = {
   slots: 1 | 2; // stage 1 vote picks (2); unused in stage 2+ (no challenger ballot)
   voters: number; // humans who voted (quorum check; stage 1)
   quorum: number;
-  votes: Record<number, number>;
+  votes: Record<number, number>; // counts of stored votes
+  tally: { id: number; votes: number; reachedAt: number }[] | null; // stored tallies rows, ranked; set before bet
   fighters: [number, number] | null;
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
@@ -165,7 +178,7 @@ pays out. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
 
-- `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). Stage 2+ has no vote.
+- `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
 - `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight.
 

@@ -14,8 +14,10 @@ import {
   readGameLoopConfig,
   readRosterEnsLabels,
 } from "../src/game/config.js";
-import { GameLoop, PlaybackStartStoreError } from "../src/game/loop.js";
+import { MemoryRoundStore } from "../src/db/rounds.js";
+import { GameLoop, StoreWriteError } from "../src/game/loop.js";
 import { refuseUnverifiedWorldId } from "../src/game/world-id.js";
+import type { RoundState } from "../src/types.js";
 
 const baseConfig = {
   quorumVotes: 2,
@@ -136,6 +138,7 @@ function unusedSettleDeps(skipSettlement = true) {
   const betCalls: string[] = [];
   return {
     battleQueueStore: new MemoryBattleQueueStore(),
+    roundStore: new MemoryRoundStore(),
     chainWritePorts: trackingPorts(calls),
     battleBetting: trackingBattleBetting(betCalls),
     // Hang so tests that drive setOutcome/setVideoReady themselves are not raced.
@@ -250,6 +253,7 @@ describe("World ID vote gate", () => {
       ensStatuses: allAliveStatuses(labels),
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -271,6 +275,7 @@ describe("GameLoop ENS status", () => {
       ensStatuses: ["alive", "dead", "alive", "alive"],
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       skipSettlement: true,
@@ -291,6 +296,7 @@ describe("GameLoop ENS status", () => {
       ensStatuses: ["", "alive", "alive", "alive"],
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       skipSettlement: true,
@@ -308,6 +314,7 @@ describe("GameLoop ENS status", () => {
           ensStatuses: ["alive", "ghost", "alive", "alive"],
           randomInt: pickFirst,
           battleQueueStore: settle.battleQueueStore,
+          roundStore: new MemoryRoundStore(),
           chainWritePorts: settle.chainWritePorts,
           battleBetting: settle.battleBetting,
           skipSettlement: true,
@@ -333,6 +340,7 @@ describe("GameLoop ENS status", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -386,6 +394,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -495,6 +504,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -549,6 +559,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -608,6 +619,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: store,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: ports,
       battleBetting: trackingBattleBetting([]),
       fightJob: async () => new Promise(() => {}),
@@ -662,6 +674,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -704,6 +717,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -739,6 +753,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -763,6 +778,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
@@ -809,6 +825,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
       fightJob: settle2.fightJob,
@@ -846,6 +863,7 @@ describe("GameLoop phases", () => {
       ensStatuses: allAliveStatuses(labels),
       now: () => now,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -886,6 +904,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -925,6 +944,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: async (request) => {
@@ -983,6 +1003,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: async () => {
@@ -1019,6 +1040,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: (request) => {
@@ -1081,6 +1103,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: async (request) => {
@@ -1177,6 +1200,7 @@ describe("GameLoop phases", () => {
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
       fightJob: settle.fightJob,
@@ -1212,6 +1236,7 @@ describe("betting cutoff", () => {
       now: () => clock.now,
       randomInt: pickFirst,
       battleQueueStore: overrides.battleQueueStore ?? settle.battleQueueStore,
+      roundStore: new MemoryRoundStore(),
       chainWritePorts: settle.chainWritePorts,
       battleBetting: overrides.battleBetting ?? settle.battleBetting,
       fightJob: settle.fightJob,
@@ -1263,7 +1288,7 @@ describe("betting cutoff", () => {
     clock.now = closesAt;
     const iso = new Date(closesAt).toISOString();
     assert.throws(() => loop.assertBetAllowed(poolId), new RegExp(`bet rejected: betting closed at ${iso}`, "u"));
-    assert.throws(
+    await assert.rejects(
       () => loop.voteWithNullifier("late-voter", [2, 3]),
       new RegExp(`vote rejected: betting closed at ${iso}`, "u"),
     );
@@ -1310,7 +1335,7 @@ describe("betting cutoff", () => {
     await assert.rejects(
       () => startPlayback(loop),
       (err: unknown) =>
-        err instanceof PlaybackStartStoreError &&
+        err instanceof StoreWriteError &&
         err.message.includes(`battle ${String(battleId)}`) &&
         err.message.includes("disk full"),
     );
@@ -1318,5 +1343,123 @@ describe("betting cutoff", () => {
     clock.now += 60_000;
     await loop.tick(clock.now);
     assert.equal(loop.getState().phase, "bet");
+  });
+});
+
+describe("stored vote and tally", () => {
+  function tallyLoop(roundStore: MemoryRoundStore, quorumVotes = 2) {
+    const clock = { now: 5_000_000 };
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: { ...baseConfig, quorumVotes, voteCountdownSeconds: 1 },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => clock.now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      roundStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
+      skipSettlement: true,
+    });
+    const states: RoundState[] = [];
+    loop.subscribe((state) => states.push(state));
+    return { loop, clock, settle, states };
+  }
+
+  async function closeCountdown(loop: GameLoop, clock: { now: number }): Promise<void> {
+    clock.now += 1_000;
+    await loop.tick(clock.now);
+  }
+
+  it("stores each vote with its ENS labels and refuses a second vote from the same nullifier", async () => {
+    const store = new MemoryRoundStore();
+    const { loop } = tallyLoop(store);
+    await loop.voteWithNullifier("111", [0, 2]);
+    await assert.rejects(() => loop.voteWithNullifier("111", [1, 3]), /already voted this round: 111/u);
+    assert.equal(loop.getState().voters, 1);
+    assert.deepEqual(
+      store.votes.map((v) => [v.nullifier, v.picks]),
+      [["111", ["alpha", "charlie"]]],
+    );
+    assert.equal(store.seasons.length, 1);
+    assert.deepEqual([...store.rounds.values()].map((r) => r.roundNumber), [1]);
+  });
+
+  it("shows the stored tally before bet and fights its top two", async () => {
+    const store = new MemoryRoundStore();
+    const stored = store.storeTally.bind(store);
+    store.storeTally = async (roundId) => {
+      const rows = await stored(roundId);
+      return rows.map((row) => (row.ensLabel === "delta" ? { ...row, voteCount: 9 } : row));
+    };
+    const { loop, clock, states } = tallyLoop(store);
+    await loop.voteWithNullifier("1", [0, 1]);
+    clock.now += 10;
+    await loop.voteWithNullifier("2", [1, 3]);
+    await closeCountdown(loop, clock);
+
+    const firstTally = states.findIndex((s) => s.tally !== null);
+    const firstBet = states.findIndex((s) => s.phase === "bet");
+    assert.ok(firstTally >= 0 && firstTally < firstBet, "tally is emitted before phase becomes bet");
+    assert.notEqual(states[firstTally]?.phase, "bet");
+    assert.deepEqual(
+      loop.getState().tally?.map((t) => [labels[t.id], t.votes]),
+      [["delta", 9], ["bravo", 2], ["alpha", 1]],
+    );
+    assert.deepEqual(loop.getState().fighters, [3, 1], "fighters come from the stored rows, not in-memory counts");
+  });
+
+  it("a failed tally insert leaves betting closed and names the round and the database error", async () => {
+    const store = new MemoryRoundStore();
+    store.storeTally = async () => {
+      throw new Error("connection reset by peer");
+    };
+    const { loop, clock, settle } = tallyLoop(store, 1);
+    await loop.voteWithNullifier("1", [0, 1]);
+    await closeCountdown(loop, clock);
+    const state = loop.getState();
+    assert.equal(state.phase, "over");
+    assert.match(state.error ?? "", /Tally insert failed for round 1 \(rounds\.id=round-1\): connection reset by peer/u);
+    assert.equal(state.tally, null);
+    assert.equal(state.battleId, null);
+    assert.deepEqual(settle.betCalls, []);
+  });
+
+  it("a failed vote insert is not counted and names the round", async () => {
+    const store = new MemoryRoundStore();
+    store.insertVote = async () => {
+      throw new Error("disk full");
+    };
+    const { loop } = tallyLoop(store);
+    await assert.rejects(
+      () => loop.voteWithNullifier("1", [0, 1]),
+      (err: unknown) =>
+        err instanceof StoreWriteError && /Vote insert failed for round 1 .*disk full.*not counted/u.test(err.message),
+    );
+    assert.equal(loop.getState().voters, 0);
+    assert.deepEqual(loop.getState().votes[0], 0);
+  });
+
+  it("rejects a vote once the countdown has ended and the tally is being stored", async () => {
+    const store = new MemoryRoundStore();
+    const stored = store.storeTally.bind(store);
+    let release = (): void => {};
+    store.storeTally = async (roundId) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return stored(roundId);
+    };
+    const { loop, clock } = tallyLoop(store, 1);
+    await loop.voteWithNullifier("1", [0, 1]);
+    const closing = closeCountdown(loop, clock);
+    await flushFightJob();
+    await assert.rejects(() => loop.voteWithNullifier("2", [2, 3]), /voting for round 1 is closed/u);
+    release();
+    await closing;
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(store.votes.length, 1);
   });
 });
