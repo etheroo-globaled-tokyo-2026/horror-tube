@@ -27,6 +27,7 @@ export async function claimHumanAction(args: {
     signal: args.signal,
     idkitResult: args.idkitResult,
     fetch: args.fetch,
+    stagingVerificationToken: worldId.stagingVerificationToken,
   });
   await args.nullifierStore.claim(verified.action, verified.nullifier);
   return verified;

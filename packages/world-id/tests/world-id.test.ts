@@ -145,6 +145,31 @@ test("loadWorldIdEnv names each missing or blank variable and .env.example", () 
   });
 });
 
+test("staging World ID requires the verification token", () => {
+  assert.throws(
+    () => loadWorldIdEnv({ ...testEnv(), WORLD_ID_ENVIRONMENT: "staging" }),
+    /WORLD_ID_STAGING_VERIFICATION_TOKEN is required.*\.env\.example/,
+  );
+  assert.throws(
+    () =>
+      loadWorldIdEnv({
+        ...testEnv(),
+        WORLD_ID_ENVIRONMENT: "staging",
+        WORLD_ID_STAGING_VERIFICATION_TOKEN: "   ",
+      }),
+    /WORLD_ID_STAGING_VERIFICATION_TOKEN is required/,
+  );
+  assert.equal(
+    loadWorldIdEnv({
+      ...testEnv(),
+      WORLD_ID_ENVIRONMENT: "staging",
+      WORLD_ID_STAGING_VERIFICATION_TOKEN: "sk_test",
+    }).stagingVerificationToken,
+    "sk_test",
+  );
+  assert.equal(loadWorldIdEnv(testEnv()).stagingVerificationToken, undefined);
+});
+
 test("RP signature message matches the World ID 4.0 spec test vector", () => {
   const message = computeRpSignatureMessage(
     hexToBytes("0x008ae1aa597fa146ebd3aa2ceddf360668dea5e526567e92b0321816a4e895bd"),
@@ -224,6 +249,60 @@ test("verifyProofOfHuman forwards the result unchanged to /api/v4/verify/{rp_id}
     { url: `${WORLD_ID_VERIFY_URL_BASE}/${RP_ID}`, body: JSON.stringify(result) },
   ]);
   assert.deepEqual(verified, { action, nullifier: NULLIFIER_DECIMAL });
+});
+
+test("verifyProofOfHuman sends the staging token only when the environment is staging", async () => {
+  const action = voteActionForRound("1");
+  const stagingResult = { ...v4Result(action), environment: "staging" };
+  const headersSeen: Record<string, string>[] = [];
+  const fetch: VerifyFetch = async (_url, init) => {
+    headersSeen.push({ ...init.headers });
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ...portalSuccess(action), environment: "staging" }),
+    };
+  };
+  await verifyProofOfHuman({
+    rpId: RP_ID,
+    environment: "staging",
+    action,
+    signal: WALLET,
+    idkitResult: stagingResult,
+    stagingVerificationToken: "sk_test",
+    fetch,
+  });
+  assert.equal(headersSeen[0]?.["x-staging-verification-token"], "sk_test");
+
+  headersSeen.length = 0;
+  const { fetch: prodFetch, calls } = scriptedFetch(200, JSON.stringify(portalSuccess(action)));
+  const recordingProd: VerifyFetch = async (url, init) => {
+    headersSeen.push({ ...init.headers });
+    return prodFetch(url, init);
+  };
+  await verifyProofOfHuman({
+    rpId: RP_ID,
+    environment: "production",
+    action,
+    signal: WALLET,
+    idkitResult: v4Result(action),
+    stagingVerificationToken: "sk_test",
+    fetch: recordingProd,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(headersSeen[0]?.["x-staging-verification-token"], undefined);
+
+  await assert.rejects(
+    verifyProofOfHuman({
+      rpId: RP_ID,
+      environment: "staging",
+      action,
+      signal: WALLET,
+      idkitResult: stagingResult,
+      fetch: neverFetch,
+    }),
+    /WORLD_ID_STAGING_VERIFICATION_TOKEN is required/,
+  );
 });
 
 test("verifyProofOfHuman rejects before calling the portal on local mismatches", async () => {

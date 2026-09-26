@@ -78,6 +78,7 @@ export async function verifyEnterRoomProof(
     signal: null,
     idkitResult,
     fetch: fetchImpl,
+    stagingVerificationToken: worldId.stagingVerificationToken,
   });
 }
 
