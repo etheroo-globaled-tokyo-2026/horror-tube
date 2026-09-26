@@ -23,11 +23,7 @@ import {
 } from "./round-client.ts";
 import { formatPoolOdds } from "./odds.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
-import {
-  fromUsdcUnits,
-  toUsdcUnits,
-  type GameWallet,
-} from "./wallet.ts";
+import { fromUsdcUnits, toUsdcUnits, type GameWallet } from "./wallet.ts";
 
 export const $ = (s: string): HTMLElement => {
   const el = document.querySelector<HTMLElement>(s);
@@ -209,7 +205,11 @@ async function checkWinnings(): Promise<void> {
 
 export async function submitBet(side: 0 | 1, amt: number): Promise<string> {
   if (!canBet(S))
-    throw new Error(S.pending === null ? "The book is not open." : "Still sending your last move.");
+    throw new Error(
+      S.pending === null
+        ? "Wagers are closed."
+        : "Please wait. Your previous payment is still being processed.",
+    );
   S.pending = "bet";
   render();
   try {
@@ -223,8 +223,14 @@ export async function submitBet(side: 0 | 1, amt: number): Promise<string> {
 async function sendBet(side: 0 | 1, amt: number): Promise<string> {
   const poolId = S.poolId;
   if (gameWallet === null || bettingIds === null) throw new Error("The coin box is not open yet.");
-  if (poolId === null || !bookOpen(S)) throw new Error("The book is not open.");
-  const digest = await placeBet(gameWallet, toContractIds(bettingIds), poolId, side, toUsdcUnits(amt));
+  if (poolId === null || !bookOpen(S)) throw new Error("Wagers are closed.");
+  const digest = await placeBet(
+    gameWallet,
+    toContractIds(bettingIds),
+    poolId,
+    side,
+    toUsdcUnits(amt),
+  );
   if (S.poolId === poolId) S.bet = { side, amt };
   note("");
   log(`BET ${usd(amt)} ON ${side === 0 ? "A" : "B"} · ${digest.slice(0, 8)}`, "t-alive");
@@ -234,7 +240,7 @@ async function sendBet(side: 0 | 1, amt: number): Promise<string> {
 async function collect(): Promise<void> {
   const usdc = S.claim;
   if (gameWallet === null || bettingIds === null) throw new Error("The coin box is not open yet.");
-  if (owedTickets.length === 0) throw new Error("No finished tickets to claim.");
+  if (owedTickets.length === 0) throw new Error("No tickets are ready for collection.");
   const digest = await claimAll(gameWallet, toContractIds(bettingIds), owedTickets);
   owedTickets = [];
   S.claim = 0;
@@ -243,9 +249,7 @@ async function collect(): Promise<void> {
   hooks.collected();
 }
 
-export async function loadBettingIds(
-  fetchImpl: typeof fetch = fetch,
-): Promise<BettingIds> {
+export async function loadBettingIds(fetchImpl: typeof fetch = fetch): Promise<BettingIds> {
   const ids = await fetchBettingIds(fetchImpl);
   setBettingIds(ids);
   return ids;
@@ -279,7 +283,10 @@ function logHouseBots(prev: GameState["bots"], next: GameState["bots"]): void {
     const was = prev.find((b) => b.address === bot.address);
     const tag = `HOUSE BOT ${bot.address.slice(0, 6)}`;
     if (bot.picks !== null && was?.picks == null)
-      log(`${tag} VOTED ${bot.picks.map((id) => S.chars[id]?.short ?? `#${String(id)}`).join(" + ")}`, "t-house");
+      log(
+        `${tag} VOTED ${bot.picks.map((id) => S.chars[id]?.short ?? `#${String(id)}`).join(" + ")}`,
+        "t-house",
+      );
     if (bot.bet !== null && bot.bet.digest !== was?.bet?.digest)
       log(
         `${tag} BET ${usd(fromUsdcUnits(BigInt(bot.bet.units)))} ON ${bot.bet.side === 0 ? "A" : "B"} · ${bot.bet.digest.slice(0, 8)}`,
@@ -342,8 +349,8 @@ export function applyRoundState(state: ServerRoundState): void {
     const l = S.chars[f[1 - state.winner] ?? -1];
     if (w && l) {
       log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
-      log(`${l.ens} · status=dead`, "t-house");
-      log(`${w.ens} · damage=${w.damage}`, "t-house");
+      log(`${l.ens} · DECEASED`, "t-house");
+      log(`${w.ens} · DAMAGE RECORDED: ${w.damage}`, "t-house");
       S.last = { fighters: f, winner: state.winner, round: state.round };
       S.focus = w.id;
     }
@@ -371,7 +378,7 @@ export async function connectToServerRound(): Promise<void> {
   applyRoundState(initial);
   stopRoundStream = connectRoundEvents(applyRoundState);
   log(
-    `SERVER ROUND · phase=${initial.phase} quorum=${String(initial.quorum)} slots=${String(initial.slots)}`,
+    `BROADCAST RECEIVED · ${initial.phase} · ${String(initial.quorum)} viewer(s) required · ${String(initial.slots)} selection(s)`,
     "t-house",
   );
 }
@@ -429,7 +436,10 @@ export async function newSeason(): Promise<void> {
   try {
     roster = await ROSTER;
   } catch (error) {
-    note(`ENS READ FAILED. ${error instanceof Error ? error.message : String(error)}`, "bad");
+    note(
+      `RESIDENT RECORDS UNAVAILABLE. ${error instanceof Error ? error.message : String(error)}`,
+      "bad",
+    );
     throw error;
   }
   S.chars = roster.sheets.map((s, id) => ({
@@ -447,7 +457,10 @@ export async function newSeason(): Promise<void> {
     damage: 0,
   }));
   Object.assign(S, { round: 1, focus: 0, last: null, view: 1, picks: [], cast: null, bet: null });
-  log(`NEW SEASON · ${S.chars.length} subnames read from ${roster.parentName}`, "t-house");
+  log(
+    `RESIDENT REGISTER · ${S.chars.length} records received from ${roster.parentName}`,
+    "t-house",
+  );
   await connectToServerRound();
 }
 const faces = new Map<string, HTMLCanvasElement>();
@@ -648,7 +661,7 @@ document.addEventListener("click", (e) => {
   if (!el || (el instanceof HTMLButtonElement && el.disabled)) return;
   const act = el.dataset.act;
   if (act === "skip") {
-    note("Skip is disabled. The shared server owns the phase clock.", "bad");
+    note("The programme cannot be skipped. All viewers receive the same broadcast.", "bad");
   } else if (act === "view") {
     S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
@@ -658,19 +671,19 @@ document.addEventListener("click", (e) => {
     void (async () => {
       if (S.cast) return;
       if (S.picks.length !== S.slots) {
-        note(`Pick exactly ${String(S.slots)} character(s) before casting.`, "bad");
+        note(
+          `Select ${String(S.slots)} ${S.slots === 1 ? "resident" : "residents"} before sending your request.`,
+          "bad",
+        );
         return;
       }
       try {
         const state = await postVote(S.picks);
         S.cast = "submitted";
         applyRoundState(state);
-        log("VOTE SUBMITTED · waiting on server RoundState", "t-alive");
+        log("YOUR REQUEST HAS BEEN RECORDED", "t-alive");
       } catch (error) {
-        note(
-          `VOTE REJECTED. ${error instanceof Error ? error.message : String(error)}`,
-          "bad",
-        );
+        note(`REQUEST FAILED. ${error instanceof Error ? error.message : String(error)}`, "bad");
       }
     })();
   } else if (act === "side") {
@@ -712,9 +725,9 @@ export function pick(id: number): void {
   S.focus = id;
   const ch = char(id);
   if ((S.phase !== "vote" && S.phase !== "countdown") || S.cast) return render();
-  if (!ch.alive) return note(`${ch.short} is dead. Dead characters cannot get votes.`, "bad");
+  if (!ch.alive) return note(`${ch.short} is deceased. Please select a living resident.`, "bad");
   if (S.champion !== null && id === S.champion) {
-    return note(`${ch.short} is the champion and stays on. Pick a challenger.`, "bad");
+    return note(`${ch.short} stays on for the next fight. Select a challenger.`, "bad");
   }
   if (S.picks.includes(id)) {
     S.picks = S.picks.filter((p) => p !== id);
@@ -723,8 +736,8 @@ export function pick(id: number): void {
   if (S.picks.length >= S.slots) {
     return note(
       S.slots === 1
-        ? "One pick this round. Tap it to drop it."
-        : `Two picks max. Tap one to drop it.`,
+        ? "One resident per request. Select them again to remove them."
+        : "Two residents per request. Select either again to remove them.",
       "bad",
     );
   }

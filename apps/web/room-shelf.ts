@@ -77,7 +77,7 @@ export function drawTape(ch: Character): void {
   g.textAlign = "left";
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
-  g.fillText("CASE FILE", 24, 298);
+  g.fillText("RESIDENT FILE", 24, 298);
   g.fillStyle = COL.bone;
   g.font = "18px DotGothic16";
   const y = wrap(g, ch.brief, 24, 324, VW - 48, 23);
@@ -86,11 +86,11 @@ export function drawTape(ch: Character): void {
   g.fillText("INJURIES", 24, y + 8);
   g.fillStyle = ch.injuries ? COL.bone : COL.grime;
   g.font = "18px DotGothic16";
-  wrap(g, ch.injuries || "None.", 24, y + 34, VW - 48, 23);
+  wrap(g, ch.injuries || "None recorded.", 24, y + 34, VW - 48, 23);
   g.textAlign = "center";
   g.fillStyle = COL.grime;
   g.font = "700 12px Silkscreen";
-  g.fillText("BE KIND · REWIND", VW / 2, VH - 18);
+  g.fillText("RETAIN AFTER DEATH", VW / 2, VH - 18);
   if (!ch.alive) {
     g.save();
     g.translate(VW / 2, 150);
