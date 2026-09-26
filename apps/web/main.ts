@@ -592,8 +592,8 @@ burnLight.position.set(STOOL.x, STOOL.top + 0.11, STOOL.z + 0.05);
 scene.add(burnLight);
 const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
-type Waiver = { step: Step; at: number; ink: number; qrUri: string };
-const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "" };
+type Waiver = { step: Step; at: number; ink: number; qrUri: string; fail: string };
+const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "" };
 const SCRIBBLE = Array.from({ length: 28 }, (_, i): [number, number] => [
   70 + i * 9,
   388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
@@ -1780,6 +1780,12 @@ function drawTV(): void {
         "DotGothic16",
         400,
       );
+    } else if (W8.fail !== "") {
+      noise = 0.2;
+      fill(COL.soot);
+      text("SCAN FAILED", 190, 48, COL.blood);
+      text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
+      text("YOU ARE NOT IN.", 340, 24, COL.rust);
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
@@ -1990,6 +1996,8 @@ function hintText(): void {
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
           ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
+          : W8.fail !== ""
+            ? `NOT IN · TRY AGAIN ${b("ENTER")}`
           : W8.step === "done" && S.noteKind === "bad"
             ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
             : W8.step === "done"
@@ -2159,11 +2167,24 @@ async function beginWorldIdScan(): Promise<void> {
     verified();
   } catch (err) {
     if (signal.aborted) return;
-    console.error(
-      `World ID enter-room failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    noOrb();
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`World ID enter-room failed: ${message}`);
+    scanFailed(message);
   }
+}
+function failLine(message: string): string {
+  if (/nullifier_replayed|max_verifications_reached|already used/iu.test(message))
+    return "This World ID already used its one entry.";
+  if (/user_rejected|cancelled/iu.test(message)) return "The scan was cancelled.";
+  if (/credential_unavailable/iu.test(message)) return "World App has no Orb credential.";
+  return "The unique human scan failed.";
+}
+function scanFailed(message: string): void {
+  scanAbort?.abort();
+  scanAbort = null;
+  W8.qrUri = "";
+  W8.fail = failLine(message);
+  step("off");
 }
 function verified(): void {
   step("signed");
@@ -2174,6 +2195,7 @@ function verified(): void {
   }, 1400);
 }
 function nextGateStep(): void {
+  if (W8.fail !== "") return retry();
   if (W8.step === "signed")
     cut(() => {
       enterRoom();
@@ -2341,6 +2363,7 @@ function retry(): void {
   cut(() => {
     W8.ink = 0;
     W8.qrUri = "";
+    W8.fail = "";
     burnLight.intensity = 0;
     paperDrawn = false;
     step("read");
@@ -2391,6 +2414,7 @@ function cursorFor(pick: Pick | null): string {
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
+  if (S.phase === "gate" && W8.fail !== "") return;
   if (S.phase === "gate" && W8.step === "signed") return nextGateStep();
   const pick = pickAt(e);
   if (walk >= 0) {
