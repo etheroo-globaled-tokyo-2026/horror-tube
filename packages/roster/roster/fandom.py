@@ -192,18 +192,23 @@ def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
         data = fetch_api(ref.host, params)
         page_html = data["parse"]["text"]
         escaped_anchor = re.escape(anchor)
-        match = re.search(
-            rf'<h[1-6]\b[^>]*>.*?\bid=(?P<quote>["\']){escaped_anchor}'
-            rf'(?P=quote).*?</h[1-6]\s*>(?P<body>.*?)(?=<h[1-6]\b|\Z)',
+        start = re.search(
+            rf'<h(?P<level>[1-6])\b[^>]*>.*?\bid=(?P<quote>["\']){escaped_anchor}'
+            rf'(?P=quote).*?</h(?P=level)\s*>',
             page_html,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        if match is None:
+        if start is None:
             raise FandomError(
                 f"{ref}: {name} section anchor {anchor!r} was listed by api.php "
                 "but was not found in the rendered page."
             )
-        section_html = match.group("body")
+        level = int(start.group("level"))
+        rest = page_html[start.end() :]
+        # Stop at the next heading of this level or higher. An h3 inside an h2
+        # section is still part of that section.
+        stop = re.search(rf"<h([1-{level}])\b", rest, flags=re.IGNORECASE)
+        section_html = rest[: stop.start()] if stop is not None else rest
     else:
         data = fetch_api(ref.host, {**params, "section": index})
         section_html = data["parse"]["text"]
