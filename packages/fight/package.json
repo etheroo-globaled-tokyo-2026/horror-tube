@@ -2,7 +2,25 @@
   "name": "@horror-tube/fight",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./rotation": {
+      "types": "./dist/rotation.d.ts",
+      "import": "./dist/rotation.js",
+      "default": "./dist/rotation.js"
+    },
+    "./battle-queue": {
+      "types": "./dist/battle-queue.d.ts",
+      "import": "./dist/battle-queue.js",
+      "default": "./dist/battle-queue.js"
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

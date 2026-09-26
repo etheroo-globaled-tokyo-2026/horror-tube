@@ -10,6 +10,7 @@ COPY packages/ens/package.json packages/ens/
 COPY packages/roster/package.json packages/roster/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/world-id/package.json packages/world-id/
+COPY packages/fight/package.json packages/fight/
 RUN pnpm install --frozen-lockfile
 COPY . .
 # Vite bakes these into the client at build time (apps/web/vite.config.ts envPrefix).
@@ -23,6 +24,7 @@ RUN if [ -z "${ENS_LABEL}" ] || [ -z "${VITE_SEPOLIA_RPC_URL}" ]; then \
       exit 1; \
     fi
 RUN pnpm --filter @horror-tube/world-id build
+RUN pnpm --filter @horror-tube/fight build
 RUN pnpm --filter @horror-tube/web build
 RUN pnpm --filter @horror-tube/server build
 
@@ -37,6 +39,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/world-id/package.json ./packages/world-id/
 COPY --from=build /app/packages/world-id/dist ./packages/world-id/dist
 COPY --from=build /app/packages/world-id/node_modules ./packages/world-id/node_modules
+COPY --from=build /app/packages/fight/package.json ./packages/fight/
+COPY --from=build /app/packages/fight/dist ./packages/fight/dist
+COPY --from=build /app/packages/fight/node_modules ./packages/fight/node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/migrations ./apps/server/migrations
