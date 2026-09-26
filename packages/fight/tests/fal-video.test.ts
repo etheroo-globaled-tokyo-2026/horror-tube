@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { buildFalInput, generateFightVideo } from "../src/fal-video.js";
 import { validTurn } from "./fixtures.js";
-import { videoPromptFromTurn } from "../src/render.js";
+import { ARENA_VIDEO_PROMPT_PREFIX, videoPromptFromTurn } from "../src/render.js";
 import type { FalVideoConfig } from "../src/env.js";
 
 const falCfg: FalVideoConfig = {
@@ -20,12 +20,19 @@ describe("buildFalInput", () => {
     const turn = validTurn();
     const input = buildFalInput(turn, falCfg);
     assert.equal(input.prompt, videoPromptFromTurn(turn));
+    assert.equal(input.prompt.startsWith(ARENA_VIDEO_PROMPT_PREFIX), true);
     assert.equal(input.duration, 8);
     assert.equal(input.resolution, "768P");
     assert.equal(input.prompt_expansion_mode, "balanced");
     assert.equal(input.aspect_ratio, "16:9");
     assert.equal(JSON.stringify(input).includes("status=dead"), false);
     assert.equal(JSON.stringify(input).includes(turn.rationale), false);
+    const [loser, winner] = [
+      `${turn.loser_subname}|status=dead`,
+      `${turn.winner_subname}|injuries=${JSON.stringify(turn.winner_injuries)}`,
+    ];
+    assert.equal(loser.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
+    assert.equal(winner.includes(ARENA_VIDEO_PROMPT_PREFIX), false);
   });
 });
 
