@@ -744,7 +744,7 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (T.buf) {
+  } else if (T.buf && S.phase !== "waiting" && S.phase !== "pick") {
     fill(COL.soot);
     noise = 0.14;
     const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
@@ -754,29 +754,47 @@ export function drawTV(): void {
       if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
       else text("NO SUCH RESIDENT", 280, 28, COL.rust);
     }
-  } else if (S.phase === "waiting") {
+  } else if (S.phase === "waiting" || S.phase === "pick") {
     fill(COL.soot);
     BARS.forEach((c, i) => {
       g.fillStyle = c;
       g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
     });
-    if (S.startError === null) {
-      text("PLEASE STAND BY", 200, 40, COL.bone);
-      text(
-        `the programme is starting${".".repeat(1 + (((now / 400) | 0) % 3))}`,
-        250,
-        24,
-        COL.rust,
-        "DotGothic16",
-        400,
-      );
-    } else {
+    if (S.startError !== null) {
       noise = 0.2;
-      text("THE PROGRAMME DID NOT START", 130, 34, COL.blood);
+      text(S.phase === "pick" ? "THAT FIGHTER WAS REFUSED" : "THE PROGRAMME DID NOT START", 130, 34, COL.blood);
       g.font = "400 22px DotGothic16";
       g.fillStyle = COL.bone;
       const end = wrap(g, S.startError, W / 2, 190, W - 64, 28);
-      text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 28), 24, COL.sulfur);
+      text("TYPE THE NUMBER  ·  OK", Math.min(H - 24, end + 28), 24, COL.sulfur);
+    } else {
+      const ids = S.selectable.filter((id) => S.chars[id] !== undefined);
+      text(S.phase === "pick" ? "PICK THE NEXT FIGHTER" : "BOOK A FIGHTER", 56, 28, COL.sulfur);
+      if (ids.length === 0) {
+        text(
+          `tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`,
+          120,
+          24,
+          COL.rust,
+          "DotGothic16",
+          400,
+        );
+      } else {
+        text("TYPE THE NUMBER  ·  OK", 100, 18, COL.rust, "DotGothic16", 400);
+        g.textAlign = "left";
+        g.font = "22px DotGothic16";
+        ids.forEach((id, i) => {
+          const resident = S.chars[id];
+          if (resident === undefined) return;
+          const chosen = T.buf.length === 2 && Number(T.buf) - 1 === id;
+          g.fillStyle = chosen ? COL.sulfur : COL.bone;
+          g.fillText(
+            `${num(id + 1)}  ${resident.short}`,
+            i < 8 ? 36 : 340,
+            150 + (i % 8) * 32,
+          );
+        });
+      }
     }
   } else {
     const filmCanvas = film();
