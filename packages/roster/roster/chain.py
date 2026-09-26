@@ -139,6 +139,24 @@ def unregister_labels(labels: Sequence[str]) -> None:
         run_chain(["unregister", "--labels", str(labels_path)])
 
 
+def list_registered_labels() -> list[str]:
+    """Registered subname labels. Does not read text records."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "labels.json"
+        run_chain(["labels", "--out", str(out_path)])
+        try:
+            raw: Any = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RosterValidationError(
+                f"Failed to read registered label list {out_path}: {exc}"
+            ) from exc
+    if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+        raise RosterValidationError(
+            f"Registered label list must be a JSON array of strings. Got {type(raw).__name__}."
+        )
+    return raw
+
+
 def list_registered() -> dict[str, Character]:
     """Discover every registered character subname and read its text records."""
     with tempfile.TemporaryDirectory() as tmp:

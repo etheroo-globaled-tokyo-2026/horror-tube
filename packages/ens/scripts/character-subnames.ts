@@ -30,7 +30,12 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
-import { parseInjuries, parseInjuryPlaces, readRosterFromChain } from "./roster.js";
+import {
+  parseInjuries,
+  parseInjuryPlaces,
+  readRegisteredLabels,
+  readRosterFromChain,
+} from "./roster.js";
 import {
   AGENT_TEXT_KEYS,
   REGISTER_BOOTSTRAP_TEXT_KEYS,
@@ -81,6 +86,7 @@ type Command =
   | "apply-register"
   | "unregister"
   | "list"
+  | "labels"
   | "set-icon"
   | "rewrite-empty-injuries";
 
@@ -147,7 +153,7 @@ function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
     fail(
-      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | set-icon | rewrite-empty-injuries.",
+      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.",
     );
   }
   if (
@@ -156,13 +162,14 @@ function parseCommand(argv: string[]): Command {
     arg === "apply-register" ||
     arg === "unregister" ||
     arg === "list" ||
+    arg === "labels" ||
     arg === "set-icon" ||
     arg === "rewrite-empty-injuries"
   ) {
     return arg;
   }
   fail(
-    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | set-icon | rewrite-empty-injuries.`,
+    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.`,
   );
 }
 
@@ -943,6 +950,25 @@ async function main(): Promise<void> {
           2,
         ),
       );
+    }
+    return;
+  }
+
+  if (command === "labels") {
+    const outPath = requireFlag(process.argv, "--out");
+    let labels: string[];
+    try {
+      labels = await readRegisteredLabels(ensLabel, rpcUrl, pin.ETHRegistry);
+    } catch (error) {
+      fail(
+        `list registered labels failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    writeFileSync(outPath, `${JSON.stringify(labels, null, 2)}\n`);
+    console.log(`Wrote registered labels: ${outPath}`);
+    console.log(`registered=${String(labels.length)}`);
+    for (const label of labels) {
+      console.log(`label=${label}`);
     }
     return;
   }
