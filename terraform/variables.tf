@@ -174,7 +174,7 @@ variable "wallet_secret_pepper" {
 }
 
 variable "world_id_environment" {
-  description = "WORLD_ID_ENVIRONMENT for the app (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
+  description = "WORLD_ID_ENVIRONMENT for the app (production, staging, or sandbox). Set via TF_VAR_world_id_environment from .env. Required; no default."
   type        = string
 }
 

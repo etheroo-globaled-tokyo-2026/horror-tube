@@ -27,6 +27,7 @@ export async function fetchEnterRoomRequest(): Promise<EnterRoomIdkitContext> {
     body.allow_legacy_proofs !== false ||
     body.action !== "enter-room" ||
     typeof body.app_id !== "string" ||
+    body.environment === undefined ||
     typeof body.rp_context?.signature !== "string"
   ) {
     throw new Error(`POST /world-id/request returned an invalid IDKit context. body=${text}`);
