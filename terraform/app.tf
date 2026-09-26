@@ -245,6 +245,34 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "ROTOSCOPE"
+        value = var.rotoscope
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "ROTOSCOPE_URL"
+        value = var.rotoscope_url
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "ROTOSCOPE_TIMEOUT_MS"
+        value = var.rotoscope_timeout_ms
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "DEMON_SOUND"
+        value = var.demon_sound
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "BATTLE_BETTING_ADDRESS"
         value = var.battle_betting_address
         scope = "RUN_TIME"

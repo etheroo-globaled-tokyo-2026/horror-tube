@@ -213,6 +213,26 @@ variable "skip_battle_settlement" {
   type        = string
 }
 
+variable "rotoscope" {
+  description = "ROTOSCOPE: 1 redraws each fight video through the rotoscope service; 0 uploads fal's footage. Required; no default."
+  type        = string
+}
+
+variable "rotoscope_url" {
+  description = "ROTOSCOPE_URL base URL of `rotoscope serve`. Required when rotoscope is 1; empty string when it is 0. No default."
+  type        = string
+}
+
+variable "rotoscope_timeout_ms" {
+  description = "ROTOSCOPE_TIMEOUT_MS milliseconds one rotoscope request may take. Required when rotoscope is 1; empty string when it is 0. No default."
+  type        = string
+}
+
+variable "demon_sound" {
+  description = "DEMON_SOUND: 1 runs each fight video's sound through the demon voice chain (ffmpeg); 0 keeps fal's sound. Required; no default."
+  type        = string
+}
+
 variable "battle_betting_address" {
   description = "BATTLE_BETTING_ADDRESS Sepolia deploy the game uses for openBattle / placeBet. Required; no default. Public address, not a secret."
   type        = string
