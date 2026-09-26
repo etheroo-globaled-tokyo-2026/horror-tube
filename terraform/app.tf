@@ -271,6 +271,85 @@ resource "digitalocean_app" "game" {
         scope = "RUN_TIME"
         type  = "SECRET"
       }
+
+      # Fight narration + fal video (@horror-tube/fight). Missing values fail
+      # closed in the package by variable name; no .env on the instance.
+      env {
+        key   = "FAL_KEY"
+        value = var.fal_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "FAL_MODEL"
+        value = var.fal_model
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FAL_IMAGE_TO_VIDEO_MODEL"
+        value = var.fal_image_to_video_model
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_VIDEO_SECONDS"
+        value = var.fight_video_seconds
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FAL_VIDEO_RESOLUTION"
+        value = var.fal_video_resolution
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FAL_PROMPT_EXPANSION_MODE"
+        value = var.fal_prompt_expansion_mode
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FAL_ASPECT_RATIO"
+        value = var.fal_aspect_ratio
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "NARRATION_PROVIDER"
+        value = var.narration_provider
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "NARRATION_MODEL"
+        value = var.narration_model
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "ANTHROPIC_API_KEY"
+        value = var.anthropic_api_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "GEMINI_API_KEY"
+        value = var.gemini_api_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
     }
   }
 }
