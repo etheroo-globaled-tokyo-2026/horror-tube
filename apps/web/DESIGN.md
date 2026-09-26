@@ -5,27 +5,41 @@ about death, and the house already knows the winner. The flow is `docs/PLAN.md`.
 
 You sit alone in a rusty room in front of an old TV, with a TV remote in your hand.
 
-| File                    | What it is                                                            |
-| ----------------------- | --------------------------------------------------------------------- |
-| `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.       |
-| `game.ts`               | The simulated game from `docs/PLAN.md`. No layout.                    |
-| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers. |
-| `coinbox.ts`            | The coin box: meter, coin slot, PAY BY PHONE sticker, coin return.    |
-| `sprites.ts`            | `paint` (pixel art) and `portrait` (the 16 head sprites).             |
-| `ht.css`                | Tokens, plus the World ID gate and coin box panel styles.             |
-| `system.html`           | The specimen page for the tokens.                                     |
-| `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.           |
+| File                    | What it is                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.                      |
+| `game.ts`               | The simulated game from `docs/PLAN.md`. No layout. Characters come from ENS (below). |
+| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                |
+| `coinbox.ts`            | The coin box: meter, coin slot, PAY BY PHONE sticker, coin return.                   |
+| `sprites.ts`            | `paint` (pixel art) and the line helpers.                                            |
+| `ht.css`                | Tokens, plus the World ID gate and coin box panel styles.                            |
+| `system.html`           | The specimen page for the tokens.                                                    |
+| `assets/demo-fight.mp4` | Placeholder clip. It plays for every fight until the video pipeline exists.          |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
+
+## Characters (ENS)
+
+At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia with
+`packages/ens/scripts/roster.ts` (the same reader as the dashboard). It needs `ENS_LABEL` and
+`VITE_SEPOLIA_RPC_URL` in the repo-root `.env`. The RPC URL ships in the page, so use a public keyless one.
+
+- Name: the `display_name` record. A blank `display_name` stops the page load.
+- Face: the `icon` PNG, everywhere (tape, spine, guide, fight figures).
+- Case file: `brief` and current `injuries`. `injury_places` is the list of places that character can be injured. `look` is for the video model only.
+- `status=dead` shows the character crossed off and in black and white. It cannot get votes.
+- `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
+  error on the TV that names the character. There is no fallback face.
+- A new season starts from chain state. Deaths in the game stay local until the server writes them.
+- **Limit:** the shelf has 10 slots and the guide has 10 rows. Characters after the tenth do not show. The layout must
+  change before the roster batches (issues 11–13) go on chain.
 
 ## The flow (game.ts)
 
 World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free, top two living
 fight) → **story** (the LLM writes the fight; the winner and damage are known from here) → **bet** (while the video
-renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage and may lose a capability,
+renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage,
 winners **claim**) → vote again, until one is left.
-
-Demo: round 1 favours Frankenstein (26) and Dracula (29), and when they fight, Frankenstein wins, to match the video.
 
 ## The wallet
 
@@ -110,7 +124,7 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
 - **The room:** real 3D, low-poly, rusty textures with hard pixels, fog, one flickering bulb. Warm colours only.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
   - Vote: a TV-guide channel. Last night's fight on top with **REC**, the residents below (number and name, 2 pages).
-  - Typing a number: the number and a one-line hint, never a face. The name shows after OK.
+  - Typing a number: the number and the character's `brief`, never a face. The name shows after OK.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: "WE INTERRUPT THIS
     PROGRAM", the loser, and OK to collect.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
