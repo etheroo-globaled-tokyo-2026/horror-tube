@@ -642,14 +642,7 @@ export function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text(
-          W8.slot === "judge"
-            ? "JUDGE · SCAN WITH WORLD APP"
-            : `PRACTICE ${String(W8.slot ?? "")} · SCAN`,
-          oy + side + 36,
-          28,
-          COL.sulfur,
-        );
+        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
         text(
           "Orb only. We check it on our side.",
           oy + side + 68,
@@ -697,28 +690,13 @@ export function drawTV(): void {
         "DotGothic16",
         400,
       );
-    } else if (W8.step === "read") {
-      noise = 0.15;
-      fill(COL.soot);
-      text(
-        W8.slot === "judge"
-          ? "JUDGE"
-          : W8.slot === null
-            ? "PICK A SCAN"
-            : `PRACTICE ${String(W8.slot)}`,
-        180,
-        56,
-        COL.sulfur,
-      );
-      text(W8.slot === null ? "1 2 3 4 5  OR  J" : "ENTER TO SIGN", 270, 32, COL.bone);
-      text("EACH NUMBER IS ONE PROOF", 340, 22, COL.rust, "DotGothic16", 400);
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
       text("SCAN FAILED", 190, 48, COL.blood);
       text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
       text("YOU ARE NOT IN.", 340, 24, COL.rust);
-    } else {
+    } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
       const k = LOW ? 1 : Math.min(1, (now - W8.at) / 320);
