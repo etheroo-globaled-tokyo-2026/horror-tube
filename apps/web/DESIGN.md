@@ -41,7 +41,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **panel** (a person books the first fighter; the model picks their opponent. Later, a person picks the next fighter and the champion stays) → **vote** (the room and house bots pick who they think wins; voting closes at quorum or after 15 seconds) → **bet** (hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means watch only) → **panel** (a person picks one fighter for the first match and the other is random. Later, a person picks the next fighter and the champion stays) → **vote** (the room and house bots pick who they think wins; voting closes at quorum or after 15 seconds) → **bet** (hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
 House bots play too (`RoundState.bots`, rules in `docs/game-loop.md`). A bot bets against the human stake once a
 human has started the bout. The room never hides it: the bet screen prints `HOUSE BOT 0.50 USDC` under the side it
@@ -183,14 +183,15 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
     through the residents (face, name, `brief`, injuries). A typed number shows that resident instead. The bottom
     half shows every resident's face and room number, the dead crossed out and the champion faded, under
     THE PROGRAMME MAY BEGIN, or in `pick` the matchup (champion face, `<CHAMPION> VS`, then a `?` box that
-    becomes the typed resident's face), then TYPE A ROOM NUMBER. OK books that fighter; the model picks the first
-    opponent. A failed booking shows the server's reason.
+    becomes the typed resident's face), then TYPE A ROOM NUMBER. OK books that fighter; on a fresh game the other
+    fighter is drawn at random. A failed booking shows the server's reason.
+  - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
-  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
-    record update, the deceased resident, and OK to collect.
-- **The remote:** the only thing you use for the game. One digit per room (rooms 1–9, then 0) for a case file, VOL ± for the stake, hold A or B to
-  bet, OK to collect or to start again.
+  - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the deceased
+    resident, the winner, and OK to collect.
+- **The remote:** the only thing you use for the game. One digit per room (rooms 1–9, then 0) for a case file, or
+  the stake during a bet. Press A or B to choose a side, type the amount, then OK. OK also collects or starts again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
 
@@ -198,8 +199,8 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
-  controls state the action (`STAKE VOL ± · BET HOLD A / B`, `COLLECT`). Copy never names the OK key; the
-  orange key is the one to press.
+  controls state the action (`A OR B · TYPE THE AMOUNT`, `COLLECT`). Copy never names the OK key; the orange
+  key is the one to press.
   Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.

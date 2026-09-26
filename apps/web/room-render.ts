@@ -99,9 +99,10 @@ const isText = (m: THREE.Material): boolean =>
 const clearColor = new THREE.Color();
 export function draw(): void {
   const text: THREE.Mesh[] = [];
-  const seeThrough: THREE.Mesh[] = [];
+  const seeThrough: THREE.Object3D[] = [];
   scene.traverse((o) => {
     if (o instanceof THREE.Light) o.layers.enable(TEXT_LAYER);
+    if (o instanceof THREE.Points && o.visible) seeThrough.push(o);
     if (!(o instanceof THREE.Mesh) || !o.visible) return;
     const mats: THREE.Material[] = Array.isArray(o.material) ? o.material : [o.material];
     if (mats.some((m) => m.transparent)) seeThrough.push(o);

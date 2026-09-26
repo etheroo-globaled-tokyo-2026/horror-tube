@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { PoolStatus } from "@horror-tube/betting";
 
-import type { BattleBettingPorts } from "../src/battle-betting.js";
+import { POOL_CANCELLED, type BattleBettingPorts } from "../src/battle-betting.js";
 import { MemoryPoolLedger } from "../src/db/sui-pools.js";
 import {
   recordPools,
@@ -176,6 +176,14 @@ describe("recording Sui pools in sui_pools", () => {
     await betting.cancelBattle(cancelledId);
     assert.equal(ledger.entries.get(settledId)?.resolution, "settled");
     assert.equal(ledger.entries.get(cancelledId)?.resolution, "cancelled");
+  });
+
+  it("marks a pool cancelled when settle finds it was cancelled mid-bout", async () => {
+    const ledger = new MemoryPoolLedger();
+    const betting = recordPools({ ...fakeBetting(), settle: async () => POOL_CANCELLED }, ledger);
+    await betting.openBattle("battle-1", 100n);
+    assert.equal(await betting.settle("battle-1", 0), POOL_CANCELLED);
+    assert.equal(ledger.entries.get("battle-1")?.resolution, "cancelled");
   });
 
   it("cancels a pool whose open could not be recorded and names it in the error", async () => {

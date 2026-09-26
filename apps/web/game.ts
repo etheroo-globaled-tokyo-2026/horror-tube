@@ -304,7 +304,7 @@ function castInServerOrder(chars: ServerRoundState["chars"]): Character[] {
     injuries: s.injuries.join(", "),
     icon: s.img,
     fights: 0,
-    alive: s.alive,
+    alive: chars.find((c) => c.id === s.id)?.alive ?? s.alive,
     kills: 0,
     damage: 0,
   }));
@@ -741,6 +741,12 @@ document.addEventListener("mouseover", (e) => {
     render();
   }
 });
+export function voteSide(side: 0 | 1): void {
+  const id = S.fighters?.[side];
+  if (id === undefined) return;
+  pick(id);
+}
+
 export function pick(id: number): void {
   S.focus = id;
   const voting = S.phase === "vote" || S.phase === "countdown";
