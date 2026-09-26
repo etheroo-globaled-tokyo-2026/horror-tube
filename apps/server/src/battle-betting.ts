@@ -9,14 +9,9 @@ import {
   type Operator,
   type BettingConfig,
 } from "@horror-tube/betting";
-import { randomUUID } from "node:crypto";
 
 export type BattleBettingPorts = {
-  openBattle: (
-    fighterA: string,
-    fighterB: string,
-    closesAtUnix: bigint,
-  ) => Promise<string>;
+  openBattle: (battleId: string, closesAtUnix: bigint) => Promise<void>;
   cancelBattle: (battleId: string) => Promise<void>;
   closeBetting: (battleId: string) => Promise<void>;
   settle: (battleId: string, side: 0 | 1) => Promise<string>;
@@ -41,11 +36,8 @@ export function createBattleBettingPorts(
   return {
     config,
     poolIdFor: (battleId) => operator.poolId(battleId),
-    async openBattle(_fighterA, _fighterB, closesAtUnix) {
-      const battleId = randomUUID();
-      const closesAtMs = closesAtUnix * 1000n;
-      await operator.openPool(battleId, closesAtMs);
-      return battleId;
+    async openBattle(battleId, closesAtUnix) {
+      await operator.openPool(battleId, closesAtUnix * 1000n);
     },
     async cancelBattle(battleId) {
       await operator.cancel(battleId);

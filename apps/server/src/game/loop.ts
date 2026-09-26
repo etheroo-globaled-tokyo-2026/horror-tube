@@ -15,6 +15,7 @@ import {
 } from "@horror-tube/fight/rotation";
 
 import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { randomUUID } from "node:crypto";
 
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
@@ -149,6 +150,8 @@ export class GameLoop {
   private settleDamage = 0;
   private queuedAgentResultId: string | null = null;
   private settleInFlight = false;
+  private openRetry: ChainRetry | null = null;
+  private openInFlight = false;
   private bettingClosedGate = false;
   private playbackFinishedGate = false;
   private holdingCopyApplied = false;
@@ -234,6 +237,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "bet") {
+      await this.maybeOpenPool(now);
       await this.maybeRefreshPool(now);
       await this.maybeLeaveBet(now);
       return;
@@ -713,8 +717,9 @@ export class GameLoop {
     this.videoDurationMs = null;
     this.error = null;
     this.pool = [0, 0];
-    this.onChainBattleId = null;
+    this.onChainBattleId = randomUUID();
     this.poolObjectId = null;
+    this.openRetry = null;
     this.queuedAgentResultId = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
@@ -723,9 +728,9 @@ export class GameLoop {
     this.betOpenedAt = now;
     this.clearPlaybackCutoff();
     this.endsAt = null;
-    await this.openOnChainBattle(now);
     this.emit();
     this.kickFightJob();
+    await this.maybeOpenPool(now);
   }
 
   private idOf(ensLabel: string): number {
@@ -758,7 +763,7 @@ export class GameLoop {
     if (battleId === null) {
       throw new Error("betting_closes_at passed but the bet phase has no battle id.");
     }
-    if (this.closeBettingInFlight) return;
+    if (this.poolObjectId === null || this.closeBettingInFlight) return;
     if (
       this.lastCloseBettingAt !== 0 &&
       now - this.lastCloseBettingAt < GameLoop.POOL_READ_INTERVAL_MS
@@ -971,8 +976,9 @@ export class GameLoop {
     this.fighters = [championId, challengerId];
     this.videoUrl = null;
     this.error = null;
-    this.onChainBattleId = null;
+    this.onChainBattleId = randomUUID();
     this.poolObjectId = null;
+    this.openRetry = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
     this.holdingCopyApplied = false;
@@ -980,38 +986,49 @@ export class GameLoop {
     this.betOpenedAt = now;
     this.clearPlaybackCutoff();
     this.endsAt = null;
-    await this.openOnChainBattle(now);
     this.emit();
     this.kickFightJob();
+    await this.maybeOpenPool(now);
   }
 
-  private async openOnChainBattle(now: number): Promise<void> {
-    if (this.fighters === null) {
-      throw new Error("openOnChainBattle requires fighters.");
-    }
-    const fighterA = this.ensLabels[this.fighters[0]];
-    const fighterB = this.ensLabels[this.fighters[1]];
-    if (fighterA === undefined || fighterB === undefined) {
-      throw new Error(
-        `openOnChainBattle: missing ENS label for fighters ${JSON.stringify(this.fighters)}.`,
-      );
-    }
-    const closesAtUnix = BigInt(
+  private async maybeOpenPool(now: number): Promise<void> {
+    const battleId = this.onChainBattleId;
+    if (this.phase !== "bet" || this.error !== null || battleId === null) return;
+    if (this.poolObjectId !== null || this.openInFlight) return;
+    if (this.openRetry !== null && now < this.openRetry.retryAt) return;
+    const latestCloseUnix = BigInt(
       Math.floor(now / 1000) +
         this.config.videoTimeoutSeconds +
         this.config.bettingCloseAfterVideoStartSeconds +
         120,
     );
-    this.onChainBattleId = await this.battleBetting.openBattle(
-      fighterA,
-      fighterB,
-      closesAtUnix,
-    );
-    this.poolObjectId = this.battleBetting.poolIdFor(this.onChainBattleId);
+    this.openInFlight = true;
+    try {
+      await this.battleBetting.openBattle(battleId, latestCloseUnix);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      if (!this.isSameBetBout(battleId)) {
+        console.error(
+          `Sui betting openPool failed after its bout ended (battleId=${battleId}): ${detail}`,
+        );
+        return;
+      }
+      this.openRetry = nextChainRetry(now, this.openRetry);
+      console.error(
+        `Sui betting openPool failed (battleId=${battleId}): ${detail}. Bets stay refused until it lands; retrying in ${String(this.openRetry.delayMs)} ms.`,
+      );
+      return;
+    } finally {
+      this.openInFlight = false;
+    }
+    if (!this.isSameBetBout(battleId)) return;
+    this.poolObjectId = this.battleBetting.poolIdFor(battleId);
+    this.openRetry = null;
     this.lastPoolReadAt = 0;
     console.log(
-      `Sui betting openPool battleId=${this.onChainBattleId} poolId=${this.poolObjectId} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
+      `Sui betting openPool battleId=${battleId} poolId=${this.poolObjectId} closesAt=${String(latestCloseUnix)}`,
     );
+    this.emit();
   }
 
   private kickFightJob(): void {
