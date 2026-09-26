@@ -8,11 +8,13 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/migrate-cli.ts",
     "test": "tsx --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "check:env": "tsx src/check-env-cli.ts"
   },
   "dependencies": {
     "@horror-tube/betting": "workspace:*",
     "@horror-tube/fight": "workspace:*",
+    "@horror-tube/fight-media": "workspace:*",
     "@horror-tube/world-id": "workspace:*",
     "@mysten/sui": "^2.33.0",
     "@shinami/clients": "^0.12.0",
