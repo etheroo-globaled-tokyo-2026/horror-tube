@@ -26,16 +26,40 @@ Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`*
 
 `terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Do not treat those names as interchangeable.
 
-Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command:
+Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command.
+
+Read the keys inside a subshell first: `env A="$(…)" B="$A"` does not work, because the parent shell expands `$A` before `env` sets it, so `B` is empty and the AWS CLI silently uses `~/.aws` credentials instead. The `:?` checks stop the command if `op read` fails or a value is blank:
 
 ```bash
-env SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')" \
-  SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')" \
+(
+  set -euo pipefail
+  : "${KEY:?KEY (object key) is required}"
+  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
+  SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
+  : "${SPACES_SECRET:?SPACES_SECRET is required}"
   AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
   AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
-  aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
-  --endpoint-url "https://sgp1.digitaloceanspaces.com" \
-  --acl public-read
+    aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
+    --endpoint-url "https://sgp1.digitaloceanspaces.com" \
+    --acl public-read
+)
+```
+
+`terraform apply` takes the same key under the provider's names, `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY`:
+
+```bash
+(
+  set -euo pipefail
+  TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
+  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
+  SPACES_SECRET_ACCESS_KEY="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
+  : "${TF_VAR_do_token:?TF_VAR_do_token is required}"
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
+  : "${SPACES_SECRET_ACCESS_KEY:?SPACES_SECRET_ACCESS_KEY is required}"
+  export TF_VAR_do_token SPACES_ACCESS_KEY_ID SPACES_SECRET_ACCESS_KEY
+  terraform apply
+)
 ```
 
 Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publicly fetchable. Do not commit Spaces key values.
