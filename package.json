@@ -21,6 +21,7 @@
     "betting:e2e": "pnpm --filter @horror-tube/betting run e2e",
     "test-usdc:deploy": "pnpm --filter @horror-tube/test-usdc run deploy",
     "test-usdc:mint": "pnpm --filter @horror-tube/test-usdc run mint",
+    "test-usdc:send": "pnpm --filter @horror-tube/test-usdc run send",
     "test-usdc:accounts": "pnpm --filter @horror-tube/test-usdc run accounts"
   },
   "devDependencies": {

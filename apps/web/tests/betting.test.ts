@@ -7,7 +7,6 @@ import { normalizeSuiAddress } from "@mysten/sui/utils";
 import { fetchBettingIds, toContractIds } from "../betting.ts";
 import { formatPoolOdds } from "../odds.ts";
 import {
-  USDC_TYPE,
   runKind,
   usdcTransfer,
   type GameWallet,
@@ -18,6 +17,7 @@ const PACKAGE = `0x${"aa".repeat(32)}`;
 const HOUSE = `0x${"bb".repeat(32)}`;
 const POOL = `0x${"cc".repeat(32)}`;
 const TO = `0x${"dd".repeat(32)}`;
+const COIN_TYPE = `0x${"ee".repeat(32)}::usdc::USDC`;
 
 function fakeWallet(session = "sess"): GameWallet {
   return {
@@ -37,7 +37,7 @@ describe("fetchBettingIds", () => {
         JSON.stringify({
           packageId: PACKAGE,
           houseId: HOUSE,
-          coinType: USDC_TYPE,
+          coinType: COIN_TYPE,
           network: "testnet",
           feeBps: 200,
         }),
@@ -47,6 +47,19 @@ describe("fetchBettingIds", () => {
     const ids = await fetchBettingIds(fetchImpl);
     assert.equal(ids.feeBps, 200);
     assert.equal(ids.packageId, PACKAGE);
+    assert.equal(ids.coinType, COIN_TYPE);
+  });
+
+  it("refuses a GET /betting body without a coin type", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(JSON.stringify({ packageId: PACKAGE, houseId: HOUSE, feeBps: 200 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    await assert.rejects(
+      () => fetchBettingIds(fetchImpl),
+      /GET \/betting returned bad betting IDs:.*coinType/u,
+    );
   });
 
   it("fails with HTTP status when GET /betting is not ok", async () => {
@@ -61,7 +74,7 @@ describe("bet kind", () => {
     const ids = toContractIds({
       packageId: PACKAGE,
       houseId: HOUSE,
-      coinType: USDC_TYPE,
+      coinType: COIN_TYPE,
       feeBps: 200,
     });
     const data = betTx(ids, POOL, 1, 30_000n).getData();
@@ -94,7 +107,7 @@ describe("runKind /tx", () => {
         headers: { "content-type": "application/json" },
       });
     };
-    const digest = await runKind(wallet, usdcTransfer(TO, 1_000n), fetchImpl);
+    const digest = await runKind(wallet, usdcTransfer(COIN_TYPE, TO, 1_000n), fetchImpl);
     assert.equal(digest, "0xdigest");
     assert.equal(posted, true);
   });
@@ -107,7 +120,7 @@ describe("runKind /tx", () => {
         headers: { "content-type": "application/json" },
       });
     await assert.rejects(
-      () => runKind(wallet, usdcTransfer(TO, 1_000n), fetchImpl),
+      () => runKind(wallet, usdcTransfer(COIN_TYPE, TO, 1_000n), fetchImpl),
       /tx policy rejected/u,
     );
   });

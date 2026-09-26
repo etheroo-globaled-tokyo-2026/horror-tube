@@ -35,6 +35,7 @@ publish.moveCall({
 const published = await execute(client, admin, publish);
 const packageId = publishedPackageId(published);
 const adminCap = createdId(published, "::betting::AdminCap");
+console.log(`Published ${packageId} in ${published.digest}.`);
 
 console.log(`Creating the house (fee ${feeBps} bps, min bet ${minBet})…`);
 const create = new Transaction();
@@ -43,7 +44,9 @@ create.moveCall({
   typeArguments: [coinType],
   arguments: [create.object(adminCap), create.pure.u64(feeBps), create.pure.u64(minBet)],
 });
-const houseId = createdId(await execute(client, admin, create), "::betting::House<");
+const created = await execute(client, admin, create);
+const houseId = createdId(created, "::betting::House<");
+console.log(`Created house ${houseId} in ${created.digest}.`);
 
 async function issueCap(holder: string): Promise<string> {
   console.log(`Issuing an operator cap to ${holder}…`);
@@ -54,7 +57,10 @@ async function issueCap(holder: string): Promise<string> {
     arguments: [tx.object(houseId), tx.object(adminCap)],
   });
   tx.transferObjects([cap], holder);
-  return createdId(await execute(client, admin, tx), "::betting::OperatorCap");
+  const issued = await execute(client, admin, tx);
+  const capId = createdId(issued, "::betting::OperatorCap");
+  console.log(`Issued ${capId} in ${issued.digest}.`);
+  return capId;
 }
 const operatorCap = await issueCap(operator);
 const e2eCap = await issueCap(admin.toSuiAddress());

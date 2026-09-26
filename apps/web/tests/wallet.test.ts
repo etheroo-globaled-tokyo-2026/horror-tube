@@ -5,7 +5,6 @@ import { bcs } from "@mysten/sui/bcs";
 import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 
 import {
-  USDC_TYPE,
   WALLET_SESSION_KEY,
   type SessionStore,
   fromUsdcUnits,
@@ -17,6 +16,7 @@ import {
 } from "../wallet.ts";
 
 const ADDRESS = `0x${"11".repeat(32)}`;
+const COIN_TYPE = `0x${"ee".repeat(32)}::usdc::USDC`;
 
 function memoryStore(): SessionStore {
   const items = new Map<string, string>();
@@ -83,7 +83,7 @@ describe("Shinami game wallet", () => {
 
   it("builds one USDC transfer to the given address", () => {
     const to = "0x" + "ab".repeat(32);
-    const data = usdcTransfer(to, 5_000_000n).getData();
+    const data = usdcTransfer(COIN_TYPE, to, 5_000_000n).getData();
     assert.deepEqual(
       data.commands.map((command) => command.$kind),
       ["$Intent", "TransferObjects"],
@@ -92,7 +92,7 @@ describe("Shinami game wallet", () => {
 
   it("deposits USDC into the recipient's address balance with send_funds", () => {
     const to = "0x" + "ab".repeat(32);
-    const data = usdcDeposit(to, 5_000_000n).getData();
+    const data = usdcDeposit(COIN_TYPE, to, 5_000_000n).getData();
     const calls = data.commands.flatMap((command) =>
       command.MoveCall === undefined ? [] : [command.MoveCall],
     );
@@ -103,7 +103,7 @@ describe("Shinami game wallet", () => {
       `${normalizeSuiAddress(call.package)}::${call.module}::${call.function}`,
       `${normalizeSuiAddress("0x2")}::coin::send_funds`,
     );
-    assert.deepEqual(call.typeArguments.map(normalizeStructTag), [normalizeStructTag(USDC_TYPE)]);
+    assert.deepEqual(call.typeArguments.map(normalizeStructTag), [normalizeStructTag(COIN_TYPE)]);
     const recipient = call.arguments[1];
     assert.ok(recipient?.$kind === "Input");
     const input = data.inputs[recipient.Input];
