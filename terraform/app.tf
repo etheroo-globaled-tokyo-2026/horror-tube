@@ -16,7 +16,7 @@ resource "digitalocean_app" "game" {
 
       github {
         repo           = var.github_repo
-        branch         = "main"
+        branch         = var.github_branch
         deploy_on_push = true
       }
 

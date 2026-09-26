@@ -15,7 +15,8 @@ app_name = "horror-tube"
 # App Platform region slug (GET /v2/apps/regions). Singapore is sgp; datacenter is sgp1.
 # Source: https://docs.digitalocean.com/reference/pydo/reference/apps/list_regions/
 app_region  = "sgp"
-github_repo = "etheroo-globaled-tokyo-2026/horror-tube"
+github_repo   = "etheroo-globaled-tokyo-2026/horror-tube"
+github_branch = "main"
 # From https://docs.digitalocean.com/products/app-platform/details/pricing/ (Current Plans).
 # 1 GiB shared CPU — enough for Node 22 plus ffmpeg last-frame extract.
 instance_size_slug = "apps-s-1vcpu-1gb"
