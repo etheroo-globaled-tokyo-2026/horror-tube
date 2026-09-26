@@ -10,7 +10,11 @@
     "ens:check": "pnpm --filter @horror-tube/ens check",
     "ens:register": "pnpm --filter @horror-tube/ens register",
     "ens:subnames": "pnpm --filter @horror-tube/ens subnames",
-    "dashboard": "pnpm --filter @horror-tube/ens dashboard"
+    "dashboard": "pnpm --filter @horror-tube/ens dashboard",
+    "contracts:test": "pnpm --filter @horror-tube/contracts run test",
+    "contracts:test:fork": "pnpm --filter @horror-tube/contracts run test:fork",
+    "contracts:deploy": "pnpm --filter @horror-tube/contracts run deploy",
+    "contracts:e2e": "pnpm --filter @horror-tube/contracts run e2e"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
