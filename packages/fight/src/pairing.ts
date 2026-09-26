@@ -6,7 +6,12 @@ import { z } from "zod";
 import { FightError, type NarrationConfig, type PairingConfig } from "./env.js";
 import { livingCardSchema, type LivingCard } from "./types.js";
 
-export type PairingInput = { champion: LivingCard | null; candidates: LivingCard[] };
+export type PairingInput = {
+  champion: LivingCard | null;
+  candidates: LivingCard[];
+  /** The viewer booked `champion` for the opening bout. The model picks only the opponent. */
+  opening?: boolean;
+};
 
 export type PairingResult = {
   fighterASubname: string;
@@ -84,8 +89,11 @@ export function pairingJsonSchema(input: PairingInput): PairingJsonSchema {
       fighter_a_subname: {
         type: "string",
         enum: a,
-        description:
-          input.champion === null ? "ENS subname of the first fighter." : "The champion's ENS subname, unchanged.",
+        description: input.opening
+          ? "The fighter a viewer booked. Do not change it."
+          : input.champion === null
+            ? "ENS subname of the first fighter."
+            : "The champion's ENS subname, unchanged.",
       },
       fighter_b_subname: {
         type: "string",
@@ -118,8 +126,9 @@ export function buildPairingPrompt(input: PairingInput) {
     brief: c.brief,
     injuries: c.injuries,
   });
-  const task =
-    input.champion === null
+  const task = input.opening
+    ? "A viewer booked fighter_a_subname for the opening bout. Choose only their opponent from the candidates. Do not change fighter_a_subname."
+    : input.champion === null
       ? "This is the first bout of the season. Choose both fighters from the candidate list."
       : "The champion stays on with the injuries on its card. fighter_a_subname is the champion. Choose the challenger from the candidate list.";
   return {
@@ -130,7 +139,13 @@ export function buildPairingPrompt(input: PairingInput) {
       "Pick the matchup that makes the most interesting fight. Do not pick a winner.",
     ].join(" "),
     user: [
-      ...(input.champion === null ? [] : ["Champion:", JSON.stringify(card(input.champion), null, 2), ""]),
+      ...(input.champion === null
+        ? []
+        : [
+            input.opening ? "Booked fighter:" : "Champion:",
+            JSON.stringify(card(input.champion), null, 2),
+            "",
+          ]),
       "Candidates (living):",
       JSON.stringify(input.candidates.map(card), null, 2),
     ].join("\n"),

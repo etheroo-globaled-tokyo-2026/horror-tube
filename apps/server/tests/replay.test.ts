@@ -149,7 +149,7 @@ describe("GET /replay", () => {
     const game = testLoop(store, () => clock);
     const base = await listen(game);
 
-    await game.start();
+    await game.start(0);
     clock = 1_000;
     await game.tick(clock);
     assert.equal(game.getState().phase, "bet");

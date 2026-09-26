@@ -12,6 +12,7 @@ export type PairingRequest = {
   championSubname: string | null;
   candidateSubnames: string[];
   round: number;
+  opening: boolean;
 };
 
 export type { PairingResult };
@@ -43,6 +44,7 @@ export function createPairingRunner(deps: {
       {
         champion: request.championSubname === null ? null : card(request.championSubname),
         candidates: request.candidateSubnames.map(card),
+        opening: request.opening,
       },
       loadNarrationConfig(env),
       deps.pairing,

@@ -7,7 +7,8 @@ betting, humans and house bots vote for who they think will win. The winner stay
 ## The loop
 
 ```
- WAITING ──verified POST /start──▶ pair ──▶ VOTE (15s max) ──quorum──▶ COUNTDOWN
+ WAITING ──human books one──▶ model picks opponent ──▶ VOTE (15s max) ──quorum──▶ COUNTDOWN
+                                         after settle, human picks the next fighter, then VOTE again
                                          │                                  │
                                          └──────── timeout, no quorum ──────┤
                                                                             ▼
@@ -23,11 +24,13 @@ betting, humans and house bots vote for who they think will win. The winner stay
 
 - **Waiting:** a fresh process holds no bout. No model call, no Sui pool, and no video until a verified human asks
   (`POST /start`), so a deploy or restart spends nothing.
-- **Pairing:** the model chooses only from an enum of living labels (`packages/fight/src/pairing.ts`). The first
-  bout is two living fighters. Later bouts fix fighter A as the champion and pick fighter B from the other living
-  labels. Cards loaded from ENS, including `injuries`, go into the prompt. A rejected answer is asked again, up to
-  `PAIRING_MAX_ATTEMPTS`, each attempt under `PAIRING_TIMEOUT_SECONDS`. After the last rejection the round stops and
-  names every rejected output. The fight job also refuses a dead or unknown fighter.
+- **Opening bout:** the panel lists living fighters. A verified human books one (`POST /start` `{ fighter }`). The
+  pairing model then chooses only that fighter's opponent, from an enum of the other living labels. It cannot change
+  the booked fighter. Cards from ENS, including `injuries`, go into the prompt. A rejected answer is asked again, up
+  to `PAIRING_MAX_ATTEMPTS`, each attempt under `PAIRING_TIMEOUT_SECONDS`.
+- **Next fighter:** after a bout, while more than one fighter is alive, the phase is `pick`. The panel lists the
+  living fighters except the champion. A verified human picks the next one (`POST /next-fighter` `{ fighter }`). The
+  model is not called. A dead fighter, the champion, or an unknown id is refused by name.
 - **Vote:** each human (one World ID nullifier per round) and each house bot picks which of the two will win. Bots
   vote only after a human has voted, and their votes count toward `QUORUM_VOTES`. Voting closes at quorum plus
   `VOTE_COUNTDOWN_SECONDS`, or at `VOTE_TIMEOUT_SECONDS` from the open, whichever is earlier. Without quorum the
@@ -160,7 +163,7 @@ The client and the server agree on this contract.
 **State pushed to each tab** (SSE or WebSocket):
 
 ```ts
-type Phase = "waiting" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
+type Phase = "waiting" | "pick" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 type RoundState = {
   round: number;
   phase: Phase;
@@ -171,6 +174,7 @@ type RoundState = {
   votes: [number, number]; // live counts for the two fighters, before the stored tally
   tally: [number, number] | null; // stored when voting closes, shown through betting
   fighters: [number, number] | null;
+  selectable: number[]; // ids the panel may book or send as the next fighter
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   battleId: string | null; // Sui pool key while a bout is open
@@ -194,7 +198,8 @@ Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by lab
 
 **Actions from the client:**
 
-- `POST /start` with `Authorization: Bearer <waiver session>`: pairs the first bout and opens the vote from `waiting` or `over`, and returns `{ ok: true, state }`. `409` with `code: "bout_open"` means a bout is open or already opening; `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
+- `POST /start` with `Authorization: Bearer <waiver session>` and `{ fighter }`: books that living fighter for the opening bout, the model picks the opponent, and the vote opens. From `waiting` or `over`. `400` names a refused fighter. `409` with `code: "bout_open"` means a bout is open or already opening. `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
+- `POST /next-fighter` with the same session and `{ fighter }`: only in `pick`. Sets the champion against that living fighter and opens the vote. `400` names a dead fighter, the champion, or an unknown id.
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ pick }`: `pick` is the character id of one of the two fighters. `400` names a refused vote; `500` means the vote row could not be stored.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
 - `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID`, `HOUSE_BOT_SUI_PRIVATE_KEYS`, or `HOUSE_BOT_STAKE_UNITS` is missing, or if the bot stake is below the House `min_bet`. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
@@ -202,11 +207,9 @@ Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by lab
 ## Client
 
 The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow
-server `RoundState` (SSE `/events` and `GET /round`). A room past the waiver sends `POST /start` whenever it sees
-the game enter `waiting` (first connect, or a server restart); OK on the `OVER` screen sends it again. A failed start
-stays on the TV with the server's error until OK retries it. Bets go through `/tx`. The fight video is `RoundState.videoUrl`.
+server `RoundState` (SSE `/events` and `GET /round`). The panel lists `selectable`. Booking one sends `POST /start`; picking the next fighter sends `POST /next-fighter`. A failed booking stays on the panel with the server's reason. Bets go through `/tx`. The fight video is `RoundState.videoUrl`.
 
-The placeholder bet screen (`apps/web/placeholders.ts`, root `[data-placeholder="bet"]`) stands in for the final bet
+The placeholder panels (`[data-placeholder="pick"]` and `[data-placeholder="bet"]`) stand in for the final pick and bet
 UI. The server phase picks the screen; the client runs no timer. The bet screen shows the stored
 `bettingClosesAt`. A rejected submission stays on the screen until dismissed. The final UI deletes this root.
 

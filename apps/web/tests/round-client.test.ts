@@ -7,6 +7,7 @@ import {
   fetchRoundState,
   postPlaybackStart,
   postStart,
+  postNextFighter,
   postVote,
   type ServerRoundState,
 } from "../round-client.ts";
@@ -51,6 +52,7 @@ const baseState: ServerRoundState = {
   votes: [0, 0],
   tally: null,
   fighters: null,
+  selectable: [],
   battleId: null,
   poolId: null,
   pool: [0, 0],
@@ -78,7 +80,8 @@ function respond(t: TestContext, status: number, json: string, seen: RequestInit
 describe("session posts", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
     await assert.rejects(() => postVote(0, memoryStore(null)), /World ID session is required/u);
-    await assert.rejects(() => postStart(memoryStore(null)), /World ID session is required/u);
+    await assert.rejects(() => postStart(0, memoryStore(null)), /World ID session is required/u);
+    await assert.rejects(() => postNextFighter(1, memoryStore(null)), /World ID session is required/u);
     await assert.rejects(
       () => postPlaybackStart("battle-1", memoryStore(null)),
       /World ID session is required/u,
@@ -93,7 +96,7 @@ describe("session posts", () => {
       JSON.stringify({ ok: true, state: { ...baseState, phase: "bet", fighters: [0, 1] } }),
       seen,
     );
-    const got = await postStart(memoryStore("signed-session"));
+    const got = await postStart(0, memoryStore("signed-session"));
     assert.equal(got.phase, "bet");
     assert.equal(new Headers(seen[0]?.headers).get("authorization"), "Bearer signed-session");
   });
@@ -109,7 +112,7 @@ describe("session posts", () => {
       }),
     );
     await assert.rejects(
-      () => postStart(memoryStore("signed-session")),
+      () => postStart(0, memoryStore("signed-session")),
       (cause: unknown) =>
         cause instanceof SessionPostError &&
         cause.status === 409 &&

@@ -94,10 +94,10 @@ function hintText(): void {
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" || S.phase === "countdown"
         ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
-        : S.phase === "waiting"
-        ? S.startError === null
-          ? "STARTING THE PROGRAMME"
-          : `THE PROGRAMME DID NOT START · TRY AGAIN ${b("OK")}`
+        : S.phase === "waiting" || S.phase === "over"
+          ? "BOOK THE FIRST FIGHTER"
+          : S.phase === "pick"
+            ? "PICK THE NEXT FIGHTER"
         : S.phase === "bet" && !S.bet && S.poolId === null
           ? "OPENING THE BOOK"
           : S.pending === "bet"
@@ -108,9 +108,7 @@ function hintText(): void {
                 ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
                 : S.claim
                   ? `COLLECT ${b("OK")}`
-                  : S.phase === "over"
-                    ? `NEXT PROGRAMME ${b("OK")}`
-                    : S.credit <= 0
+                  : S.credit <= 0
                       ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
                       : `NEXT ${b("N")}`;
 }

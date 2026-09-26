@@ -18,6 +18,7 @@ import {
 import {
   connectRoundEvents,
   fetchRoundState,
+  postNextFighter,
   postStart,
   postVote,
   SessionPostError,
@@ -91,6 +92,7 @@ export type GameState = {
   round: number;
   chars: Character[];
   fighters: Pair | null;
+  selectable: number[];
   story: string;
   winner: number;
   dmg: number;
@@ -132,6 +134,7 @@ export const S: GameState = {
   round: 1,
   chars: [],
   fighters: null,
+  selectable: [],
   story: "",
   winner: -1,
   dmg: 0,
@@ -325,6 +328,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.votes = [state.votes[0], state.votes[1]];
   S.tally = state.tally === null ? null : [state.tally[0], state.tally[1]];
   S.fighters = state.fighters;
+  S.selectable = state.selectable;
   S.battleId = state.battleId;
   S.poolId = state.poolId;
   S.pool = [state.pool[0], state.pool[1]];
@@ -372,8 +376,6 @@ export function applyRoundState(state: ServerRoundState): void {
     }
   }
   if (state.phase !== "waiting" && state.phase !== "over") S.startError = null;
-  if (state.phase === "waiting" && prevPhase !== "waiting" && S.startError === null)
-    void startBout();
   const seasonOpened = state.phase === "bet" && state.champion === null && prevPhase !== "bet";
   if (seasonOpened) {
     S.bet = null;
@@ -395,13 +397,13 @@ export async function connectToServerRound(): Promise<void> {
 }
 
 let starting = false;
-export async function startBout(): Promise<void> {
+export async function startBout(fighter: number): Promise<void> {
   if (starting) return;
   starting = true;
   S.startError = null;
   render();
   try {
-    applyRoundState(await postStart());
+    applyRoundState(await postStart(fighter));
     log("BROADCAST STARTED", "t-house");
   } catch (error) {
     if (error instanceof SessionPostError && error.code === "bout_open") {
@@ -412,6 +414,25 @@ export async function startBout(): Promise<void> {
     console.error(`POST /start failed: ${message}`);
     S.startError = message;
     note(`BROADCAST FAILED TO START. ${message}`, "bad");
+  } finally {
+    starting = false;
+    render();
+  }
+}
+
+export async function chooseNextFighter(fighter: number): Promise<void> {
+  if (starting) return;
+  starting = true;
+  S.startError = null;
+  render();
+  try {
+    applyRoundState(await postNextFighter(fighter));
+    log("NEXT FIGHTER BOOKED", "t-house");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`POST /next-fighter failed: ${message}`);
+    S.startError = message;
+    note(`NEXT FIGHTER REJECTED. ${message}`, "bad");
   } finally {
     starting = false;
     render();
@@ -683,7 +704,8 @@ document.addEventListener("click", (e) => {
   } else if (act === "view") {
     S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
-  } else if (act === "reset") void startBout();
+  } else if (act === "book") void startBout(Number(el.dataset.id));
+  else if (act === "next-fighter") void chooseNextFighter(Number(el.dataset.id));
   else if (act === "ring") pick(Number(el.dataset.id));
   else if (act === "side") {
     S.side = Number(el.dataset.i);

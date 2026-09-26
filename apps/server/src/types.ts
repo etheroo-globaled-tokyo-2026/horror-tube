@@ -1,4 +1,4 @@
-export type Phase = "waiting" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
+export type Phase = "waiting" | "pick" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
 
 export type RoundState = {
   round: number;
@@ -10,6 +10,8 @@ export type RoundState = {
   votes: [number, number];
   tally: [number, number] | null;
   fighters: [number, number] | null;
+  /** Character ids the panel may book or send in as the next fighter. */
+  selectable: number[];
   battleId: string | null;
   poolId: string | null;
   pool: [number, number];
