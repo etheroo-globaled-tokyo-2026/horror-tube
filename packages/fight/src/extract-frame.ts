@@ -9,7 +9,9 @@ export type RunFfmpeg = (
   args: readonly string[],
 ) => Promise<{ code: number; stderr: string }>;
 
-/** Spawn system ffmpeg. Injectable in tests so CI never skips around a missing binary. */
+const SEEK_NEAR_END = ["-sseof", "-1"];
+const WRITE_ONE_JPEG_FRAME = ["-frames:v", "1", "-q:v", "2"];
+
 export async function defaultRunFfmpeg(
   args: readonly string[],
 ): Promise<{ code: number; stderr: string }> {
@@ -18,8 +20,9 @@ export async function defaultRunFfmpeg(
       stdio: ["ignore", "ignore", "pipe"],
     });
     let stderr = "";
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      stderr += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
     });
     child.on("error", (err) => {
       reject(err);
@@ -30,10 +33,6 @@ export async function defaultRunFfmpeg(
   });
 }
 
-/**
- * Extract the last decoded frame of an mp4 as JPEG bytes via ffmpeg.
- * Fails closed — no fixture still and no empty buffer.
- */
 export async function extractLastFrameJpeg(
   mp4Bytes: Uint8Array,
   runFfmpeg: RunFfmpeg = defaultRunFfmpeg,
@@ -53,17 +52,12 @@ export async function extractLastFrameJpeg(
 
     let result: { code: number; stderr: string };
     try {
-      // -sseof -1 seeks near the end; -frames:v 1 writes one JPEG.
       result = await runFfmpeg([
         "-y",
-        "-sseof",
-        "-1",
+        ...SEEK_NEAR_END,
         "-i",
         mp4Path,
-        "-frames:v",
-        "1",
-        "-q:v",
-        "2",
+        ...WRITE_ONE_JPEG_FRAME,
         jpgPath,
       ]);
     } catch (cause) {

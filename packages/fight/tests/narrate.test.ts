@@ -73,7 +73,6 @@ describe("narrateFight", () => {
     );
     assert.equal(result.turn.winner_subname, "jason");
     assert.deepEqual(result.ensLines, renderEnsLines(result.turn));
-    // After fight: living non-winners = leatherface, chucky; pickFirst => leatherface
     assert.equal(result.nextOpponentSubname, "leatherface");
     assert.equal(result.turn.next_opponent_subname, "leatherface");
     assert.equal(result.rationale, modelTurn.rationale);

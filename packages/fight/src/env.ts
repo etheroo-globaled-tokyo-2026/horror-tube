@@ -29,14 +29,7 @@ export type NarrationConfig = {
 
 export type FalVideoConfig = {
   apiKey: string;
-  /** Text-to-video model id (first fight in a chain). From FAL_MODEL. */
   model: string;
-  /**
-   * Image-to-video model id for fights that reuse a prior last frame.
-   * Null when FAL_IMAGE_TO_VIDEO_MODEL is missing/blank. Required when a prior
-   * frame URL is present — resolveFalSubscribeModel fails closed rather than
-   * dropping the frame and calling text-to-video.
-   */
   imageToVideoModel: string | null;
   durationSeconds: number;
   resolution: string;
@@ -44,10 +37,6 @@ export type FalVideoConfig = {
   aspectRatio: string;
 };
 
-/**
- * Pick the fal endpoint for this bout. With a prior frame URL, require the
- * image-to-video model from env. Without one, use text-to-video.
- */
 export function resolveFalSubscribeModel(
   config: FalVideoConfig,
   priorFrameUrl: string | undefined,

@@ -41,12 +41,6 @@ export * from "./battle-queue.js";
 export * from "./store-video.js";
 export * from "./extract-frame.js";
 
-export { cryptoRandomInt };
-
-/**
- * Bout start: previous winner vs a random living non-winner.
- * Builds FightInput so narration cannot pick a different pair.
- */
 export function fightInputFromRotation(
   livingCards: readonly LivingCard[],
   winnerSubname: string,
@@ -94,18 +88,10 @@ export async function runFightTurn(
     narrationConfig?: NarrationConfig;
     falConfig?: FalVideoConfig;
     randomInt?: RandomInt;
-    /** Injectable HTTP for the fal mp4 download. Defaults to global fetch. */
     fetch?: FetchLike;
-    /** Override Spaces config instead of reading FIGHT_MEDIA_SPACES_* from env. */
     fightMediaConfig?: FightMediaConfig;
-    /** Injectable Spaces PUT for video and frame. Defaults to the fight-media S3 client. */
     putObject?: PutFightVideo;
-    /**
-     * CDN URL of the previous fight's last frame. First bout in a chain omits
-     * this (text-to-video). Later bouts must pass it (image-to-video).
-     */
     priorFrameUrl?: string;
-    /** Injectable last-frame extract. Defaults to ffmpeg. */
     extractLastFrame?: (
       mp4Bytes: Uint8Array,
       runFfmpeg?: RunFfmpeg,
