@@ -9,6 +9,7 @@ export const $ = (s: string): HTMLElement => {
   return el;
 };
 export const hooks = { render: (): void => {} };
+export const countdown = { hold: false };
 const render = (): void => hooks.render();
 
 const C = {
@@ -36,7 +37,7 @@ export const mmss = (s: number): string =>
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
-const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
+export const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
 const CHAPTERS = [
@@ -340,7 +341,7 @@ export function next(): void {
 }
 
 setInterval(() => {
-  if (S.phase === "gate" || S.phase === "over") return;
+  if (S.phase === "gate" || S.phase === "over" || countdown.hold) return;
   S.t -= 0.25;
   if (S.phase === "vote" && rnd() < 0.8) {
     const l = living(),

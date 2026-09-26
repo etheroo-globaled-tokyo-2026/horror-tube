@@ -139,7 +139,13 @@ def cmd_icons(args: argparse.Namespace) -> int:
 
 def _require_chain_env() -> None:
     """Fail closed before any chain or CDN write when ENS write env is missing."""
-    for name in ("ENS_LABEL", "SEPOLIA_RPC_URL", "PRIVATE_KEY"):
+    for name in (
+        "ENS_LABEL",
+        "SEPOLIA_RPC_URL",
+        "PRIVATE_KEY",
+        "ROSTER_PRIVATE_KEY",
+        "AGENT_PRIVATE_KEY",
+    ):
         raw = os.environ.get(name)
         if raw is None or raw.strip() == "":
             raise RosterValidationError(

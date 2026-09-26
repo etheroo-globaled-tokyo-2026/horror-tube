@@ -19,13 +19,18 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
-`PRIVATE_KEY` fails with an error that names the variable. The CLI loads `.env`
-via `python-dotenv` when present. `propose` does not require ENS env vars.
-`icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
+`PRIVATE_KEY` (bootstrap/admin), `ROSTER_PRIVATE_KEY` (look/brief/icon), or
+`AGENT_PRIVATE_KEY` (status/injuries) fails with an error that names the variable.
+The CLI loads `.env` via `python-dotenv` when present. `propose` does not require
+ENS env vars. `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
 Spaces uploads use those two Spaces keys only and ignore `AWS_PROFILE`.
 `icons-chain` requires both the ENS write vars and the Together/Spaces vars.
+
+Restricted keys must not be the bootstrap address. Roster and fight writers load
+`ROSTER_PRIVATE_KEY` / `AGENT_PRIVATE_KEY` and refuse to run when that address
+equals `PRIVATE_KEY`.
 
 ## Schemas
 
@@ -130,9 +135,13 @@ python3 -m roster redeploy
 ### register (sends transactions)
 
 Ensures the parent has a UserRegistry subregistry and PermissionedResolver
-(deployed via pin `VerifiableFactory` if missing), reads chain status/text for
-each label, then registers and writes `display_name` / `look` / `brief` /
-`injury_places` / `injuries` / `status` / `icon` via `setText`.
+(deployed via pin `VerifiableFactory` if missing), grants restricted setter
+roles via pinned `grantSetterRoles`, reads chain status/text for each label,
+then registers with the bootstrap key and splits `setText` writes:
+
+- bootstrap (`PRIVATE_KEY`): `display_name`, `injury_places`
+- roster (`ROSTER_PRIVATE_KEY`): `look`, `brief`, `icon`
+- agent (`AGENT_PRIVATE_KEY`): `status`, `injuries` (new names get `alive` / `[]`)
 
 ```bash
 python3 -m roster register --input /tmp/one-character.json
@@ -145,6 +154,17 @@ are the source of prior `status` / `injuries` (not only a local file).
 - `skip`: leave chain unchanged and report the label
 - `restore`: set `status` to `alive` and write `injuries` from the **input file**
   (the file must include `injuries` explicitly)
+
+### rewrite-empty-injuries (agent key only; not fight-settle)
+
+One-shot repair for living characters whose on-chain `injuries` text is exactly
+`""`. Sets those to `[]` with `AGENT_PRIVATE_KEY`. Stops on any other non-array
+value and prints the subname and raw value. Do not run this as part of fight
+settle. Do not point this at live Sepolia from CI.
+
+```bash
+pnpm ens:subnames rewrite-empty-injuries --labels /tmp/labels.json
+```
 
 ### plan-remove (plan only)
 
