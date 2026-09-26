@@ -838,9 +838,17 @@ export function drawTV(): void {
         "DotGothic16",
         400,
       );
-      if (!endedByFailure)
-        text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
-      text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
+      if (S.startError !== null) {
+        text("THE NEXT PROGRAMME DID NOT START", 300, 24, COL.blood);
+        g.font = "400 20px DotGothic16";
+        g.fillStyle = COL.bone;
+        const end = wrap(g, S.startError, W / 2, 336, W - 64, 24);
+        text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.sulfur);
+      } else {
+        if (!endedByFailure)
+          text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
+        text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
+      }
     }
   }
   if (S.phase !== "gate" && T.say && now < T.sayUntil) {

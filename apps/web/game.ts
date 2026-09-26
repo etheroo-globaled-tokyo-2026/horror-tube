@@ -330,6 +330,8 @@ export function applyRoundState(state: ServerRoundState): void {
     }
   }
   if (state.phase !== "waiting" && state.phase !== "over") S.startError = null;
+  if (state.phase === "waiting" && prevPhase !== "waiting" && S.startError === null)
+    void startBout();
   const seasonOpened = state.phase === "bet" && state.champion === null && prevPhase !== "bet";
   if (seasonOpened) {
     S.bet = null;
@@ -453,7 +455,6 @@ export async function newSeason(): Promise<void> {
     "t-house",
   );
   await connectToServerRound();
-  if (S.phase === "waiting") await startBout();
 }
 const faces = new Map<string, HTMLCanvasElement>();
 export function face(ch: Character): HTMLCanvasElement {
