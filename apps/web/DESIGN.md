@@ -185,8 +185,8 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Waiting: colour bars and PLEASE STAND BY while the room's start request is in flight. A failed start shows
-    THE PROGRAMME DID NOT START, the server's reason, and OK to try again.
+  - Waiting: the living roster and TYPE THE NUMBER · OK. OK books that fighter; the model picks the opponent.
+    The same screen, titled PICK THE NEXT FIGHTER, is the `pick` phase. A failed booking shows the server's reason.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident

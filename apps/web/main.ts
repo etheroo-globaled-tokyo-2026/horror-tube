@@ -1,12 +1,34 @@
 import * as THREE from "three";
-import { $, DUR, S, hooks, loadBettingIds, setWallet, usd, type Phase } from "./game.ts";
+import {
+  $,
+  DUR,
+  S,
+  chooseNextFighter,
+  hooks,
+  loadBettingIds,
+  setWallet,
+  startBout,
+  usd,
+  type Phase,
+} from "./game.ts";
 import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
 import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import {
+  STAKES,
+  T,
+  Z,
+  W8,
+  LOW,
+  num,
+  say,
+  walkRef,
+  type WalkStep,
+} from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
+import { typedFighterId } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -153,11 +175,21 @@ function turnOff(): void {
   hintText();
 }
 function ok(): void {
+  const booked = typedFighterId(T.buf, S.selectable);
+  if (booked !== null && (S.phase === "waiting" || S.phase === "over")) {
+    T.buf = "";
+    void startBout(booked);
+    return;
+  }
+  if (booked !== null && S.phase === "pick") {
+    T.buf = "";
+    void chooseNextFighter(booked);
+    return;
+  }
   if (S.claim) {
     if (!canCollect(S)) return;
     $("#h-claim").click();
-  } else if (S.phase === "over" || (S.phase === "waiting" && S.startError !== null))
-    $("#h-reset").click();
+  }
 }
 let holdTimer = 0;
 const stake = (): number => STAKES[T.stake] ?? 0;
