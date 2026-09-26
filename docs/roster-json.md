@@ -1,32 +1,49 @@
-# Roster JSON import and removal plans
+# Roster JSON, plans, and character subname register/unregister
 
-Part of #23: propose character sheets from Fandom, validate JSON, and emit
-**plans**. This does **not** read chain state or send register/unregister
-transactions. On-chain subname register/unregister is not implemented yet.
+Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
+and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
+
+| Command       | Chain?  | Role                                                                      |
+| ------------- | ------- | ------------------------------------------------------------------------- |
+| `propose`     | no      | Build roster JSON from Fandom `api.php`                                   |
+| `import`      | no      | Validate JSON and write an import **plan** (`chain_writes: false`)        |
+| `plan-remove` | no      | Validate labels and write a removal **plan** (`chain_writes: false`)      |
+| `register`    | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`          |
+| `remove`      | **yes** | `UserRegistry.unregister` for each label                                  |
+| `icons`       | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet  |
+| `icons-chain` | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
+
+`import` / `plan-remove` never send transactions. `register` / `remove` /
+`icons-chain` always hit chain (after validating input). Do not confuse them.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
-`label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL` fails with an error that
-names the variable. `propose` does not require `ENS_LABEL` and does not call ENS.
+`label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
+`PRIVATE_KEY` fails with an error that names the variable. The CLI loads `.env`
+via `python-dotenv` when present. `propose` does not require ENS env vars.
+`icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
+`TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
+`SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
+`icons-chain` requires both the ENS write vars and the Together/Spaces vars.
 
 ## Schemas
 
-Checked in under `roster/schemas/`:
+Checked in under `packages/roster/roster/schemas/`:
 
-| File | Shape |
-| --- | --- |
-| `character.schema.json` | One character object |
+| File                         | Shape                                |
+| ---------------------------- | ------------------------------------ |
+| `character.schema.json`      | One character object                 |
 | `character-bulk.schema.json` | Non-empty array of character objects |
 
 ### Required fields (every key must be present)
 
-| Key | Rules |
-| --- | --- |
-| `label` | Lowercase DNS label (`a-z0-9` and internal hyphens) |
-| `look` | Non-empty string |
-| `brief` | Non-empty string |
-| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default) |
-| `status` | Must be present. Allowed: `""` or `dead` only. Anything else is rejected |
-| `icon` | `""` or an `https://` URL. Missing key is an error |
+| Key        | Rules                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                                                                              |
+| `look`     | Non-empty string                                                                                                                 |
+| `brief`    | Non-empty string                                                                                                                 |
+| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default)                                                    |
+| `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
+| `icon`     | `""` or an `https://` URL. Missing key is an error                                                                               |
 
 **Forbidden keys:** `strength`, `intelligence`, `luck`, `role`.
 
@@ -34,77 +51,37 @@ Import accepts either one character object or a bulk array.
 
 ## Fixture
 
-`roster/fixtures/sample-characters.json` is a **fixture** of two invented
+`packages/roster/roster/fixtures/sample-characters.json` is a **fixture** of two invented
 characters for local tests. It is not live Fandom lore.
 
-`roster/fixtures/fandom-api.json` holds real `villains.fandom.com` `api.php`
+`packages/roster/roster/fixtures/fandom-api.json` holds real `villains.fandom.com` `api.php`
 responses keyed by host and sorted query. Propose tests read it and never hit
 the network.
 
 ## Commands
 
-Install deps once:
+Install deps once, then run the commands below from `packages/roster/` with
+`.venv/bin/python` (or activate `.venv`):
 
 ```bash
-python3 -m pip install -r roster/requirements.txt
+pnpm install
+pnpm --filter @horror-tube/roster venv
 ```
 
 ### propose
 
 Reads N pages through `https://<wiki>.fandom.com/api.php?action=parse` and
-writes proposed roster JSON that matches the schemas above. It never fetches
-`/wiki/` HTML (Fandom returns 403) and never falls through to another site.
-`--n` must equal the number of sources. A `/wiki/<Title>` URL is only parsed for
-host and title.
-
-The command fails, naming the page, when:
-
-- the page is a disambiguation page (`disambiguation` page property or a
-  `*Disambiguation*` category)
-- there is no `Appearance` / `Physical Appearance` section
-- there is no `Powers and Abilities` section
-- a section has no paragraph or list text, or `api.php` returns an error
+writes proposed roster JSON. It never fetches `/wiki/` HTML and never falls
+through to another site. `--n` must equal the number of sources.
 
 ```bash
-# One character (full URL)
 python3 -m roster propose \
   --n 1 \
   --source 'https://villains.fandom.com/wiki/Pinhead_(Hellraiser)' \
   --out /tmp/pinhead.json
-
-# Bulk list of N (titles need --wiki)
-python3 -m roster propose \
-  --n 2 \
-  --wiki villains.fandom.com \
-  --source 'Pinhead (Hellraiser)' \
-  --source 'Michael Myers (Halloween)' \
-  --out /tmp/roster.json
 ```
 
-`--sources-file` takes one URL or title per line (`#` comments allowed).
-
-Field rules for proposed sheets:
-
-- `label`: first lowercase word of the page title, parenthetical dropped
-- `look`: first sentence of the Appearance section
-- `brief`: first sentence of the Powers and Abilities section
-- `injuries` / `status` / `icon`: always `""`. Icons are Spaces CDN URLs set
-  separately.
-
-Duplicate labels across the N proposed characters are an error.
-
-Pass the output file straight into `import`:
-
-```bash
-ENS_LABEL=horrortube python3 -m roster import \
-  --input /tmp/roster.json \
-  --out /tmp/import-plan.json
-```
-
-Dead/injured restore behavior is owned by `import` (`--on-existing`); `propose`
-does not silently restore names.
-
-### import
+### import (plan only)
 
 ```bash
 ENS_LABEL=horrortube python3 -m roster import \
@@ -112,55 +89,114 @@ ENS_LABEL=horrortube python3 -m roster import \
   --out /tmp/import-plan.json
 ```
 
-- Validates JSON against the schemas and extra rules.
-- Fails on duplicate `label` values inside the input file.
-- Writes a normalized import plan JSON describing the intended ENS register/update
-  action per character. Does not submit a transaction.
+Writes a normalized import plan. Does not submit a transaction.
 
-#### Existing dead / injured names
+### register (sends transactions)
 
-Chain reads are **not** implemented here. To exercise dead/injured handling, pass an
-optional second file with the same character schema:
+Ensures the parent has a UserRegistry subregistry and PermissionedResolver
+(deployed via pin `VerifiableFactory` if missing), reads chain status/text for
+each label, then registers and writes `look` / `brief` / `injuries` / `status` /
+`icon` via `setText`.
 
 ```bash
-ENS_LABEL=horrortube python3 -m roster import \
-  --input incoming.json \
-  --existing already-known.json \
-  --on-existing skip \
-  --out /tmp/import-plan.json
+python3 -m roster register --input /tmp/one-character.json
 ```
 
-If any label in `--input` appears in `--existing` with `status=dead` or a
-non-empty `injuries` string:
+If a label is already registered on chain, the command fails unless
+`--on-existing=skip` or `--on-existing=restore` is passed. Chain text records
+are the source of prior `status` / `injuries` (not only a local file).
 
-- Missing `--on-existing` is an **error** (no silent default).
-- `--on-existing=skip` omits that label from the plan and lists it under `skipped`.
-- `--on-existing=restore` puts the character in the plan with `status` cleared to
-  `""` and `injuries` taken from the **input file** as supplied (not invented).
+- `skip`: leave chain unchanged and report the label
+- `restore`: set `status` to `alive` and write `injuries` from the **input file**
+  (the file must include `injuries` explicitly)
 
-If `--existing` is omitted, the script does not pretend to know chain state.
-
-### remove
+### plan-remove (plan only)
 
 ```bash
-ENS_LABEL=horrortube python3 -m roster remove \
+ENS_LABEL=horrortube python3 -m roster plan-remove \
   --input labels.json \
   --out /tmp/remove-plan.json
 ```
 
-`labels.json` must be a JSON array of label strings, for example:
+### icons (Together + Spaces)
 
-```json
-["fixture-one", "fixture-two"]
+Reads Together and Spaces variables from the environment. Missing or blank
+values fail and name the variable. Generates a square portrait at 1024×1024,
+resizes to 100×100, uploads to the Spaces bucket with ACL `public-read`, and
+writes updated character JSON with `icon` set to
+`https://<SPACES_CDN_HOST>/<object-key>`.
+
+Object keys:
+
+- First upload: `<label>.png`
+- `--override` when that object already exists: `<label>-<unix-seconds>.png`
+  (does not overwrite `<label>.png` in place)
+
+If `<label>.png` already exists on Spaces and `--override` was not passed, the
+command skips Together and upload, logs the existing CDN URL, and fills an
+empty `icon` field with that URL. A local PNG under `--out-dir` is not enough
+to skip; existence is checked on the bucket. Refuses a path under `fixtures`.
+One character failure stops the command.
+
+```bash
+python3 -m roster propose \
+  --n 1 \
+  --source 'https://villains.fandom.com/wiki/Pinhead_(Hellraiser)' \
+  --out /tmp/pinhead.json
+
+python3 -m roster icons \
+  --input /tmp/pinhead.json \
+  --out-dir /tmp/horror-tube-icons \
+  --out /tmp/pinhead-with-icon.json
+
+# Regenerate and upload under a new key when the canonical object already exists:
+python3 -m roster icons \
+  --input /tmp/pinhead.json \
+  --out-dir /tmp/horror-tube-icons \
+  --out /tmp/pinhead-with-icon.json \
+  --override
 ```
 
-- Fails on duplicate labels in the list.
-- Writes a removal plan that describes unregister of each
-  `label.<ENS_LABEL>.eth`. Does not invent or send a transaction.
+### icons-chain (Together + Spaces + ENS icon only)
+
+Discovers every registered character under `ENS_LABEL.eth` from chain. For each
+character whose on-chain `icon` is empty, generates a face PNG from the on-chain
+`look`, uploads to Spaces, and `setText`s **only** the `icon` key to the https
+CDN URL. Does not rewrite `look`, `brief`, `injuries`, or `status`. Skips
+characters that already have a non-empty https icon unless `--override`. Fails
+if `look` is empty (names the label). One failure stops the command.
+
+```bash
+python3 -m roster icons-chain
+```
+
+### remove (sends transactions)
+
+```bash
+python3 -m roster remove --input labels.json
+```
+
+`labels.json` is a JSON array of label strings. Sends `UserRegistry.unregister`
+for each. Use `plan-remove` if you only want the JSON plan.
+
+## Character sheet dashboard
+
+The chain reader is `packages/ens/scripts/roster.ts`. It has no Node imports, so the dashboard, `character-subnames list`, and the web game (`apps/web/game.ts`) all use it.
+
+Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
+and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
+`ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
+in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
+transactions.
+
+```bash
+pnpm --filter @horror-tube/ens dashboard
+```
+
+Then open `http://127.0.0.1:8130/`. If that port is already taken, this process stops the listener and binds it. Each name links to its ENS page, and the registry owner address links to Sepolia Etherscan. Each GET re-reads the chain.
 
 ## Tests
 
 ```bash
-python3 -m pip install -r roster/requirements.txt
-PYTHONPATH=. python3 -m unittest discover -s tests -v
+pnpm test
 ```
