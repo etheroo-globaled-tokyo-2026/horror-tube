@@ -14,6 +14,8 @@ from io import BytesIO, StringIO
 from pathlib import Path
 from unittest import mock
 
+from typing import Mapping, Sequence
+
 from PIL import Image
 
 from roster import __main__ as cli
@@ -32,8 +34,10 @@ from roster.icons import (
     override_icon_key,
     png_icon,
     required_env,
+    should_skip_chain_icon,
     should_skip_generation,
     spaces_region_from_endpoint,
+    sync_chain_icons,
     write_face_icons,
 )
 
@@ -49,6 +53,16 @@ class _MemorySpaces:
 
     def put_public_png(self, key: str, body: bytes) -> None:
         self.objects[key] = body
+
+
+class _FakeChain:
+    def __init__(self) -> None:
+        self.calls: list[list[dict[str, str]]] = []
+
+    def set_icons(self, updates: Sequence[Mapping[str, str]]) -> list[dict[str, str]]:
+        rows = [{"label": u["label"], "icon": u["icon"], "txHash": f"0x{u['label']}"} for u in updates]
+        self.calls.append([dict(u) for u in updates])
+        return rows
 
 
 class _RejectHandler(BaseHTTPRequestHandler):
@@ -400,3 +414,163 @@ class IconResizeTests(unittest.TestCase):
         encoded = base64.b64encode(raw.getvalue()).decode("ascii")
         png = png_icon(decode_image(encoded))
         self.assertEqual(Image.open(BytesIO(png)).size, (ICON_PX, ICON_PX))
+
+
+class IconChainSyncTests(unittest.TestCase):
+    def test_skip_when_https_icon_present(self):
+        self.assertTrue(
+            should_skip_chain_icon(
+                icon="https://cdn.example.test/art.png",
+                override=False,
+            )
+        )
+        self.assertFalse(
+            should_skip_chain_icon(
+                icon="https://cdn.example.test/art.png",
+                override=True,
+            )
+        )
+        self.assertFalse(should_skip_chain_icon(icon="", override=False))
+
+    def test_non_https_on_chain_icon_fails(self):
+        with self.assertRaises(IconGenerationError) as ctx:
+            should_skip_chain_icon(icon="http://cdn.example.test/x.png", override=False)
+        self.assertIn("https", str(ctx.exception))
+
+    def test_sync_skips_existing_https_and_uploads_empty(self):
+        spaces = _MemorySpaces()
+        chain = _FakeChain()
+        generated: list[str] = []
+
+        def generate(look: str) -> bytes:
+            generated.append(look)
+            return b"png-bytes"
+
+        results = sync_chain_icons(
+            [
+                {
+                    "label": "art",
+                    "look": "A smiling clown in white face paint.",
+                    "brief": "brief",
+                    "injuries": "",
+                    "status": "alive",
+                    "icon": "https://cdn.example.test/art.png",
+                },
+                {
+                    "label": "pinhead",
+                    "look": "Bald pale face covered in pins.",
+                    "brief": "brief",
+                    "injuries": "",
+                    "status": "alive",
+                    "icon": "",
+                },
+            ],
+            generate_png=generate,
+            spaces=spaces,
+            cdn_host="cdn.example.test",
+            chain=chain,
+            override=False,
+        )
+        self.assertEqual(results[0]["action"], "skipped")
+        self.assertEqual(results[0]["txHash"], "")
+        self.assertEqual(results[1]["action"], "uploaded")
+        self.assertEqual(results[1]["icon"], "https://cdn.example.test/pinhead.png")
+        self.assertEqual(results[1]["txHash"], "0xpinhead")
+        self.assertEqual(generated, ["Bald pale face covered in pins."])
+        self.assertEqual(spaces.objects["pinhead.png"], b"png-bytes")
+        self.assertEqual(len(chain.calls), 1)
+        self.assertEqual(chain.calls[0][0]["label"], "pinhead")
+
+    def test_sync_reuses_spaces_object_when_chain_icon_empty(self):
+        spaces = _MemorySpaces(existing={"chucky.png"})
+        chain = _FakeChain()
+        generated: list[str] = []
+
+        def generate(look: str) -> bytes:
+            generated.append(look)
+            return b"new"
+
+        results = sync_chain_icons(
+            [
+                {
+                    "label": "chucky",
+                    "look": "A scarred doll with orange hair.",
+                    "brief": "brief",
+                    "injuries": "",
+                    "status": "alive",
+                    "icon": "",
+                }
+            ],
+            generate_png=generate,
+            spaces=spaces,
+            cdn_host="cdn.example.test",
+            chain=chain,
+            override=False,
+        )
+        self.assertEqual(results[0]["action"], "set")
+        self.assertEqual(results[0]["icon"], "https://cdn.example.test/chucky.png")
+        self.assertEqual(generated, [])
+        self.assertEqual(spaces.objects["chucky.png"], b"existing")
+        self.assertEqual(chain.calls[0][0]["icon"], "https://cdn.example.test/chucky.png")
+
+    def test_empty_look_names_the_label(self):
+        with self.assertRaises(IconGenerationError) as ctx:
+            sync_chain_icons(
+                [
+                    {
+                        "label": "michael",
+                        "look": "   ",
+                        "brief": "brief",
+                        "injuries": "",
+                        "status": "alive",
+                        "icon": "",
+                    }
+                ],
+                generate_png=lambda look: b"x",
+                spaces=_MemorySpaces(),
+                cdn_host="cdn.example.test",
+                chain=_FakeChain(),
+                override=False,
+            )
+        message = str(ctx.exception)
+        self.assertIn("michael", message)
+        self.assertIn("look", message)
+
+    def test_one_failure_stops_and_names_label(self):
+        spaces = _MemorySpaces()
+        chain = _FakeChain()
+
+        def generate(look: str) -> bytes:
+            raise IconGenerationError("Together exploded")
+
+        with self.assertRaises(IconGenerationError) as ctx:
+            sync_chain_icons(
+                [
+                    {
+                        "label": "candyman",
+                        "look": "A man in a fur-lined coat with a hook.",
+                        "brief": "brief",
+                        "injuries": "",
+                        "status": "alive",
+                        "icon": "",
+                    }
+                ],
+                generate_png=generate,
+                spaces=spaces,
+                cdn_host="cdn.example.test",
+                chain=chain,
+                override=False,
+            )
+        message = str(ctx.exception)
+        self.assertIn("candyman", message)
+        self.assertIn("Together exploded", message)
+        self.assertEqual(chain.calls, [])
+
+    def test_cli_icons_chain_missing_ens_env_names_variable(self):
+        stderr = StringIO()
+        with mock.patch("roster.__main__.load_dotenv"):
+            with mock.patch.dict(os.environ, {"ENS_LABEL": ""}, clear=False):
+                with redirect_stderr(stderr):
+                    code = cli.main(["icons-chain"])
+        self.assertEqual(code, 1)
+        self.assertIn("ENS_LABEL", stderr.getvalue())
