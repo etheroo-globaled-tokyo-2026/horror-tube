@@ -5,6 +5,8 @@ crash.log
 crash.*.log
 *.tfvars
 !terraform.tfvars.example
+backend.hcl
+.backend-credentials
 override.tf
 override.tf.json
 *_override.tf

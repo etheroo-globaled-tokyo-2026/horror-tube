@@ -55,3 +55,18 @@ output "db_size" {
   description = "Size slug applied to the cluster."
   value       = digitalocean_database_cluster.battle_state.size
 }
+
+output "app_id" {
+  description = "DigitalOcean App Platform app id (database firewall trusted source)."
+  value       = digitalocean_app.game.id
+}
+
+output "app_live_url" {
+  description = "Public HTTPS URL for the game app (health check at /health)."
+  value       = digitalocean_app.game.live_url
+}
+
+output "app_default_ingress" {
+  description = "Default ingress hostname for the game app."
+  value       = digitalocean_app.game.default_ingress
+}
