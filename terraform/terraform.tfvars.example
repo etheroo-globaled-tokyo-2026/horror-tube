@@ -31,9 +31,7 @@ github_branch = "main"
 instance_size_slug = "apps-s-1vcpu-1gb"
 game_port          = 8080
 
-# Game-loop timings (docs/game-loop.md). Prod values shown; use quorum_votes = 1 on a laptop server.
-quorum_votes           = 2
-vote_countdown_seconds = 15
+# Game-loop timings (docs/game-loop.md). Prod values shown.
 betting_close_after_video_start_seconds = 5
 video_timeout_seconds  = 300
 settle_seconds         = 8

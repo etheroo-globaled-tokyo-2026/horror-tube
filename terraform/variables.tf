@@ -227,16 +227,6 @@ variable "sui_operator_private_key" {
   sensitive   = true
 }
 
-variable "quorum_votes" {
-  description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
-  type        = number
-}
-
-variable "vote_countdown_seconds" {
-  description = "VOTE_COUNTDOWN_SECONDS game-loop timing (docs/game-loop.md). Required; no default."
-  type        = number
-}
-
 variable "betting_close_after_video_start_seconds" {
   description = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: seconds after fight playback starts until betting closes (docs/game-loop.md). Required; no default."
   type        = number

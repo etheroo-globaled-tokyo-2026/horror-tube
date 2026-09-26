@@ -148,8 +148,6 @@ jobs:
       WORLD_ID_SIGNING_KEY: "0xabababababababababababababababababababababababababababababababab"
       WORLD_ID_ENVIRONMENT: "production"
       # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
-      QUORUM_VOTES: "1"
-      VOTE_COUNTDOWN_SECONDS: "15"
       BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5"
       VIDEO_TIMEOUT_SECONDS: "300"
       SETTLE_SECONDS: "8"
@@ -236,8 +234,6 @@ jobs:
             -e "WORLD_ID_RP_ID=${WORLD_ID_RP_ID}" \
             -e "WORLD_ID_SIGNING_KEY=${WORLD_ID_SIGNING_KEY}" \
             -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
-            -e "QUORUM_VOTES=${QUORUM_VOTES}" \
-            -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
             -e "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS=${BETTING_CLOSE_AFTER_VIDEO_START_SECONDS}" \
             -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
             -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \

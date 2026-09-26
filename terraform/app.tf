@@ -257,20 +257,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "QUORUM_VOTES"
-        value = tostring(var.quorum_votes)
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
-        key   = "VOTE_COUNTDOWN_SECONDS"
-        value = tostring(var.vote_countdown_seconds)
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS"
         value = tostring(var.betting_close_after_video_start_seconds)
         scope = "RUN_TIME"
