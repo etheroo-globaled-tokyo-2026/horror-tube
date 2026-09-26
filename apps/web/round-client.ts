@@ -43,7 +43,13 @@ const RoundStateSchema = v.object({
     }),
   ),
   chars: v.array(
-    v.object({ id: v.number(), alive: v.boolean(), kills: v.number(), damage: v.number() }),
+    v.object({
+      id: v.number(),
+      label: v.string(),
+      alive: v.boolean(),
+      kills: v.number(),
+      damage: v.number(),
+    }),
   ),
 }) satisfies v.GenericSchema<RoundState>;
 
@@ -87,6 +93,21 @@ export function connectRoundEvents(onState: RoundListener): () => void {
     source.removeEventListener("round", onRound);
     source.close();
   };
+}
+
+export function withServerIds<T extends { label: string }>(
+  sheets: T[],
+  chars: ServerRoundState["chars"],
+): (T & { id: number })[] {
+  return chars.map((c) => {
+    const sheet = sheets.find((s) => s.label === c.label);
+    if (sheet === undefined) {
+      throw new Error(
+        `The game server lists ${c.label} as character ${String(c.id)}, but the ENS roster the room read has no ${c.label} (it has ${sheets.map((s) => s.label).join(", ")}).`,
+      );
+    }
+    return { ...sheet, id: c.id };
+  });
 }
 
 function storedVoteSession(store: SessionStore): string {

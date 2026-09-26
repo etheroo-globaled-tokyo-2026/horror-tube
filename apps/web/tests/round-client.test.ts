@@ -107,8 +107,8 @@ describe("RoundState client contract", () => {
       voters: 2,
       votes: { 1: 2, 2: 1 },
       chars: [
-        { id: 0, alive: true, kills: 1, damage: 10 },
-        { id: 1, alive: true, kills: 0, damage: 0 },
+        { id: 0, label: "chucky", alive: true, kills: 1, damage: 10 },
+        { id: 1, label: "count", alive: true, kills: 0, damage: 0 },
       ],
     });
     const state = await fetchRoundState();

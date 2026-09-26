@@ -200,11 +200,12 @@ type RoundState = {
     bet: { side: 0 | 1; units: number; digest: string } | null; // its bet on the live bout
     error: string | null; // last bot failure; does not stop the round
   }[];
-  chars: { id: number; alive: boolean; kills: number; damage: number }[];
+  chars: { id: number; label: string; alive: boolean; kills: number; damage: number }[];
 };
 ```
 
-Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
+Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by label. `chars[].label` is each id's ENS label.
+The room keys the roster it reads from ENS by that label, so every id it shows or sends is the server's.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
 `chars[].alive` is the server's holding copy for the current season. Settle updates it when the fight duration
 elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue, then
