@@ -30,7 +30,7 @@ export async function gaslessWallet(client: SuiGrpcClient, walletId: string) {
       const response = await signer.executeGaslessTransaction({ txKind: toBase64(kind) }, [
         "transaction.digest",
       ]);
-      const digest = response.transaction?.digest;
+      const digest = response.transaction?.transaction?.digest;
       if (digest === undefined || digest === "")
         throw new Error("Shinami executeGaslessTransaction returned no digest.");
       succeeded(await client.waitForTransaction({ digest }));

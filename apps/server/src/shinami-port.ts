@@ -1,3 +1,4 @@
+import type { GrpcTypes } from "@mysten/sui/grpc";
 import { KeyClient, WalletClient } from "@shinami/clients/sui";
 import * as v from "valibot";
 
@@ -32,6 +33,14 @@ export function gaslessError(err: Error): Error {
   return new Error(`Shinami gasless transaction failed. Underlying: ${text}`);
 }
 
+export function gaslessDigest(response: GrpcTypes.ExecuteTransactionResponse): string {
+  const digest = response.transaction?.transaction?.digest;
+  if (digest === undefined || digest === "") {
+    throw new Error("Shinami executeGaslessTransaction returned no transaction digest.");
+  }
+  return digest;
+}
+
 export type ShinamiPort = {
   createSession(secret: string): Promise<string>;
   createWallet(walletId: string, sessionToken: string): Promise<string>;
@@ -63,11 +72,7 @@ export function shinamiPort(accessKey: string): ShinamiPort {
         { txKind },
         ["transaction.digest"],
       );
-      const digest = response.transaction?.digest;
-      if (digest === undefined || digest === "") {
-        throw new Error("Shinami executeGaslessTransaction returned no transaction digest.");
-      }
-      return digest;
+      return gaslessDigest(response);
     },
   };
 }
