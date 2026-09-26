@@ -791,6 +791,7 @@ export function drawTV(): void {
           26,
           COL.soot,
         );
+      else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
       else if (S.credit <= 0) text("NO STAKE. FEED THE COIN BOX.", 360, 24, COL.soot);
       else {
         text(`STAKE ${STAKES[T.stake]} USDC  ·  VOL ± TO CHANGE`, 340, 24, COL.soot);

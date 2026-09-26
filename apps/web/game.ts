@@ -1,6 +1,16 @@
 import { parsePinAddressesFromMarkdown } from "@horror-tube/ens/scripts/pin.ts";
 import pinMarkdown from "@horror-tube/ens/scripts/pin/sepolia-addresses.md?raw";
 import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
+import type { Ticket } from "@horror-tube/betting";
+
+import {
+  claimAll,
+  claimable,
+  fetchBettingIds,
+  placeBet,
+  toContractIds,
+  type BettingIds,
+} from "./betting.ts";
 import {
   connectRoundEvents,
   fetchRoundState,
@@ -9,6 +19,11 @@ import {
 } from "./round-client.ts";
 import { formatPoolOdds } from "./odds.ts";
 import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
+import {
+  fromUsdcUnits,
+  toUsdcUnits,
+  type GameWallet,
+} from "./wallet.ts";
 
 export const $ = (s: string): HTMLElement => {
   const el = document.querySelector<HTMLElement>(s);
@@ -83,7 +98,10 @@ export type GameState = {
   bet: { side: number; amt: number } | null;
   side: number;
   amt: number;
+  battleId: string | null;
+  poolId: string | null;
   pool: [number, number];
+  feeBps: number;
   result: number;
   claim: number;
   credit: number;
@@ -119,7 +137,10 @@ export const S: GameState = {
   bet: null,
   side: 0,
   amt: 0.03,
+  battleId: null,
+  poolId: null,
   pool: [0, 0],
+  feeBps: 0,
   result: 0,
   claim: 0,
   credit: 0,
@@ -137,6 +158,41 @@ export const S: GameState = {
   frameUrl: null,
   error: null,
 };
+
+let gameWallet: GameWallet | null = null;
+let bettingIds: BettingIds | null = null;
+let pendingClaimTickets: Ticket[] = [];
+
+export function setWallet(wallet: GameWallet): void {
+  gameWallet = wallet;
+}
+
+export function setBettingIds(ids: BettingIds): void {
+  bettingIds = ids;
+  S.feeBps = ids.feeBps;
+}
+
+export async function refreshClaimable(): Promise<void> {
+  if (gameWallet === null || bettingIds === null) return;
+  const ids = toContractIds(bettingIds);
+  const result = await claimable(gameWallet, ids);
+  pendingClaimTickets = result.tickets;
+  S.claim = fromUsdcUnits(result.units);
+  if (result.units === 0n && result.lost > 0n) {
+    S.result = -fromUsdcUnits(result.lost);
+  } else if (result.units > 0n) {
+    S.result = fromUsdcUnits(result.units);
+  }
+  render();
+}
+
+export async function loadBettingIds(
+  fetchImpl: typeof fetch = fetch,
+): Promise<BettingIds> {
+  const ids = await fetchBettingIds(fetchImpl);
+  setBettingIds(ids);
+  return ids;
+}
 const col = (ch: Character): string => C[ch.hue];
 export const living = (): Character[] => S.chars.filter((c) => c.alive);
 const place = (round: number): Place => PLACES[round % PLACES.length];
@@ -173,6 +229,8 @@ export function applyRoundState(state: ServerRoundState): void {
   S.quorum = state.quorum;
   S.votes = { ...state.votes };
   S.fighters = state.fighters;
+  S.battleId = state.battleId;
+  S.poolId = state.poolId;
   S.pool = [...state.pool] as [number, number];
   S.winner = state.winner === null ? -1 : state.winner;
   S.videoUrl = state.videoUrl;
@@ -209,6 +267,12 @@ export function applyRoundState(state: ServerRoundState): void {
       S.last = { fighters: f, winner: state.winner, round: state.round };
       S.focus = w.id;
     }
+    void refreshClaimable().catch((error: unknown) => {
+      note(
+        `CLAIM LOOKUP FAILED. ${error instanceof Error ? error.message : String(error)}`,
+        "bad",
+      );
+    });
   }
   if (state.phase === "vote" || state.phase === "countdown") {
     // New voting window: clear local picks if we have not cast this round yet.
@@ -495,7 +559,7 @@ function paintFilm(): void {
 
 export { formatPoolOdds } from "./odds.ts";
 
-export const odds = (i: number): string => formatPoolOdds(S.pool, i);
+export const odds = (i: number): string => formatPoolOdds(S.pool, i, S.feeBps);
 export const film = (): HTMLCanvasElement => {
   const el = $("#film");
   if (!(el instanceof HTMLCanvasElement)) throw new Error("#film is not a canvas");
@@ -539,14 +603,72 @@ document.addEventListener("click", (e) => {
     S.amt = Number(el.dataset.a);
     render();
   } else if (act === "bet") {
-    // POST /bet is gone; on-chain bets via /tx are plan 4 (not this PR).
-    note("BET NOT AVAILABLE. On-chain betting is not wired yet.", "bad");
+    void (async () => {
+      if (S.bet) return;
+      if (S.poolId === null || S.poolId.trim() === "") {
+        note("BET REJECTED. Pool is not open yet.", "bad");
+        return;
+      }
+      if (gameWallet === null) {
+        note("BET REJECTED. Wallet is not ready.", "bad");
+        return;
+      }
+      if (bettingIds === null) {
+        note("BET REJECTED. Betting IDs are not loaded.", "bad");
+        return;
+      }
+      if (S.side !== 0 && S.side !== 1) {
+        note(`BET REJECTED. Side must be 0 or 1. Got ${String(S.side)}.`, "bad");
+        return;
+      }
+      const side = S.side as 0 | 1;
+      const amt = S.amt;
+      try {
+        const digest = await placeBet(
+          gameWallet,
+          toContractIds(bettingIds),
+          S.poolId,
+          side,
+          toUsdcUnits(amt),
+        );
+        S.bet = { side, amt };
+        log(`BET ${usd(amt)} ON ${side === 0 ? "A" : "B"} · ${digest.slice(0, 8)}`, "t-alive");
+        render();
+      } catch (error) {
+        note(
+          `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`,
+          "bad",
+        );
+      }
+    })();
   } else if (act === "claim") {
-    if (!S.claim) return;
-    log(`CLAIMED +${usd(S.claim)} USDC`, "t-alive");
-    S.credit += S.claim;
-    S.claim = 0;
-    render();
+    void (async () => {
+      if (!S.claim) return;
+      if (gameWallet === null || bettingIds === null) {
+        note("CLAIM REJECTED. Wallet or betting IDs are not ready.", "bad");
+        return;
+      }
+      if (pendingClaimTickets.length === 0) {
+        note("CLAIM REJECTED. No finished tickets to claim.", "bad");
+        return;
+      }
+      try {
+        const digest = await claimAll(
+          gameWallet,
+          toContractIds(bettingIds),
+          pendingClaimTickets,
+        );
+        log(`CLAIMED +${usd(S.claim)} USDC · ${digest.slice(0, 8)}`, "t-alive");
+        S.claim = 0;
+        pendingClaimTickets = [];
+        render();
+      } catch (error) {
+        note(
+          `CLAIM REJECTED. ${error instanceof Error ? error.message : String(error)}`,
+          "bad",
+        );
+      }
+    })();
   }
 });
 document.addEventListener("mouseover", (e) => {

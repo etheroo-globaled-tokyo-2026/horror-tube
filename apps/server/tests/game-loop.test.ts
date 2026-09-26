@@ -448,6 +448,64 @@ describe("GameLoop phases", () => {
     );
   });
 
+  it("fills RoundState.pool from readPoolTotals during bet", async () => {
+    let now = 0;
+    let nullifierSeq = 0;
+    const settle = unusedSettleDeps();
+    settle.battleBetting.readPoolTotals = async (battleId) => {
+      settle.betCalls.push(`read:${battleId}`);
+      return [50_000n, 25_000n];
+    };
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 2,
+        voteCountdownSeconds: 5,
+        betMinSeconds: 10,
+        settleSeconds: 3,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
+      skipSettlement: settle.skipSettlement,
+      verifyWorldId: async () => {
+        nullifierSeq += 1;
+        return { nullifier: `n-${String(nullifierSeq)}` };
+      },
+    });
+
+    await loop.vote({}, [0, 1]);
+    await loop.vote({}, [1, 2]);
+    now += 5_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    assert.deepEqual(loop.getState().pool, [0, 0]);
+
+    now += 1;
+    await loop.tick(now);
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId);
+    assert.ok(
+      settle.betCalls.includes(`read:${battleId}`),
+      `expected pool read, got ${JSON.stringify(settle.betCalls)}`,
+    );
+    assert.deepEqual(loop.getState().pool, [50_000, 25_000]);
+
+    // Interval gate: another tick under 2s does not re-read.
+    const readsBefore = settle.betCalls.filter((c) => c.startsWith("read:")).length;
+    now += 500;
+    await loop.tick(now);
+    assert.equal(
+      settle.betCalls.filter((c) => c.startsWith("read:")).length,
+      readsBefore,
+    );
+  });
+
   it("calls settleBattle when skipSettlement is false", async () => {
     let now = 0;
     let n = 0;
