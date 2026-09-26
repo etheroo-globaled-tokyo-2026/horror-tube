@@ -1,5 +1,5 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 100,
-  "ignorePatterns": ["contracts/lib/**", "contracts/broadcast/**"]
+  "ignorePatterns": ["packages/contracts/lib/**", "packages/contracts/broadcast/**"]
 }

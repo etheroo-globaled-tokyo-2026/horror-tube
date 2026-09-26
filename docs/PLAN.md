@@ -3,45 +3,42 @@
 A battle royale of famous horror movie characters. AI makes each fight as a video.
 Verified humans vote on who fights next (free). Users bet on who wins (paid).
 
-ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit) and **ENS** (ENSv2).
+ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Sui** (DeFi & Payments).
 
 ## Art direction
 
-Based on _FAITH: The Unholy Trinity_ (https://store.steampowered.com/app/1179080/FAITH_The_Unholy_Trinity/).
-
-- Black background.
-- Thin, glowing line art in one color per subject (blood red, cold blue, rust brown).
-- Rough, low-res, pixel look, like an old computer. No gradients, no glossy UI.
+See `apps/web/DESIGN.md`.
 
 ## Components
 
 - **ENS name**: character state (subnames and text records) on Sepolia.
-- **Database**: DigitalOcean Managed PostgreSQL. Holds lore, battle results, and damage.
-- **Smart contract**: `BattleBetting`, the betting pool on Sepolia. See [battle-betting.md](battle-betting.md).
+- **Database**: Cloudflare Durable Objects. Holds lore, battle results, and damage.
+- **Smart contract**: `BattleBetting`, the betting pool on Eth Sepolia. Bets are in Sepolia ETH. See [battle-betting.md](battle-betting.md).
+- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
 
-1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+. The user can use a browser wallet.
-2. **Connect wallet**: `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
-3. **Main screen**:
-   - Top: the current battle. When no battle is live, the last battle plays again on a loop, with a very clear "REC" (camcorder recording) effect.
-   - Below: a panel of living and dead characters. The panel uses the app's art style.
-   - **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
+1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
+   This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
+2. **Wallet**: the app makes a burner wallet (Sui testnet) for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
+   Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Not built yet: a faucet (the backend sends testnet SUI for gas and the first USDC, one time per World ID nullifier).
+   There is no wallet screen: after World ID, the user goes straight to the TV. Money lives on the coin box in the room. A real deposit is tested; the coin return is not.
+3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 1.)
 6. **Story**: the LLM gets the story prompt, the character state, and lore text for each character (from the database or fandom.com).
    The LLM picks the winner and the winner's damage, and writes them as the last line of the turn.
    The server stores the winner and damage in the database, **not onchain**.
 7. **Open betting**: the backend's operator wallet calls `openBattle` with the two fighters and the countdown end. Voting closes and betting opens.
-8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends.
+8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Today bets are simulated in `apps/web/game.ts`: the app does not call `BattleBetting` yet.
    The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
-9. **Show video**: the fight video plays at the top of the main screen.
+9. **Show video**: the fight video plays.
 10. **Update ENS**:
     - The loser's subname moves to the dead pool. (Open: see question 2.)
     - The winner takes damage. Its ENS text records update.
     - Anyone calls `settleBattle`. The contract reads both fighters' ENS `status`: the one marked `dead` lost, bets on the other fighter win, and the winners claim.
-11. Go back to the vote on the main screen (step 3), until one character is left.
+11. Go back to the vote (step 3), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
 
@@ -61,19 +58,16 @@ Based on _FAITH: The Unholy Trinity_ (https://store.steampowered.com/app/1179080
 **Trust moment:** horror content needs 18+, and a free vote needs one vote per human.
 
 **Credential:** Orb Proof of Human only.
-
 - A person must be 18+ to get Orb-verified. So one credential proves both "unique human" and "18+".
 - This is the minimum sufficient credential. Passport/NFC is not necessary for age.
 - Lower levels (Device, Selfie Check) do **not** prove 18+. Do not accept them.
 
 **Rules:**
-
 - Verify every proof on the **server**. Never trust the client result.
 - Use the nullifier hash with the action `vote-round-<n>` to allow one vote per human per round.
 - Fail path for the demo: a user who has no Orb, or who cancels, sees a "not eligible" screen and cannot enter or vote.
 
 **Submission must include:**
-
 - Why this moment needs trust, and why Orb is the minimum credential.
 - A demo of one success and one fail path.
 - A short debrief: time to first success, problems, missing docs, the one fix with the most impact.
@@ -84,7 +78,6 @@ Based on _FAITH: The Unholy Trinity_ (https://store.steampowered.com/app/1179080
   - Note: the World ID developer docs do not state this rule. Put it in the debrief as missing docs.
 
 Links:
-
 - https://docs.world.org/world-id/idkit/integrate
 - https://docs.world.org/world-id/idkit/credentials
 - https://docs.world.org/world-id/credentials/1 (Proof of Human)
@@ -95,19 +88,18 @@ Links:
 
 ENS holds the game state of the characters. It is central to the game, not decoration.
 
-| Game concept                                | ENSv2 feature                                                               |
-| ------------------------------------------- | --------------------------------------------------------------------------- |
-| Each character, e.g. `jason.horrortube.eth` | Subname in our own subname registry                                         |
-| `status`, `kills`, `damage`                 | Text records on a Permissioned Resolver                                     |
-| Capabilities lost to damage                 | Open: Enhanced Access Control roles, or a text record (open question 1)     |
-| Loser goes to the dead pool                 | Move or alias the subname (open question 2)                                 |
-| The contract pays out from ENS state        | The betting contract reads the loser's `status`                             |
-| Bonus: fighters as AI agents                | Each character is an agent namespace with its own permissions (ENSIP-25/26) |
+| Game concept | ENSv2 feature |
+|---|---|
+| Each character, e.g. `jason.horrortube.eth` | Subname in our own subname registry |
+| `status`, `kills`, `damage` | Text records on a Permissioned Resolver |
+| Capabilities lost to damage | Open: Enhanced Access Control roles, or a text record (open question 1) |
+| Loser goes to the dead pool | Move or alias the subname (open question 2) |
+| The contract pays out from ENS state | The betting contract reads the loser's `status` |
+| Bonus: fighters as AI agents | Each character is an agent namespace with its own permissions (ENSIP-25/26) |
 
 **Requirements:** ENSv2 on Sepolia, no hard-coded values, a live demo link, and open-source code.
 
 Links:
-
 - https://docs.ens.domains/ensv2/overview/
 - https://docs.ens.domains/ensv2/permissioned-registry
 - https://docs.ens.domains/ensv2/permissioned-resolver/

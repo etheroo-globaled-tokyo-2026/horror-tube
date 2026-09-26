@@ -12,9 +12,9 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    "scripts/**",
+    "packages/ens/scripts/**",
     "tools/oxlint/anti-slop/**",
-    "contracts/lib/**"
+    "packages/contracts/lib/**"
   ],
   "jsPlugins": [{ "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }],
   "rules": {

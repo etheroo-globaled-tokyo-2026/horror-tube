@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Horror Tube</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Silkscreen:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="ht.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--soot);
+      }
+      #view {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+      #view.hot {
+        cursor: pointer;
+      }
+      .hint {
+        position: fixed;
+        left: 24px;
+        bottom: 24px;
+        max-width: 52vw;
+        padding: 10px 14px;
+        background: var(--soot);
+        box-shadow: inset 0 0 0 2px var(--grime);
+        font: 700 16px/1.4 var(--f-osd);
+        color: var(--bone);
+        letter-spacing: 0.04em;
+        pointer-events: none;
+      }
+      .hint:empty {
+        display: none;
+      }
+      .hint b {
+        color: var(--sulfur);
+        font-weight: 700;
+      }
+      .demo {
+        position: fixed;
+        z-index: 10;
+        left: 24px;
+        top: 20px;
+        display: flex;
+        gap: 16px;
+      }
+      .demo button {
+        font: 400 12px/1 var(--f-osd);
+        color: var(--grime);
+        letter-spacing: 0.06em;
+      }
+      .demo button:hover {
+        color: var(--rust);
+      }
+      .gate {
+        position: fixed;
+        z-index: 9;
+        background: var(--soot);
+      }
+      .gate .btn {
+        box-shadow: inset 0 0 0 2px var(--rust);
+        color: var(--bone);
+      }
+      .gate .btn.primary {
+        background: var(--bone);
+        color: var(--soot);
+        box-shadow: none;
+      }
+      .gate h1 {
+        color: var(--blood);
+      }
+      #film {
+        display: none;
+      }
+      .cut {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        background: var(--soot);
+      }
+      .dark {
+        position: fixed;
+        inset: 0;
+        z-index: 8;
+        display: grid;
+        place-content: center;
+        gap: 18px;
+        padding: 24px;
+        text-align: center;
+        font: 400 18px/1.5 var(--f-body);
+        color: var(--grime);
+      }
+      .dark h1 {
+        font: 700 clamp(32px, 6vw, 64px)/1 var(--f-osd);
+        color: var(--blood);
+      }
+      .dark b {
+        color: var(--bone);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <p id="hint" class="hint" aria-live="polite"></p>
+    <p id="demo-room" class="demo">
+      <button data-act="view">RECORDS · V</button><button data-act="skip">DEMO · SKIP ▸ N</button>
+    </p>
+    <p id="demo-gate" class="demo">
+      <button id="no-orb">DEMO · NO ORB ▸ X</button><button id="forget">DEMO · FORGET ME</button>
+    </p>
+    <div id="waiver-text" class="sr-only">
+      <h2>Horror Tube waiver</h2>
+      <p>
+        I am 18 or older. I am one person, with one vote. I will watch people die, and I will bet on
+        it. I watch at my own risk.
+      </p>
+      <p>Press Enter to sign with World ID. Only Orb-verified humans can enter.</p>
+    </div>
+    <div id="dark" class="dark" hidden role="alert">
+      <h1>NOT ELIGIBLE</h1>
+      <p>
+        Only Orb-verified humans can enter or vote.<br />Device and Selfie Check do not prove that
+        you are 18+.
+      </p>
+      <p>Press <b>ENTER</b> to try again.</p>
+    </div>
+    <div id="cut" class="cut" hidden></div>
+    <canvas id="film"></canvas>
+    <div hidden>
+      <button data-act="cast" id="h-cast"></button><button data-act="bet" id="h-bet"></button
+      ><button data-act="claim" id="h-claim"></button
+      ><button data-act="reset" id="h-reset"></button>
+    </div>
+    <div id="gate" class="gate" hidden></div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

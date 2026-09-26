@@ -76,7 +76,7 @@ wins. Fee = 2% × 0.04 = 0.0008. Alice gets 0.0594, Bob 0.0198, Carol nothing.
 - Lookup: `UniversalResolverV2.resolve(dnsName, text(node, "status"))`, then
   decode a string. Only the exact value `dead` means dead.
 - The resolver address is `UniversalResolverV2` from
-  `scripts/pin/sepolia-addresses.md`, the pinned ENS deployment. The upgradeable
+  `packages/ens/scripts/pin/sepolia-addresses.md`, the pinned ENS deployment. The upgradeable
   `0xeEeE…` proxy is not used, so an ENS upgrade can't change what the contract
   reads mid-battle.
 - Fighter labels passed to `openBattle` must be 1–63 bytes of `a-z`, `0-9`, `-`,
@@ -117,23 +117,28 @@ ID `nullifier` and `characters_cache` stay off chain.
 
 ## Repo layout and config
 
+Workspace package `@horror-tube/contracts` in `packages/contracts/`:
+
 ```
-foundry.toml                               repo root, so Foundry reads the root .env
-contracts/src/BattleBetting.sol
-contracts/script/DeployBattleBetting.s.sol
-contracts/script/PinnedEns.sol             reads addresses from scripts/pin/sepolia-addresses.md
-contracts/test/unit/                       unit and fuzz tests, stand-in resolver
-contracts/test/fork/BattleBettingEns.t.sol Sepolia fork test against real ENS
-contracts/lib/                             forge-std v1.16.2, OpenZeppelin v5.7.0 (git submodules)
-contracts/broadcast/                       committed deploy records
+foundry.toml
+src/BattleBetting.sol
+script/DeployBattleBetting.s.sol
+script/E2eBattleBetting.s.sol     real transactions against a deployment
+script/PinnedEns.sol              reads addresses from packages/ens/scripts/pin/sepolia-addresses.md
+test/unit/                        unit and fuzz tests, stand-in resolver
+test/fork/BattleBettingEns.t.sol  Sepolia fork test against real ENS
+lib/                              forge-std v1.16.2, OpenZeppelin v5.7.0 (git submodules)
+broadcast/                        committed deploy records
 ```
 
 - Compiler: solc 0.8.37.
 - Foundry only loads `.env` from the directory it runs in and the one holding
-  `foundry.toml` (tested), hence `foundry.toml` at the repo root.
+  `foundry.toml` (tested). The package scripts that need `.env` run forge from the
+  repo root with `--root packages/contracts`; `forge test` needs no `.env`.
 - `.env` is gitignored (`.env`, `.env.*`, except `.env.example`).
 - `[rpc_endpoints] sepolia = "${SEPOLIA_RPC_URL}"`.
-- `fs_permissions` allows reading `scripts/pin`.
+- `fs_permissions` allows reading `../ens/scripts/pin`.
+- CI job `contracts`: `forge fmt --check` and `forge test` on Foundry v1.5.1.
 - Env vars, all required; a missing or blank one stops the script with its name:
 
 | Variable           | Use                                   |
@@ -156,6 +161,7 @@ pnpm scripts:
 | `contracts:test`      | `forge test` (unit and fuzz; fork tests excluded)                                |
 | `contracts:test:fork` | `FOUNDRY_PROFILE=fork forge test` (fork tests only)                              |
 | `contracts:deploy`    | `forge script` with `--rpc-url sepolia --broadcast --verify --verifier sourcify` |
+| `contracts:e2e`       | `forge script` against `BATTLE_BETTING_ADDRESS` with `--broadcast`               |
 
 ## Testing
 

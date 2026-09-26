@@ -1,6 +1,6 @@
 # Battle betting contract
 
-`BattleBetting` (`contracts/src/BattleBetting.sol`) takes parimutuel bets on Horror Tube
+`BattleBetting` (`packages/contracts/src/BattleBetting.sol`) takes parimutuel bets on Horror Tube
 battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text record reads
 `dead` lost.
 
@@ -10,9 +10,9 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Eth Sepolia | [`0x6420e9Af4F01Adc49178b8CfF708884AE763C674`](https://sepolia.etherscan.io/address/0x6420e9Af4F01Adc49178b8CfF708884AE763C674) | [`0x5c71…bc9d`](https://sepolia.etherscan.io/tx/0x5c7152478e208a8e6ee6edf8407296aece9a0a62d7627d0808775d9ab15cbc9d) |
 
-- Source verified on Sourcify. Deploy records are in `contracts/broadcast/`.
+- Source verified on Sourcify. Deploy records are in `packages/contracts/broadcast/`.
 - Parent name `horrortube.eth`; fighters are read at `<fighter>.horrortube.eth`.
-- ENS reads go through `UniversalResolverV2` from `scripts/pin/sepolia-addresses.md`, not
+- ENS reads go through `UniversalResolverV2` from `packages/ens/scripts/pin/sepolia-addresses.md`, not
   ENS's upgradeable proxy, so an ENS upgrade can't change what an open battle reads. If ENS
   redeploys and the parent name moves, redeploy this contract.
 - The app picks the deployment through `BATTLE_BETTING_ADDRESS`.
@@ -78,9 +78,11 @@ Example: Alice 0.03 and Bob 0.01 on Jason, Carol 0.04 on Freddy, Jason wins. The
 
 ## Setup and commands
 
-After cloning, run `git submodule update --init --recursive`; forge-std and OpenZeppelin are
-submodules in `contracts/lib/`. `foundry.toml` sits at the repo root so Foundry reads the root
-`.env`.
+The contract is the workspace package `@horror-tube/contracts` in `packages/contracts/`.
+After cloning, run `git submodule update --init`; forge-std and OpenZeppelin are submodules
+in `packages/contracts/lib/`. Foundry only reads `.env` from where it runs, so the package
+scripts that need `.env` run forge from the repo root with `--root packages/contracts`.
+`forge test` inside the package needs no `.env`.
 
 | Command                    | What it does                                                                                                                                                                                                                                                    |
 | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

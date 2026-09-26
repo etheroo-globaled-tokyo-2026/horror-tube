@@ -1,0 +1,10 @@
+{
+  "name": "@horror-tube/contracts",
+  "private": true,
+  "scripts": {
+    "test": "forge test",
+    "test:fork": "cd ../.. && FOUNDRY_PROFILE=fork forge test --root packages/contracts",
+    "deploy": "cd ../.. && forge script DeployBattleBetting --root packages/contracts --rpc-url sepolia --broadcast --verify --verifier sourcify",
+    "e2e": "cd ../.. && forge script E2eBattleBetting --root packages/contracts --rpc-url sepolia --broadcast"
+  }
+}
