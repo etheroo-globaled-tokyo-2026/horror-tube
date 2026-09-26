@@ -24,8 +24,8 @@ the local validation of write permission. Parent-name registration is
 | `resolve` of `text(key)` for the roster reader | `packages/ens/scripts/roster.ts` | 339–369 |
 | Web game loads the roster through that reader | `apps/web/game.ts` | 174–180 |
 | Local anvil deploys the pinned resolver bytecode | `packages/ens/scripts/local-permissioned-resolver.ts` | 53–65 |
-| Tests assert chain id 31337 and log `passFailLocation=` after deploy | `packages/ens/tests/permissions.test.ts` | 299–336 |
-| Tests call `setText`, then `resolve`, and compare the string | `packages/ens/tests/permissions.test.ts` | 364–427 |
+| Tests assert chain id 31337 and log `passFailLocation=` after deploy | `packages/ens/tests/permissions.test.ts` | 299–335 |
+| Tests call `setText`, then `resolve`, and compare the string | `packages/ens/tests/permissions.test.ts` | 363–426 |
 
 `grantSetterRoles` encodes `setText` calldata for one key
 (`grant-text-roles.ts` `buildSetTextSetter`). The resolver decodes that
@@ -129,6 +129,8 @@ its signer.
 | third | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` | Reverts on all five keys |
 
 The four addresses are anvil's first four default dev accounts. Two runs of
-`tsx --test tests/permissions.test.ts` logged the same line, the proxy address
-included. A fresh anvil with the same deploy order puts the proxy at the same
-address on every run.
+`tsx --test tests/permissions.test.ts` on anvil 1.8.3 logged the same line,
+the proxy address included. A fresh anvil with the same deploy order puts the
+proxy at the same address on every run. The deploy block depends on how the
+anvil version mines blocks, so the test reads it from the `deployProxy`
+receipt.
