@@ -59,11 +59,11 @@ fills the challenger slot from rotation after settle.
   Missing FAL, narration, or Spaces env fails closed and names the variable.
 - Betting closes when the video is ready, outcome is set, and never earlier than 10s.
 - Winners share the pool in proportion to their bets.
-- If either side has no stake at settle, stakes are refunded (BattleBetting claim path).
+- If either side has no stake at settle, stakes are refunded (Sui ticket claim path).
 
 ### Errors
 
-- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the on-chain battle (claimable refunds), refuse further `bet()` calls, and leave `bet` for `over` so `resetFromOver` can start a new season.
+- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the Sui pool (ticket refunds), and leave `bet` for `over` so `resetFromOver` can start a new season.
 - Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`). The fight plays `RoundState.videoUrl` only.
 
 ### Settle
@@ -73,8 +73,8 @@ fills the challenger slot from rotation after settle.
   closes when the bet phase ends (video ready and `BET_MIN_SECONDS` passed).
   Playback finished means that fight duration elapsed; the server has no separate
   playback callback. The room also shows the in-memory `chars` update (loser dead,
-  winner damage). With `SKIP_BATTLE_SETTLEMENT=1`, skip the BattleBetting
-  `settleBattle` call and leave that step pending; with `0`, call `settleBattle`
+  winner damage). With `SKIP_BATTLE_SETTLEMENT=1`, skip the Sui pool
+  `settle` call and leave that step pending; with `0`, call `operator.settle`
   after the ENS writes. Then start the next bout from the stored rotation opponent
   (or `fightInputFromRotation`). If either signal is missing, stop and name it.
   Do not invent those signals from the settle countdown. A failed ENS write stays
@@ -138,20 +138,20 @@ Character ids index the roster the client reads from ENS (sorted by label). The 
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
 `chars[].alive` is the server's holding copy for the current season. Settle updates it when the fight duration
 elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue. With
-`SKIP_BATTLE_SETTLEMENT=1` the BattleBetting `settleBattle` call is skipped. Do not treat the holding copy as what
+`SKIP_BATTLE_SETTLEMENT=1` the Sui pool `settle` call is skipped. Do not treat the holding copy as what
 pays out. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). Stage 2+ has no vote.
-- `POST /bet` with `{ side, amount }`: allowed only in the `bet` phase. `amount` is a positive integer stake unit (room UI: 1, 3, or 5). The server calls `BattleBetting.placeBet` with `units × minBet` wei, then mirrors the units into the in-memory `pool`. Fails closed if `BATTLE_BETTING_ADDRESS`, `SEPOLIA_RPC_URL`, or `AGENT_PRIVATE_KEY` is missing, or if `openBattle` did not run for this bout. Zero bets is a valid fight (no house/robot seed).
+- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight.
 
 ## Client
 
-The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow server `RoundState` (SSE `/events` and `GET /round`). Votes and bets go to the server. The fight video is `RoundState.videoUrl`.
+The web client does not run a self-contained sim of the loop. `connectToServerRound` / `applyRoundState` follow server `RoundState` (SSE `/events` and `GET /round`). Votes go to the server; bets go through `/tx` once the web builds bet kinds (plan 4). The fight video is `RoundState.videoUrl`.
 
 ## Out of scope
 
 - How the server is hosted.
-- The Sui betting contract. Sepolia `BattleBetting.placeBet` is the on-chain bet path for `POST /bet`.
+- Web bet/claim UI kinds (plan 4). Pool open/close/settle is the server operator.
 - Season end beyond today's `OVER` screen and reset.

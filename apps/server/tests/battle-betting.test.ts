@@ -1,86 +1,52 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  createBattleBettingPorts,
-  stakeWeiForUnits,
-  type BattleBettingPorts,
-} from "../src/battle-betting.js";
+import { createBattleBettingPorts } from "../src/battle-betting.js";
 
 describe("createBattleBettingPorts", () => {
-  it("fails closed when BATTLE_BETTING_ADDRESS is missing", () => {
+  const base = {
+    SUI_NETWORK: "testnet",
+    SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443",
+    BETTING_PACKAGE_ID:
+      "0xc451dc1ad607c088b96ebc9b29cdff892a2e13c9275346838664391851213daf",
+    BETTING_HOUSE_ID:
+      "0xa116a4711f6cf51515ba5551c4c5b78b4fc85882a3941ccdc43f65a7dfc68892",
+    SUI_USDC_TYPE:
+      "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC",
+    SUI_OPERATOR_CAP_ID:
+      "0x9719983f791ebd479c0127299aaa685a1e02e63fce330e9587e543d7d5b46847",
+  };
+
+  it("fails closed when BETTING_PACKAGE_ID is missing", () => {
     assert.throws(
       () =>
         createBattleBettingPorts({
-          SEPOLIA_RPC_URL: "https://example.invalid",
-          AGENT_PRIVATE_KEY:
-            "0x1111111111111111111111111111111111111111111111111111111111111111",
+          ...base,
+          BETTING_PACKAGE_ID: "",
+          SUI_OPERATOR_PRIVATE_KEY:
+            "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q",
         }),
-      /BATTLE_BETTING_ADDRESS is required\. Set it in \.env\. See \.env\.example\./u,
+      /BETTING_PACKAGE_ID is required\. Set it in \.env\. See \.env\.example\./u,
     );
   });
 
-  it("fails closed when SEPOLIA_RPC_URL is missing", () => {
+  it("fails closed when SUI_OPERATOR_PRIVATE_KEY is missing", () => {
+    assert.throws(
+      () => createBattleBettingPorts({ ...base }),
+      /SUI_OPERATOR_PRIVATE_KEY is required\. Set it in \.env\. See \.env\.example\./u,
+    );
+  });
+
+  it("fails closed when SUI_OPERATOR_CAP_ID is missing", () => {
     assert.throws(
       () =>
         createBattleBettingPorts({
-          BATTLE_BETTING_ADDRESS: "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C",
-          AGENT_PRIVATE_KEY:
-            "0x1111111111111111111111111111111111111111111111111111111111111111",
+          ...base,
+          SUI_OPERATOR_CAP_ID: "",
+          SUI_OPERATOR_PRIVATE_KEY:
+            "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q",
         }),
-      /SEPOLIA_RPC_URL is required\. Set it in \.env\. See \.env\.example\./u,
-    );
-  });
-
-  it("fails closed when AGENT_PRIVATE_KEY is missing", () => {
-    assert.throws(
-      () =>
-        createBattleBettingPorts({
-          BATTLE_BETTING_ADDRESS: "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C",
-          SEPOLIA_RPC_URL: "https://example.invalid",
-        }),
-      /AGENT_PRIVATE_KEY is required\. Set it in \.env\. See \.env\.example\./u,
-    );
-  });
-
-  it("rejects a non-address BATTLE_BETTING_ADDRESS", () => {
-    assert.throws(
-      () =>
-        createBattleBettingPorts({
-          BATTLE_BETTING_ADDRESS: "not-an-address",
-          SEPOLIA_RPC_URL: "https://example.invalid",
-          AGENT_PRIVATE_KEY:
-            "0x1111111111111111111111111111111111111111111111111111111111111111",
-        }),
-      /BATTLE_BETTING_ADDRESS must be a 0x-prefixed 20-byte address/u,
-    );
-  });
-});
-
-describe("stakeWeiForUnits", () => {
-  it("multiplies minBet by stake units", async () => {
-    const ports: Pick<BattleBettingPorts, "minBet"> = {
-      async minBet() {
-        return 10_000_000_000_000n;
-      },
-    };
-    assert.equal(await stakeWeiForUnits(ports, 1), 10_000_000_000_000n);
-    assert.equal(await stakeWeiForUnits(ports, 3), 30_000_000_000_000n);
-  });
-
-  it("rejects non-integer or non-positive units", async () => {
-    const ports: Pick<BattleBettingPorts, "minBet"> = {
-      async minBet() {
-        return 1n;
-      },
-    };
-    await assert.rejects(
-      () => stakeWeiForUnits(ports, 1.5),
-      /positive integer stake unit/u,
-    );
-    await assert.rejects(
-      () => stakeWeiForUnits(ports, 0),
-      /positive integer stake unit/u,
+      /SUI_OPERATOR_CAP_ID is required\. Set it in \.env\. See \.env\.example\./u,
     );
   });
 });

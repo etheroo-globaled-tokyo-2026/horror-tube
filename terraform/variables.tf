@@ -179,8 +179,44 @@ variable "world_id_environment" {
 }
 
 variable "sui_usdc_type" {
-  description = "SUI_USDC_TYPE the /tx allowlist accepts. Set via TF_VAR_sui_usdc_type from .env. Required; no default."
+  description = "SUI_USDC_TYPE the /tx allowlist and betting house use. Set via TF_VAR_sui_usdc_type from .env. Required; no default."
   type        = string
+}
+
+variable "sui_network" {
+  description = "SUI_NETWORK (testnet or mainnet). Set via TF_VAR_sui_network from .env. Required; no default."
+  type        = string
+}
+
+variable "sui_grpc_url" {
+  description = "SUI_GRPC_URL full node gRPC base URL. Set via TF_VAR_sui_grpc_url from .env. Required; no default."
+  type        = string
+}
+
+variable "betting_package_id" {
+  description = "BETTING_PACKAGE_ID from pnpm betting:deploy. Public. Set via TF_VAR_betting_package_id from .env. Required; no default."
+  type        = string
+}
+
+variable "betting_house_id" {
+  description = "BETTING_HOUSE_ID from pnpm betting:deploy. Public. Set via TF_VAR_betting_house_id from .env. Required; no default."
+  type        = string
+}
+
+variable "sui_operator_cap_id" {
+  description = "SUI_OPERATOR_CAP_ID from pnpm betting:deploy. Public object id. Set via TF_VAR_sui_operator_cap_id from .env. Required; no default."
+  type        = string
+}
+
+variable "bet_fee_bps" {
+  description = "BET_FEE_BPS fee in basis points (house lock). Set via TF_VAR_bet_fee_bps from .env. Required; no default."
+  type        = string
+}
+
+variable "sui_operator_private_key" {
+  description = "SUI_OPERATOR_PRIVATE_KEY (suiprivkey1…). Server-only. Set via TF_VAR_sui_operator_private_key from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
 }
 
 variable "quorum_votes" {
@@ -209,12 +245,7 @@ variable "settle_seconds" {
 }
 
 variable "skip_battle_settlement" {
-  description = "SKIP_BATTLE_SETTLEMENT: 1 skips BattleBetting settleBattle until that client exists; 0 calls it. Required; no default."
-  type        = string
-}
-
-variable "battle_betting_address" {
-  description = "BATTLE_BETTING_ADDRESS Sepolia deploy the game uses for openBattle / placeBet. Required; no default. Public address, not a secret."
+  description = "SKIP_BATTLE_SETTLEMENT: 1 skips Sui pool settle until ENS writes are ready; 0 calls operator.settle. Required; no default."
   type        = string
 }
 

@@ -15,7 +15,7 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 - ENS reads go through `UniversalResolverV2` from `packages/ens/scripts/pin/sepolia-addresses.md`, not
   ENS's upgradeable proxy, so an ENS upgrade can't change what an open battle reads. If ENS
   redeploys and the parent name moves, redeploy this contract.
-- The app picks the deployment through `BATTLE_BETTING_ADDRESS`.
+- Sepolia `pnpm contracts:e2e` picks the deployment through `BATTLE_BETTING_ADDRESS`; the game server uses Sui `BETTING_PACKAGE_ID` / `BETTING_HOUSE_ID`.
 
 ## Battle lifecycle
 

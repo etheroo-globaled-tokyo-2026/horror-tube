@@ -4,7 +4,6 @@ import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
 import {
   connectRoundEvents,
   fetchRoundState,
-  postBet,
   postVote,
   type ServerRoundState,
 } from "./round-client.ts";
@@ -540,22 +539,8 @@ document.addEventListener("click", (e) => {
     S.amt = Number(el.dataset.a);
     render();
   } else if (act === "bet") {
-    if (S.bet || S.phase !== "bet" || S.amt > S.credit) return;
-    void (async () => {
-      const side = (S.side ? 1 : 0) as 0 | 1;
-      try {
-        const state = await postBet(side, S.amt);
-        S.bet = { side, amt: S.amt };
-        S.credit -= S.amt;
-        applyRoundState(state);
-        log(`BET ${S.amt} USDC ON ${char(fighters()[side] ?? -1).short}`, "t-yours");
-      } catch (error) {
-        note(
-          `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`,
-          "bad",
-        );
-      }
-    })();
+    // POST /bet is gone; on-chain bets via /tx are plan 4 (not this PR).
+    note("BET NOT AVAILABLE. On-chain betting is not wired yet.", "bad");
   } else if (act === "claim") {
     if (!S.claim) return;
     log(`CLAIMED +${usd(S.claim)} USDC`, "t-alive");
