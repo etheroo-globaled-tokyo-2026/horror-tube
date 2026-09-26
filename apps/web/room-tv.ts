@@ -1,19 +1,6 @@
 import * as THREE from "three";
 import QRCode from "qrcode";
-import {
-  S,
-  applyRoundState,
-  char,
-  replaying,
-  usd,
-  film,
-  living,
-  mmss,
-  note,
-  odds,
-  type Character,
-} from "./game.ts";
-import { postPlaybackStart } from "./round-client.ts";
+import { S, char, replaying, usd, film, living, mmss, note, odds, type Character } from "./game.ts";
 import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { BARS, COL, RAMP } from "./room-palette.ts";
@@ -423,23 +410,6 @@ small.width = 160;
 small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" | "last" = "";
-let reportedBattleId: string | null = null;
-// WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
-video.addEventListener("playing", () => {
-  const battleId = S.battleId;
-  if (vidMode !== "live" || S.phase !== "bet" || battleId === null) return;
-  if (S.bettingClosesAt !== null || reportedBattleId === battleId) return;
-  reportedBattleId = battleId;
-  postPlaybackStart(battleId)
-    .then(applyRoundState)
-    .catch((cause: unknown) => {
-      reportedBattleId = null;
-      note(
-        `PLAYBACK START NOT RECORDED. ${cause instanceof Error ? cause.message : String(cause)}`,
-        "bad",
-      );
-    });
-});
 video.addEventListener("ended", () => {
   if (vidMode === "rec") VCR.loaded = "";
 });
@@ -453,14 +423,14 @@ video.addEventListener("error", () => {
   if (vidMode === "rec") VCR.loaded = "";
 });
 
-function applyVideoSrc(url: string, mode: "live" | "rec" | "last"): void {
+function applyVideoSrc(url: string, mode: "live" | "rec" | "last", startSec = 0): void {
   if (url === lastVideoUrl && mode === vidMode) return;
   if (url !== lastVideoUrl) {
     video.src = url;
     lastVideoUrl = url;
   }
   vidMode = mode;
-  video.currentTime = 0;
+  video.currentTime = startSec;
   video.loop = mode === "last";
   video.muted = false;
   video.play().catch(() => {
@@ -477,6 +447,18 @@ function pauseVideo(): void {
   lastVideoUrl = null;
 }
 
+function preloadVideo(url: string): void {
+  if (vidMode) {
+    video.pause();
+    vidMode = "";
+  }
+  if (url === lastVideoUrl) return;
+  video.src = url;
+  lastVideoUrl = url;
+  video.preload = "auto";
+  video.load();
+}
+
 export function syncVideo(): void {
   if (S.phase === "fight" || S.phase === "bet") {
     VCR.loaded = "";
@@ -485,7 +467,12 @@ export function syncVideo(): void {
       pauseVideo();
       return;
     }
-    applyVideoSrc(url, "live");
+    if (S.phase === "bet") {
+      preloadVideo(url);
+      return;
+    }
+    const lateSec = S.videoStartedAt === null ? 0 : (Date.now() - S.videoStartedAt) / 1000;
+    applyVideoSrc(url, "live", lateSec > 2 ? lateSec : 0);
     return;
   }
   const tape = reelById(VCR.loaded);
@@ -608,9 +595,9 @@ function drawCaseFile(ch: Character): void {
   const booking =
     (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") && onProgramme;
   const [footer, color] = dead
-    ? ["THIS ROOM IS EMPTY", COL.rust]
+    ? ["THIS FIGHTER IS DECEASED", COL.rust]
     : booking
-      ? ["OPEN THIS ROOM", COL.sulfur]
+      ? ["VOTE THIS FIGHTER", COL.sulfur]
       : S.champion !== null && ch.id === S.champion
         ? ["THE SURVIVOR STAYS ON", COL.rust]
         : ["CLR TO GO BACK", COL.sulfur];
@@ -631,7 +618,7 @@ function drawResidentCard(ch: Character): void {
   g.textAlign = "left";
   g.fillStyle = COL.rust;
   g.font = "700 16px Silkscreen";
-  g.fillText(`ROOM ${roomNumber(ch.id)}`, 36, 44);
+  g.fillText(`FIGHTER ${roomNumber(ch.id)}`, 36, 44);
   g.imageSmoothingEnabled = false;
   g.drawImage(tinted(ch), 36, 60, 168, 168);
   g.fillStyle = COL.bone;
@@ -693,6 +680,55 @@ function drawMatchup(champion: Character, challenger: Character | undefined): vo
   }
   g.textAlign = "center";
 }
+function drawVoteWait(mine: Character): void {
+  const g = tvCtx,
+    champion = S.phase === "pick" && S.champion !== null ? S.chars[S.champion] : undefined;
+  g.fillStyle = COL.soot;
+  g.fillRect(0, 0, TW, TH);
+  g.textAlign = "center";
+  g.fillStyle = COL.sulfur;
+  g.font = "700 30px Silkscreen";
+  g.fillText("YOUR VOTE IS IN", TW / 2, 84);
+  g.imageSmoothingEnabled = false;
+  const face = 132,
+    faceY = 104;
+  if (champion) {
+    g.drawImage(tinted(champion), TW / 2 - face - 40, faceY, face, face);
+    g.drawImage(tinted(mine), TW / 2 + 40, faceY, face, face);
+    g.fillStyle = COL.bone;
+    g.font = "700 22px Silkscreen";
+    g.fillText("VS", TW / 2, faceY + face / 2 + 8);
+  } else g.drawImage(tinted(mine), TW / 2 - face / 2, faceY, face, face);
+  g.strokeStyle = COL.sulfur;
+  g.lineWidth = 3;
+  const mineX = champion ? TW / 2 + 40 : TW / 2 - face / 2;
+  g.strokeRect(mineX - 4, faceY - 4, face + 8, face + 8);
+  g.fillStyle = COL.bone;
+  g.font = "24px DotGothic16";
+  g.fillText(mine.name, TW / 2, faceY + face + 38, TW - 64);
+  const tally = S.votes
+    .flatMap((n, id) => {
+      const ch = S.chars[id];
+      return n > 0 && ch !== undefined ? [{ ch, n }] : [];
+    })
+    .sort((x, y) => y.n - x.n)
+    .slice(0, 3);
+  g.font = "700 16px Silkscreen";
+  tally.forEach(({ ch, n }, i) => {
+    g.fillStyle = ch.id === mine.id ? COL.sulfur : COL.bone;
+    g.fillText(`${ch.short}  ${String(n)}`, TW / 2, faceY + face + 72 + i * 22);
+  });
+  g.fillStyle = S.endsAt === null ? COL.rust : COL.blood;
+  g.font = "700 20px Silkscreen";
+  g.fillText(
+    S.endsAt === null
+      ? `WAITING FOR OTHER VIEWERS · ${String(S.voters)} / ${String(S.quorum)}`
+      : `THE VOTE CLOSES IN ${mmss(S.t)}`,
+    TW / 2,
+    TH - 28,
+    TW - 48,
+  );
+}
 function drawRoomChoice(now: number): void {
   const g = tvCtx,
     W = TW,
@@ -706,7 +742,7 @@ function drawRoomChoice(now: number): void {
     featured = undefined;
     g.fillStyle = COL.blood;
     g.font = "700 30px Silkscreen";
-    g.fillText("THAT ROOM DID NOT OPEN", W / 2, 76);
+    g.fillText("THE VOTE DID NOT BOOK", W / 2, 76);
     g.fillStyle = COL.bone;
     g.font = "400 20px DotGothic16";
     wrap(g, S.startError, W / 2, 120, W - 72, 26);
@@ -734,7 +770,7 @@ function drawRoomChoice(now: number): void {
   g.fillStyle = COL.bone;
   g.font = "18px DotGothic16";
   g.fillText(
-    champion ? "Choose who they meet next." : "Choose a room. We will find them company.",
+    champion ? "Choose who they meet next." : "Choose who fights. We will find them company.",
     W / 2,
     PANE + 56,
   );
@@ -751,17 +787,25 @@ function drawRoomChoice(now: number): void {
     const cx = 24 + (i % cols) * cellW + cellW / 2,
       top = PANE + 68 + Math.floor(i / cols) * 74,
       fx = cx - face / 2,
-      chosen = typed?.id === resident.id,
+      chosen = typed?.id === resident.id || S.votedFor === resident.id,
       staysOn = resident.id === champion?.id,
       alive = resident.alive || S.selectable.includes(resident.id),
-      frame = chosen && !staysOn ? COL.sulfur : featured === resident.id ? COL.bone : null;
+      voteCount = S.votes[resident.id] ?? 0;
     g.globalAlpha = staysOn ? 0.35 : alive ? 1 : 0.55;
     g.drawImage(tinted(resident), fx, top, face, face);
     g.globalAlpha = 1;
-    if (frame !== null) {
-      g.strokeStyle = frame;
+    if (chosen && !staysOn) {
+      g.strokeStyle = COL.sulfur;
       g.lineWidth = 3;
       g.strokeRect(fx - 3, top - 3, face + 6, face + 6);
+    }
+    if (voteCount > 0 && !staysOn) {
+      g.fillStyle = COL.soot;
+      g.fillRect(fx + face - 14, top, 14, 12);
+      g.textAlign = "right";
+      g.fillStyle = COL.sulfur;
+      g.font = "700 11px Silkscreen";
+      g.fillText(String(voteCount), fx + face - 2, top + 10);
     }
     const label = `${roomNumber(resident.id)} ${resident.short}`;
     g.font = "15px DotGothic16";
@@ -786,8 +830,14 @@ function drawRoomChoice(now: number): void {
   });
   g.textAlign = "center";
   g.fillStyle = COL.rust;
+  g.font = "700 13px Silkscreen";
+  const voteStatus =
+    S.endsAt === null
+      ? `${S.voters} / ${S.quorum} VOTES`
+      : `${S.voters} / ${S.quorum} VOTES · CLOSES IN ${mmss(S.t)}`;
+  g.fillText(voteStatus, W / 2, TH - 28);
   g.font = "700 14px Silkscreen";
-  g.fillText("TYPE A ROOM NUMBER", W / 2, TH - 12);
+  g.fillText("TYPE A FIGHTER'S NUMBER", W / 2, TH - 12);
 }
 function drawWorldMark(
   g: CanvasRenderingContext2D,
@@ -954,7 +1004,7 @@ export function drawTV(): void {
     if (ch) drawCaseFile(ch);
     else {
       text(T.buf, 170, 110);
-      text("NO SUCH RESIDENT", 280, 28, COL.rust);
+      text("NO SUCH FIGHTER", 280, 28, COL.rust);
     }
   } else if (vidMode === "rec") {
     fill(COL.soot);
@@ -976,68 +1026,24 @@ export function drawTV(): void {
     g.textAlign = "center";
   } else if (S.phase === "waiting" || S.phase === "pick") {
     noise = S.startError === null ? 0.08 : 0.2;
-    drawRoomChoice(now);
-  } else if (S.phase === "vote" || S.phase === "countdown") {
-    fill(COL.soot);
-    text("WHO WALKS OUT?", 56, 28, COL.sulfur);
-    if (S.fighters === null) {
-      text("THE PAIR IS MISSING", 220, 28, COL.blood);
-    } else {
-      const pair = S.fighters.map(char);
-      pair.forEach((ch, i) => {
-        const x = i ? W * 0.74 : W * 0.26;
-        const mine = S.votedFor === ch.id;
-        g.fillStyle = mine ? COL.sulfur : COL.char;
-        g.fillRect(x - 130, 110, 260, 180);
-        g.fillStyle = mine ? COL.soot : COL.bone;
-        g.font = "700 40px Silkscreen";
-        g.textAlign = "center";
-        g.fillText(i ? "B" : "A", x, 168);
-        g.font = "700 26px Silkscreen";
-        g.fillText(ch.short, x, 214);
-        g.font = "24px DotGothic16";
-        g.fillText(String(S.votes[i] ?? 0), x, 258);
-      });
-      text(
-        S.phase === "countdown"
-          ? `${String(S.voters)} / ${String(S.quorum)} · CLOSES IN ${mmss(S.t)}`
-          : `${String(S.voters)} / ${String(S.quorum)}`,
-        340,
-        22,
-        COL.rust,
-      );
-      text(S.votedFor === null ? "PRESS A OR B" : "YOUR PICK IS IN", 390, 26, COL.sulfur);
-    }
+    const mine = S.votedFor === null ? undefined : S.chars[S.votedFor];
+    if (mine) drawVoteWait(mine);
+    else drawRoomChoice(now);
   } else {
     const filmCanvas = film();
     if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "bet" && vidMode === "live") {
-      band(H - 150, 100);
-      text(
-        S.bettingClosesAt === null
-          ? "BETS OPEN"
-          : `BETS CLOSE IN ${mmss(Math.max(0, (S.bettingClosesAt - Date.now()) / 1000))}`,
-        H - 110,
-        30,
-        COL.sulfur,
-      );
-      text(
-        S.bet
-          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`
-          : S.pending === "bet"
-            ? "RECORDING YOUR BET…"
-            : "A OR B · TYPE THE AMOUNT",
-        H - 70,
-        24,
-        COL.bone,
-        "DotGothic16",
-        400,
-      );
-    } else if (S.phase === "bet") {
+    if (S.phase === "bet") {
       fill(COL.bone);
       text("WHO WALKS OUT?", 80, 44, COL.soot);
+      if (S.bettingClosesAt !== null)
+        text(
+          `BETS CLOSE IN ${mmss(Math.max(0, (S.bettingClosesAt - Date.now()) / 1000))}`,
+          112,
+          22,
+          COL.blood,
+        );
       [a, b].forEach((ch, i) => {
         if (!ch) return;
         const x = i ? W * 0.74 : W * 0.26;
@@ -1087,9 +1093,13 @@ export function drawTV(): void {
       text(l.name.toUpperCase(), 160, 40, COL.blood);
       text("is deceased.", 210, 28, COL.bone, "DotGothic16", 400);
       text(`${w.name.toUpperCase()} WINS!`, 270, 32, COL.sulfur);
+      const o = S.outcome;
       if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
       else if (S.claim) text(`COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
-      else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
+      else if (o?.kind === "won") text(`YOU WON · ABOUT ${usd(o.usdc)} USDC`, 390, 26, COL.sulfur);
+      else if (o?.kind === "lost") text(`YOU LOST ${usd(o.usdc)} USDC`, 390, 26, COL.rust);
+      else if (o?.kind === "refund")
+        text(`NO TAKERS · ${usd(o.usdc)} USDC RETURNED`, 390, 26, COL.bone);
     } else if (S.phase === "over") {
       fill(COL.soot);
       const l = living(),

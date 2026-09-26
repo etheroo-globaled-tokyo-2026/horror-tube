@@ -3,13 +3,11 @@ import {
   $,
   DUR,
   S,
-  chooseNextFighter,
+  castVote,
   hooks,
   loadBettingIds,
   setWallet,
-  startBout,
   usd,
-  voteSide,
   type Phase,
 } from "./game.ts";
 import { type CoinBoxPart, type CoinBoxView, createCoinBox, isCoin } from "./coinbox.ts";
@@ -81,7 +79,7 @@ function hintText(): void {
   const open = (choose: string): string =>
     booking === undefined
       ? `${choose} ${b("0–9")}${collect}`
-      : `OPEN ${b(roomNumber(booking.id))} ${booking.short}`;
+      : `VOTE ${b(roomNumber(booking.id))} ${booking.short}`;
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.at === "sticker"
@@ -142,12 +140,12 @@ function hintText(): void {
                   : W8.step === "done"
                     ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
-      : S.phase === "vote" || S.phase === "countdown"
-        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
+      : (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") && S.votedFor !== null
+        ? `${b("YOUR VOTE IS IN")}${collect}`
         : S.phase === "waiting" || S.phase === "over"
-          ? open("CHOOSE A ROOM")
+          ? open("VOTE")
           : S.phase === "pick"
-            ? open("CHOOSE WHO IS NEXT")
+            ? open("VOTE FOR NEXT")
             : S.phase === "bet" && !S.bet && S.poolId === null
               ? "OPENING THE BOOK"
               : S.pending === "bet"
@@ -163,6 +161,8 @@ function hintText(): void {
                         : `NEXT ${b("N")}`;
 }
 
+const votingLocked = (): boolean =>
+  (S.phase === "waiting" || S.phase === "over" || S.phase === "pick") && S.votedFor !== null;
 function press(id: string): void {
   sfx.key();
   const k = keyById.get(id);
@@ -175,6 +175,7 @@ function press(id: string): void {
   if (id === "power") return turnOff();
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
+    if (votingLocked()) return hintText();
     VCR.held = "";
     if (S.phase === "bet" && !S.bet && S.pending === null) T.buf = (T.buf + id).slice(0, 6);
     else T.buf = id;
@@ -227,16 +228,13 @@ function ok(): void {
     placeTypedBet();
     return;
   }
-  const booked = typedFighterId(T.buf, S.selectable);
-  if (booked !== null && (S.phase === "waiting" || S.phase === "over")) {
-    T.buf = "";
-    void startBout(booked);
-    return;
-  }
-  if (booked !== null && S.phase === "pick") {
-    T.buf = "";
-    void chooseNextFighter(booked);
-    return;
+  if (!votingLocked()) {
+    const booked = typedFighterId(T.buf, S.selectable);
+    if (booked !== null && (S.phase === "waiting" || S.phase === "over" || S.phase === "pick")) {
+      T.buf = "";
+      void castVote(booked);
+      return;
+    }
   }
   if (S.claim) {
     if (!canCollect(S)) return;
@@ -249,14 +247,7 @@ const pressKey = (id: string, z: number): void => {
   if (k) k.position.z = z;
 };
 function sideKey(side: 0 | 1): void {
-  if (S.phase === "vote" || S.phase === "countdown") {
-    voteSide(side);
-    return;
-  }
-  if (S.phase === "bet") {
-    chooseBetSide(side);
-    return;
-  }
+  if (S.phase === "bet") chooseBetSide(side);
 }
 function chooseBetSide(side: 0 | 1): void {
   if (S.bet || S.pending !== null) return;
@@ -805,7 +796,7 @@ renderer.setAnimationLoop(() => {
 const PHASE_SOUND = new Map<Phase, () => void>([
   ["bet", sfx.static],
   ["fight", sfx.fight],
-  ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
+  ["settle", () => sfx.sting(S.outcome?.kind === "lost")],
   ["over", sfx.signoff],
 ]);
 function muteKey(): void {

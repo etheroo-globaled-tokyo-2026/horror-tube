@@ -58,11 +58,6 @@ function requireCard(
       `Fight job missing ${role} card for ${JSON.stringify(subname)}. ENS load did not return it.`,
     );
   }
-  if (card.status !== "alive") {
-    throw new Error(
-      `Fight job ${role} ${JSON.stringify(subname)} is not alive on ENS (status=${JSON.stringify(card.status)}).`,
-    );
-  }
   return card;
 }
 

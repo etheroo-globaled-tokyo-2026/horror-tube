@@ -5,14 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import { readDatabaseCaCert } from "../src/db/database-ca.js";
 import { readDatabaseUrl } from "../src/db/database-url.js";
-import {
-  connectionStringForVerifiedTls,
-} from "../src/db/pg-client.js";
-import {
-  listMigrationFiles,
-  migrationsDir,
-  readMigrationSql,
-} from "../src/db/migrate.js";
+import { connectionStringForVerifiedTls } from "../src/db/pg-client.js";
+import { listMigrationFiles, migrationsDir, readMigrationSql } from "../src/db/migrate.js";
 
 const packageRoot = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 
@@ -62,10 +56,7 @@ describe("DATABASE_CA_CERT", () => {
   });
 
   it("throws and names DATABASE_CA_CERT when blank", () => {
-    assert.throws(
-      () => readDatabaseCaCert({ DATABASE_CA_CERT: "  " }),
-      /DATABASE_CA_CERT/u,
-    );
+    assert.throws(() => readDatabaseCaCert({ DATABASE_CA_CERT: "  " }), /DATABASE_CA_CERT/u);
   });
 
   it("accepts PEM text and dotenv-style escaped newlines", () => {
@@ -92,9 +83,7 @@ describe("DATABASE_CA_CERT", () => {
 
 describe("connectionStringForVerifiedTls", () => {
   it("strips sslmode so the CA ssl object is not overwritten", () => {
-    const out = connectionStringForVerifiedTls(
-      "postgres://u:p@host:25060/db?sslmode=require",
-    );
+    const out = connectionStringForVerifiedTls("postgres://u:p@host:25060/db?sslmode=require");
     assert.doesNotMatch(out, /sslmode=/iu);
     assert.match(out, /^postgres:\/\//u);
     assert.match(out, /host/u);
@@ -114,6 +103,7 @@ describe("migration SQL shape", () => {
       "005_house_bot_votes.sql",
       "006_battle_video_url.sql",
       "007_drop_next_opponent.sql",
+      "008_drop_votes.sql",
     ]);
   });
 
@@ -154,6 +144,13 @@ describe("migration SQL shape", () => {
 
     assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS stakes/iu);
     assert.doesNotMatch(sql, /CREATE TABLE stakes/iu);
+  });
+
+  it("drops votes and tallies now that the room's fighter pick replaces a vote", async () => {
+    const sql = await readMigrationSql("008_drop_votes.sql");
+    assert.match(sql, /DROP TABLE IF EXISTS tallies/u);
+    assert.match(sql, /DROP TABLE IF EXISTS votes/u);
+    assert.match(sql, /ALTER TABLE rounds DROP COLUMN IF EXISTS quorum/u);
   });
 
   it("defines battle_results with gates and per-step tx hashes", async () => {
