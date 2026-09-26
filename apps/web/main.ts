@@ -11,13 +11,7 @@ import {
   usd,
   type Phase,
 } from "./game.ts";
-import {
-  COINS,
-  type CoinBox,
-  type CoinBoxPart,
-  type CoinBoxView,
-  createCoinBox,
-} from "./coinbox.ts";
+import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
 import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
@@ -58,7 +52,7 @@ function hintText(): void {
     return;
   }
   const hovered = S.chars[T.hover];
-  const credit = `${usd(coinBox?.credit() ?? 0)} USDC`;
+  const credit = `${usd(coinBox.credit())} USDC`;
   const meter = Z.error
     ? `${b("THE BOX SPAT IT OUT")} ${esc(Z.error)}`
     : Z.pick
@@ -66,7 +60,7 @@ function hintText(): void {
           " ",
         )
       : Z.at === "sticker"
-        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox?.address ?? ""}</span>`
+        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox.address() ?? ""}</span>`
         : Z.at !== null && Z.hover === "slot"
           ? b("COIN DIAL")
           : Z.at !== null && Z.hover === "lock"
@@ -209,49 +203,46 @@ function holdEnd(): void {
   pressKey("A", 0.022);
   pressKey("B", 0.022);
 }
-let coinBox: CoinBox | null = null;
 let coinBoxError = "";
-let coinBoxMount: Promise<CoinBox> | null = null;
-async function buildCoinBox(wallet: GameWallet): Promise<CoinBox> {
+const coinBox = createCoinBox(
+  (usdc) => {
+    S.credit = usdc;
+    hintText();
+  },
+  say,
+  (message) => {
+    Z.error = message;
+    Z.at ??= "meter";
+    hintText();
+  },
+);
+coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
+shade(coinBox.group);
+scene.add(coinBox.group);
+let coinBoxMount: Promise<void> | null = null;
+async function connectCoinBox(wallet: GameWallet): Promise<void> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
-  const box = createCoinBox(
-    wallet,
-    coinType,
-    (usdc) => {
-      S.credit = usdc;
-      hintText();
-    },
-    say,
-    (message) => {
-      Z.error = message;
-      Z.at ??= "meter";
-      hintText();
-    },
-  );
-  box.group.position.set(-0.59, TV_Y + 0.19, -1.055);
-  shade(box.group);
-  scene.add(box.group);
-  coinBox = box;
-  return box;
+  coinBox.connect(wallet, coinType);
 }
 async function mountCoinBox(wallet: GameWallet): Promise<void> {
-  coinBoxMount ??= buildCoinBox(wallet).catch((cause: unknown) => {
+  coinBoxMount ??= connectCoinBox(wallet).catch((err: Error) => {
     coinBoxMount = null;
-    throw cause;
+    throw err;
   });
-  const box = await coinBoxMount;
-  if (box.address !== wallet.address) {
+  await coinBoxMount;
+  const address = coinBox.address();
+  if (address !== wallet.address) {
     throw new Error(
-      `The coin box is open for wallet ${box.address}, not yours (${wallet.address}). Reload the page to open yours.`,
+      `The coin box is open for wallet ${address}, not yours (${wallet.address}). Reload the page to open yours.`,
     );
   }
 }
 if (hasWalletSession()) {
   void getGameWallet()
     .then(mountCoinBox)
-    .catch((cause: unknown) => {
-      coinBoxError = cause instanceof Error ? cause.message : String(cause);
+    .catch((err: Error) => {
+      coinBoxError = err.message;
       console.error(`Shinami wallet failed: ${coinBoxError}`);
     });
 }
@@ -292,8 +283,7 @@ const pickAt = (e: MouseEvent): Pick | null => {
   if (hit === undefined) return null;
   const o = hit.object;
   if (o === paper) return S.phase === "gate" && W8.step === "read" ? { at: "paper" } : null;
-  if (coinBox !== null && within(o, coinBox.group))
-    return { at: "coin", part: coinBox.partAt(hit) };
+  if (within(o, coinBox.group)) return { at: "coin", part: coinBox.partAt(hit) };
   const id: string | undefined = o.userData.keyId;
   if (id !== undefined) return { at: "key", id };
   if (S.phase === "gate" || Z.at !== null) return null;
@@ -319,7 +309,7 @@ const WALK: WalkStep[] = [
     remote: false,
   },
   { say: "THE REMOTE. VOTE FOR TWO. THEY FIGHT.", view: () => null, remote: true },
-  { say: "THE METER. FEED IT TO BET.", view: () => coinBox?.view("meter") ?? null, remote: false },
+  { say: "THE METER. FEED IT TO BET.", view: () => coinBox.view("meter"), remote: false },
   { say: "HOLD A OR B. BET ON WHO WALKS OUT.", view: () => null, remote: true },
 ];
 function walkTo(n: number): void {
@@ -340,7 +330,7 @@ function stepBack(): void {
   hintText();
 }
 function insertCoin(usdc: number): void {
-  coinBox?.insert(usdc);
+  coinBox.insert(usdc);
   zoom("meter");
 }
 function useCoinPart(part: CoinBoxPart): void {
@@ -349,11 +339,11 @@ function useCoinPart(part: CoinBoxPart): void {
   else if (part === "sticker") zoom("sticker");
   else if (part === "lock") {
     zoom("meter");
-    coinBox?.open();
+    coinBox.open();
   } else zoom(Z.at ?? "meter", Z.pick);
 }
 function openCoinKey(part: CoinBoxPart): void {
-  if (coinBox === null) {
+  if (coinBox.address() === null) {
     say(coinBoxError === "" ? "The coin box is still opening." : coinBoxError);
     return;
   }
@@ -530,7 +520,7 @@ renderer.setAnimationLoop(() => {
     if (walkView !== null) {
       wantEye.copy(walkView[0]);
       wantAim.copy(walkView[1]);
-    } else if (Z.at !== null && coinBox !== null) {
+    } else if (Z.at !== null) {
       const [e2, a2] = coinBox.view(Z.at);
       wantEye.copy(e2);
       wantAim.copy(a2);
@@ -559,7 +549,7 @@ renderer.setAnimationLoop(() => {
   remote.visible = !waiver && Z.at === null && (walkRef.n < 0 || raise === 1);
   updateTape(performance.now());
   updateHover();
-  if (coinBox !== null) coinBox.group.visible = !waiver;
+  coinBox.group.visible = !waiver;
   cable.visible = !waiver;
   $("#demo-room").hidden = S.phase === "gate";
   $("#demo-gate").hidden = S.phase !== "gate" || dark;

@@ -13,6 +13,7 @@ import {
   note,
   odds,
   replaying,
+  type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
@@ -32,6 +33,7 @@ import {
   speckle,
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
+import { tinted } from "./room-shelf.ts";
 import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
 
 export const TW = 640,
@@ -636,6 +638,60 @@ export function drawGuide(now: number): void {
 }
 
 export let tvNoise = 0;
+function drawCaseFile(ch: Character): void {
+  const g = tvCtx,
+    W = TW,
+    x = 232,
+    seen = ch.fights > 0;
+  g.fillStyle = COL.rust;
+  g.font = "700 18px Silkscreen";
+  g.textAlign = "left";
+  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(ch), 32, 64, 176, 176);
+  if (!ch.alive) {
+    g.save();
+    g.translate(120, 152);
+    g.rotate(-0.2);
+    g.strokeStyle = g.fillStyle = COL.blood;
+    g.lineWidth = 4;
+    g.textAlign = "center";
+    g.strokeRect(-92, -24, 184, 40);
+    g.font = "700 24px Silkscreen";
+    g.fillText("DECEASED", 0, 6);
+    g.restore();
+  }
+  g.textAlign = "left";
+  g.fillStyle = COL.bone;
+  g.font = "30px DotGothic16";
+  let y = wrap(g, ch.name, x, 92, W - x - 32, 34);
+  g.fillStyle = COL.sulfur;
+  g.font = "700 16px Silkscreen";
+  g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("CASE FILE", x, y + 34);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("INJURIES", 32, y);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  wrap(g, ch.injuries || "None.", 32, y + 26, W - 64, 26);
+  const [footer, color] = !ch.alive
+    ? ["THIS ROOM IS EMPTY", COL.rust]
+    : S.champion !== null && ch.id === S.champion
+      ? ["THE CHAMPION STAYS ON", COL.rust]
+      : S.picks.includes(ch.id)
+        ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
+        : ["PRESS OK TO REQUEST", COL.sulfur];
+  g.textAlign = "center";
+  g.fillStyle = color;
+  g.font = "700 22px Silkscreen";
+  g.fillText(footer, W / 2, 456);
+}
 export function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -771,20 +827,12 @@ export function drawTV(): void {
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
       text(S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
     } else {
-      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-      const n = +T.buf,
-        ch = T.buf.length === 2 ? S.chars[n - 1] : null;
-      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-      else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
-      else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
-      else if (S.champion !== null && ch.id === S.champion)
-        text("THE CHAMPION STAYS ON", 280, 28, COL.rust);
-      else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
+      const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+      if (ch) drawCaseFile(ch);
       else {
-        g.font = "24px DotGothic16";
-        g.fillStyle = COL.bone;
-        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
-        text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
+        text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+        if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+        else text("NO SUCH RESIDENT", 280, 28, COL.rust);
       }
     }
   } else {
