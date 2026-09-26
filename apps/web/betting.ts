@@ -29,7 +29,11 @@ export async function fetchBettingIds(
       `GET /betting failed: HTTP ${String(res.status)} ${await res.text()}`,
     );
   }
-  return v.parse(BettingIds, await res.json());
+  const parsed = v.safeParse(BettingIds, await res.json());
+  if (!parsed.success) {
+    throw new Error(`GET /betting returned bad betting IDs: ${v.summarize(parsed.issues)}`);
+  }
+  return parsed.output;
 }
 
 export function toContractIds(ids: BettingIds): ContractIds {
