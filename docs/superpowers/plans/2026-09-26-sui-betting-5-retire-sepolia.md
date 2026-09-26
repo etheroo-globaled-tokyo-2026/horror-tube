@@ -12,14 +12,15 @@
 
 ### Task 1: Delete
 
-- [ ] `git rm -r packages/contracts` (removes both submodules). Remove their `.gitmodules` entries; delete the file if empty.
-- [ ] `.github/workflows/ci.yml`: delete the `contracts` job.
-- [ ] `Dockerfile`: delete the `packages/contracts/package.json` copy.
-- [ ] Root `package.json`: delete the `contracts:*` scripts.
-- [ ] `.oxlintrc.json`, `.oxfmtrc.json`, `.gitignore`: delete `packages/contracts` entries.
-- [ ] `.env.example`: delete `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS` (keep `BET_FEE_BPS`: the Sui deploy reads it).
-- [ ] `docs/battle-betting.md` → `docs/sui-betting.md`: package location, objects, economics, roles and keys, env table, deploy steps, `pnpm betting:*` commands, testnet IDs. Durable facts only, from the spec.
-- [ ] `docs/PLAN.md`: the "Betting contract" row, the "Smart contract" bullet, flow steps 7, 8 and 10, the ENS prize row "The contract pays out from ENS state", and the "Betting" section → Sui, linking `docs/sui-betting.md`.
-- [ ] Delete merged work docs: `docs/superpowers/specs/2026-09-26-battle-betting-design.md`, `docs/superpowers/plans/2026-09-26-battle-betting.md`.
+- [x] `git rm -r packages/contracts` (removes both submodules). Remove their `.gitmodules` entries; delete the file if empty.
+- [x] `.github/workflows/ci.yml`: delete the `contracts` job.
+- [x] `Dockerfile`: delete the `packages/contracts/package.json` copy.
+- [x] Root `package.json`: delete the `contracts:*` scripts.
+- [x] `.oxlintrc.json`, `.oxfmtrc.json`, `.gitignore`: delete `packages/contracts` entries.
+- [x] `.env.example`: delete `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS` (keep `BET_FEE_BPS`: the Sui deploy reads it).
+- [x] `docs/battle-betting.md` → `docs/sui-betting.md`: package location, objects, economics, roles and keys, env table, deploy steps, `pnpm betting:*` commands, testnet IDs. Durable facts only, from the spec.
+- [x] `docs/PLAN.md`: the "Betting contract" row, the "Smart contract" bullet, flow steps 7, 8 and 10, the ENS prize row "The contract pays out from ENS state", and the "Betting" section → Sui, linking `docs/sui-betting.md`.
+- [x] Delete merged work docs: `docs/superpowers/specs/2026-09-26-battle-betting-design.md`, `docs/superpowers/plans/2026-09-26-battle-betting.md`.
 - [ ] `rg -n -i "BattleBetting|packages/contracts|forge|MIN_BET_WEI"` → hits only in applied migrations. `pnpm install`, `pnpm test`, `pnpm typecheck`, `pnpm lint` pass.
-- [ ] Commit: `chore: retire the Sepolia betting contract`.
+  - Left: `AGENTS.md` architecture and root-scripts lines (needs the user); main's server names for the Sui operator (`battle-betting.ts`, `BattleBettingPorts`, `battleBetting`). `pnpm lint` already fails on main (anti-slop rules).
+- [x] Commit: `chore: retire the Sepolia betting contract`.

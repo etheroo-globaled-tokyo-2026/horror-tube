@@ -9,7 +9,7 @@ import {
 import type { BattleQueueInsert } from "@horror-tube/fight/battle-queue";
 
 export type FightJobRequest = {
-  /** On-chain BattleBetting id as a decimal string. */
+  /** Battle ID (UUID) that keys the battle's Sui pool. */
   battleId: string;
   fighterASubname: string;
   fighterBSubname: string;
