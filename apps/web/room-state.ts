@@ -21,8 +21,6 @@ export type WalkStep = {
 };
 export const walkRef = { n: -1 };
 
-export const num = (n: number): string => String(n).padStart(2, "0");
-
 export const T = {
   buf: "",
   betSide: -1,
