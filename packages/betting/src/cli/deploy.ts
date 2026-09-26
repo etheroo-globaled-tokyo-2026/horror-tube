@@ -29,7 +29,10 @@ const build = z.object({ modules: z.array(z.string()), dependencies: z.array(z.s
 
 console.log(`Publishing from ${admin.toSuiAddress()}…`);
 const publish = new Transaction();
-publish.transferObjects([publish.publish(build)], admin.toSuiAddress());
+publish.moveCall({
+  target: "0x2::package::make_immutable",
+  arguments: [publish.publish(build)],
+});
 const published = await execute(client, admin, publish);
 const packageId = publishedPackageId(published);
 const adminCap = createdId(published, "::betting::AdminCap");

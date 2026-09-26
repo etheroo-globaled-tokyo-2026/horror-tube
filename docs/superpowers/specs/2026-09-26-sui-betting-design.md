@@ -20,7 +20,7 @@ the gas. Replaces the Sepolia `BattleBetting` contract.
 | Gate | `bet` requires `tx_context::sponsor() == house.bet_sponsor`, set to the Gas Station's gas owner. Only `/tx`, behind the World ID session, reaches it, so only verified humans bet. Precondition: the gas owner is one stable address (checked before publish) |
 | USDC location | `/tx` spends USDC from the address balance only (`assumeSufficientAddressBalances`). So `claim` pays with `coin::send_funds`, and coin-box deposits switch from `transferObjects` to `coin::send_funds` |
 | Roles | `AdminCap` on the laptop (fees, config, operator caps, treasury). `OperatorCap` on the server (open, close, settle, cancel; revocable). A second operator cap for the laptop e2e |
-| Upgrades | None. A fix ships as a new publish and a new house |
+| Upgrades | None: the publish transaction makes the `UpgradeCap` immutable, since the package has no version check and an upgrade could add code that empties the pools. A fix ships as a new publish and a new house |
 | Package | `packages/betting`: Move in `move/`; TS client in `src/`, built to `dist` like `@horror-tube/world-id` |
 | Deploy | A TS CLI publishes the bytecode from `sui move build --dump-bytecode-as-base64` with the admin key from `.env` |
 | Sepolia | `BattleBetting` is deleted once the Sui e2e passes |
@@ -107,7 +107,7 @@ down), a losing one 0; cancelled or one-sided pools refund every stake. Rounding
 | `SUI_NETWORK`, `SUI_GRPC_URL` | server, CLIs | `testnet`, `https://fullnode.testnet.sui.io:443` |
 | `BET_FEE_BPS`, `SUI_MIN_BET` | deploy | `200`, `30000` (0.03 USDC) |
 | `SUI_BET_SPONSOR` | deploy | The Gas Station's gas owner, printed by `pnpm betting:gas-owner` |
-| `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID` | laptop | Publisher; holds `AdminCap` and `UpgradeCap`; funds the e2e wallet |
+| `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID` | laptop | Publisher; holds `AdminCap`; funds the e2e wallet |
 | `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID` | server | Operator |
 | `SUI_E2E_OPERATOR_CAP_ID` | laptop | Operator cap held by the admin, so e2e runs never contend with the server |
 | `SHINAMI_ACCESS_KEY`, `WALLET_SECRET_PEPPER` | server, e2e | Exist on main |
