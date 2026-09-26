@@ -61,8 +61,8 @@ export function createOperator(chain: OperatorChain, ids: ContractIds, cap: stri
       }),
     cancel: (battleId: string) =>
       serial(async () => {
-        const found = await current(battleId);
-        if (found.status === PoolStatus.cancelled) return;
+        const found = await chain.readPool(pool(battleId));
+        if (found === null || found.status === PoolStatus.cancelled) return;
         if (found.status !== PoolStatus.open)
           throw new Error(`Battle ${battleId}: pool is settled, cannot cancel.`);
         await chain.run(cancelTx(ids, cap, pool(battleId)));

@@ -85,6 +85,9 @@ fills the challenger slot from rotation after settle.
   after it succeeds does the round set the betting-closed signal and enter
   `fight`. A failed close stays on `RoundState.error`, keeps betting-closed
   unset, and retries every 2s.
+- Entering `bet` assigns the bout's `battleId` and starts the fight job. `openPool`
+  for that ID retries from the tick with backoff until it lands; bets are refused
+  while `poolId` is null, and betting does not close until the pool exists.
 - During `bet` the server reads the Sui pool totals every 2s into `RoundState.pool`.
   Tabs never poll Sui.
 - The Sui pool's `closes_at_ms` from `openPool` is only an upper bound the chain
@@ -94,7 +97,7 @@ fills the challenger slot from rotation after settle.
 
 ### Errors
 
-- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the Sui pool (ticket refunds), and leave `bet` for `over` so `resetFromOver` can start a new season.
+- If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error, clear the in-memory pool, cancel the Sui pool (ticket refunds; a failed cancel retries from the tick with backoff until it lands), and leave `bet` for `over` so `resetFromOver` can start a new season.
 - Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`). The fight plays `RoundState.videoUrl` only.
 
 ### Settle

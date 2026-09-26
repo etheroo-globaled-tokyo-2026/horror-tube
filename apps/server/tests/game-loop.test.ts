@@ -50,7 +50,6 @@ function trackingPorts(calls: string[]): ChainWritePorts {
 }
 
 function trackingBattleBetting(calls: string[]): BattleBettingPorts {
-  let nextId = 1;
   return {
     config: {
       network: "testnet",
@@ -62,13 +61,8 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
     poolIdFor(battleId) {
       return `0xpool-${battleId}`;
     },
-    async openBattle(fighterA, fighterB, closesAtUnix) {
-      const id = `battle-${String(nextId)}`;
-      nextId += 1;
-      calls.push(
-        `open:${fighterA},${fighterB},${String(closesAtUnix)}→${id}`,
-      );
-      return id;
+    async openBattle(battleId, closesAtUnix) {
+      calls.push(`open:${battleId},${String(closesAtUnix)}`);
     },
     async cancelBattle(battleId) {
       calls.push(`cancel:${battleId}`);
@@ -373,13 +367,12 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "bet");
     assert.ok(loop.getState().fighters);
     assert.deepEqual(loop.getState().fighters, [1, 0]);
-    assert.ok(
-      settle.betCalls.some((c) => c.startsWith("open:bravo,alpha,")),
-      `expected openBattle for bravo vs alpha, got ${JSON.stringify(settle.betCalls)}`,
-    );
-
     const battleId = loop.getState().battleId;
-    assert.ok(battleId, "battleId should be set after openPool");
+    assert.ok(battleId, "battleId should be set when bet opens");
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith(`open:${battleId},`)),
+      `expected openBattle for ${battleId}, got ${JSON.stringify(settle.betCalls)}`,
+    );
     assert.equal(loop.getState().poolId, `0xpool-${battleId}`);
     loop.setPool(battleId, `0xpool-${battleId}`, [20000, 0]);
     assert.deepEqual(loop.getState().pool, [20000, 0]);
@@ -982,6 +975,8 @@ describe("GameLoop phases", () => {
     await loop.voteWithNullifier("late-1", [0, 1]);
     now += 1_000;
     await loop.tick(now);
+    const firstBattleId = loop.getState().battleId;
+    assert.ok(firstBattleId);
     now += baseConfig.videoTimeoutSeconds * 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "over");
@@ -994,11 +989,11 @@ describe("GameLoop phases", () => {
     await flushFightJob();
     assert.deepEqual(
       requests.map((r) => r.battleId),
-      ["battle-1", "battle-2"],
+      [firstBattleId, loop.getState().battleId],
     );
 
     pending[0]?.({
-      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: "battle-1" }),
+      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: firstBattleId }),
       winnerSide: 0,
       damage: 1,
       videoUrl: "https://cdn.example/videos/late.mp4",
@@ -1498,5 +1493,75 @@ describe("chain call retries", () => {
     assert.equal(cancels(), 3);
     await loop.tick(failedAt + 3_600_000);
     assert.equal(cancels(), 3, "a landed cancel is not sent again");
+  });
+
+  function failingOpens(calls: string[], failures: number): BattleBettingPorts {
+    const battleBetting = trackingBattleBetting(calls);
+    let left = failures;
+    battleBetting.openBattle = async (battleId) => {
+      if (left > 0) {
+        left -= 1;
+        calls.push(`open-failed:${battleId}`);
+        throw new Error("sui rpc 503");
+      }
+      calls.push(`open:${battleId}`);
+    };
+    return battleBetting;
+  }
+
+  it("runs a bout whose pool has not opened and retries the same battle id until it lands", async () => {
+    const calls: string[] = [];
+    const requests: FightJobRequest[] = [];
+    const { loop, clock } = retryLoop({
+      battleBetting: failingOpens(calls, 2),
+      fightJob: async (request) => {
+        requests.push(request);
+        return new Promise(() => {});
+      },
+    });
+    await openStageOneBout(loop, clock);
+    await flushFightJob();
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId);
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().error, null);
+    assert.equal(loop.getState().poolId, null);
+    assert.deepEqual(requests.map((r) => r.battleId), [battleId], "the fight job starts without the pool");
+    assert.throws(() => loop.assertBetAllowed(`0xpool-${battleId}`), /not the live pool/u);
+
+    await readyAlphaWin(loop);
+    clock.now += 1_000;
+    await loop.tick(clock.now);
+    assert.equal(loop.getState().phase, "bet", "betting cannot close on a pool that never opened");
+    assert.ok(!calls.some((c) => c.startsWith("close:")));
+
+    clock.now += 60_000;
+    await loop.tick(clock.now);
+    clock.now += 60_000;
+    await loop.tick(clock.now);
+    assert.deepEqual(
+      calls.filter((c) => c.startsWith("open")),
+      [`open-failed:${battleId}`, `open-failed:${battleId}`, `open:${battleId}`],
+    );
+    assert.equal(loop.getState().poolId, `0xpool-${battleId}`);
+    assert.equal(loop.getState().phase, "fight");
+  });
+
+  it("stops opening the pool once the bout leaves bet, and still cancels it", async () => {
+    const calls: string[] = [];
+    const { loop, clock } = retryLoop({
+      battleBetting: failingOpens(calls, Number.POSITIVE_INFINITY),
+    });
+    await openStageOneBout(loop, clock);
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId);
+    await loop.failVideo("fal render failed: timeout");
+    clock.now += 3_600_000;
+    await loop.tick(clock.now);
+    assert.deepEqual(
+      calls.filter((c) => c.startsWith("open")),
+      [`open-failed:${battleId}`],
+    );
+    assert.ok(calls.includes(`cancel:${battleId}`));
   });
 });
