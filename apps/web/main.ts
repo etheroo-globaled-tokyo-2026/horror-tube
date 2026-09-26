@@ -88,13 +88,15 @@ function hintText(): void {
           ? `SCAN WITH ${b("WORLD APP")}${W8.qrUri === "" ? "" : ` <button data-copy-link>COPY LINK</button>`}`
           : W8.step === "wallet"
             ? `${b("VERIFIED")} · OPENING YOUR WALLET`
-            : W8.fail !== ""
-              ? `${b("NOT IN")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
-              : W8.step === "done" && S.noteKind === "bad"
-                ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
-                : W8.step === "done"
-                  ? "WARMING UP"
-                  : `NEXT ${b("ENTER")}`
+            : W8.down !== ""
+              ? `${b("ENTRY IS DOWN")} ${esc(W8.down)}`
+              : W8.fail !== ""
+                ? `${b("NOT IN")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
+                : W8.step === "done" && S.noteKind === "bad"
+                  ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
+                  : W8.step === "done"
+                    ? "WARMING UP"
+                    : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast

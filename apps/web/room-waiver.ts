@@ -4,7 +4,7 @@ import { ctx2d } from "./sprites.ts";
 import { drawLogoLine } from "./logo.ts";
 import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
 import { openGameWallet, type GameWallet } from "./wallet.ts";
-import { enterWithProof, entryFailLine } from "./waiver-entry.ts";
+import { enterWithProof, entryDownDetail, entryFailLine } from "./waiver-entry.ts";
 import { sfx } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { lambert, seed, speckle } from "./room-materials.ts";
@@ -210,6 +210,7 @@ export function scanFailed(error: Error): void {
   scanAbort = null;
   W8.qrUri = "";
   W8.fail = entryFailLine(error);
+  W8.down = entryDownDetail(error) ?? "";
   step("off");
 }
 export function verified(): void {
@@ -249,6 +250,7 @@ export function retry(): void {
     W8.ink = 0;
     W8.qrUri = "";
     W8.fail = "";
+    W8.down = "";
     burnLight.intensity = 0;
     paperFlag.drawn = false;
     step("read");

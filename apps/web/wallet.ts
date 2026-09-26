@@ -4,6 +4,8 @@ import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
 import { toBase64 } from "@mysten/sui/utils";
 import * as v from "valibot";
 
+import { requestFailure } from "./waiver-entry.ts";
+
 export const WALLET_SESSION_KEY = "horror-tube.wallet-session";
 
 export const USDC_DECIMALS = 6;
@@ -21,7 +23,6 @@ export type GameWallet = {
 const SessionResponse = v.object({ session: v.pipe(v.string(), v.minLength(1)) });
 const AddressResponse = v.object({ address: v.pipe(v.string(), v.minLength(1)) });
 const DigestResponse = v.object({ digest: v.pipe(v.string(), v.minLength(1)) });
-const ErrorResponse = v.object({ error: v.string() });
 
 function suiClient(): SuiGrpcClient {
   return new SuiGrpcClient({
@@ -69,16 +70,7 @@ async function postSchema<TSchema extends v.GenericSchema>(
       `POST ${path} returned non-JSON. HTTP ${String(res.status)}. Underlying: ${err instanceof Error ? err.message : String(err)} body=${text}`,
     );
   }
-  if (!res.ok) {
-    let message = text;
-    try {
-      const errorBody = v.safeParse(ErrorResponse, JSON.parse(text));
-      if (errorBody.success) message = errorBody.output.error;
-    } catch {
-      message = text;
-    }
-    throw new Error(`POST ${path} failed: HTTP ${String(res.status)} ${message}`);
-  }
+  if (!res.ok) throw requestFailure(path, res.status, text);
   if (json === undefined) {
     throw new Error(`POST ${path} response did not match the expected fields. body=${text}`);
   }

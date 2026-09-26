@@ -785,11 +785,11 @@ export function drawTV(): void {
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
-      text("YOU ARE NOT IN", 110, 48, COL.blood);
+      text(W8.down === "" ? "YOU ARE NOT IN" : "ENTRY IS DOWN", 110, 48, COL.blood);
       g.font = "400 22px DotGothic16";
       g.fillStyle = COL.bone;
       const end = wrap(g, W8.fail, W / 2, 170, W - 64, 28);
-      text("ENTER TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.rust);
+      if (W8.down === "") text("ENTER TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.rust);
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);

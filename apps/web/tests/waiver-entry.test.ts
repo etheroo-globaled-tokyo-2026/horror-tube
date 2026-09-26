@@ -3,7 +3,14 @@ import { describe, it } from "node:test";
 
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 
-import { EntryError, entryFailLine, enterWithProof, type EntrySteps } from "../waiver-entry.ts";
+import {
+  EntryError,
+  entryDownDetail,
+  entryFailLine,
+  enterWithProof,
+  requestFailure,
+  type EntrySteps,
+} from "../waiver-entry.ts";
 import type { GameWallet } from "../wallet.ts";
 
 const PROOF = { protocol_version: "4.0", responses: ["orb"] };
@@ -72,6 +79,43 @@ describe("enter-room after the World ID proof", () => {
     assert.match(line, /opening your wallet failed/iu);
     assert.match(line, /HTTP 502 Shinami timed out/u);
     assert.doesNotMatch(line, /scan failed/iu);
+  });
+
+  it("says entry is down on our side, with the server's detail, when World ID is misconfigured", async () => {
+    const { steps, seen } = recordingSteps({
+      verify: async () => {
+        throw requestFailure(
+          "/world-id/verify",
+          503,
+          JSON.stringify({
+            error: "World ID is misconfigured on this server. Renew WORLD_ID_STAGING_TOKEN.",
+            code: "world_id_misconfigured",
+            detail: "Invalid staging verification token.",
+          }),
+        );
+      },
+    });
+    const error = await rejection(enterWithProof(PROOF, steps, new AbortController().signal));
+    assert.deepEqual(seen, []);
+    const line = entryFailLine(error);
+    assert.match(line, /down on our side/iu);
+    assert.doesNotMatch(line, /try again|scan failed|check failed/iu);
+    assert.equal(entryDownDetail(error), "Invalid staging verification token.");
+  });
+
+  it("keeps the player's reason when the server rejects a reused proof", async () => {
+    const { steps } = recordingSteps({
+      verify: async () => {
+        throw requestFailure(
+          "/world-id/verify",
+          401,
+          JSON.stringify({ error: "World ID verify failed: HTTP 400 code=nullifier_replayed" }),
+        );
+      },
+    });
+    const error = await rejection(enterWithProof(PROOF, steps, new AbortController().signal));
+    assert.equal(entryFailLine(error), "This World ID already used its one entry.");
+    assert.equal(entryDownDetail(error), null);
   });
 
   it("does not open a wallet when the scan was cancelled during verify", async () => {
