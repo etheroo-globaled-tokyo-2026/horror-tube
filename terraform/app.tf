@@ -285,13 +285,6 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "VOTE_TIMEOUT_SECONDS"
-        value = tostring(var.vote_timeout_seconds)
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
         key   = "PAIRING_MAX_ATTEMPTS"
         value = tostring(var.pairing_max_attempts)
         scope = "RUN_TIME"
