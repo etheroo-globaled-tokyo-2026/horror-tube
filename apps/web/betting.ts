@@ -23,14 +23,10 @@ const BettingIds = v.object({
 });
 export type BettingIds = v.InferOutput<typeof BettingIds>;
 
-export async function fetchBettingIds(
-  fetchImpl: typeof fetch = fetch,
-): Promise<BettingIds> {
+export async function fetchBettingIds(fetchImpl: typeof fetch = fetch): Promise<BettingIds> {
   const res = await fetchImpl("/betting");
   if (!res.ok) {
-    throw new Error(
-      `GET /betting failed: HTTP ${String(res.status)} ${await res.text()}`,
-    );
+    throw new Error(`GET /betting failed: HTTP ${String(res.status)} ${await res.text()}`);
   }
   const parsed = v.safeParse(BettingIds, await res.json());
   if (!parsed.success) {
