@@ -1,4 +1,12 @@
-import { type Address, type Hex, encodeFunctionData } from "viem";
+import {
+  type Account,
+  type Address,
+  type Chain,
+  type Hex,
+  type PublicClient,
+  type Transport,
+  encodeFunctionData,
+} from "viem";
 
 import { permissionedResolverAbi } from "./abis.js";
 
@@ -9,11 +17,10 @@ export const REGISTER_BOOTSTRAP_TEXT_KEYS = [
   "injury_places",
 ] as const;
 
-type TxClient = {
-  waitForTransactionReceipt: (args: {
-    hash: Hex;
-  }) => Promise<{ status: "success" | "reverted" }>;
-};
+type TxClient = Pick<
+  PublicClient<Transport, Chain | undefined, Account | undefined>,
+  "simulateContract" | "waitForTransactionReceipt"
+>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GrantWallet = any;
@@ -27,29 +34,45 @@ export function buildSetTextSetter(key: string): Hex {
   });
 }
 
+export function assertWritePermissionGranted(
+  result: boolean,
+  key: string,
+  account: string,
+): void {
+  if (result !== true) {
+    throw new Error(
+      `grantSetterRoles(${key}, ${account}) did not grant write permission: result=${String(result)}`,
+    );
+  }
+}
+
 export async function grantTextSetterRoles(args: {
   publicClient: TxClient;
   walletClient: GrantWallet;
   resolver: Address;
   account: Address;
   keys: readonly string[];
-}): Promise<void> {
+}): Promise<boolean[]> {
   const { publicClient, walletClient, resolver, account, keys } = args;
+  const granted: boolean[] = [];
   for (const key of keys) {
     const setter = buildSetTextSetter(key);
-    const hash = await walletClient.writeContract({
+    const { request, result } = await publicClient.simulateContract({
       address: resolver,
       abi: permissionedResolverAbi,
       functionName: "grantSetterRoles",
       args: [setter, account],
       account: walletClient.account,
-      chain: walletClient.chain,
     });
+    assertWritePermissionGranted(result, key, account);
+    const hash = await walletClient.writeContract(request);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") {
       throw new Error(
         `grantSetterRoles(${key}, ${account}) tx reverted: ${hash}`,
       );
     }
+    granted.push(true);
   }
+  return granted;
 }

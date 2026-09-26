@@ -16,10 +16,16 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 | `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
 | `wipe`         | **yes** | Unregister every character subname. Does not remove the parent `.eth` name |
 | `redeploy`     | **yes** | Propose the 10 cast fighters, upload icons, and register them |
+| `snapshot-text`| **yes** | Read every registered character's text records into a local JSON backup |
+| `reset-text`   | **yes** | setText those backup fields onto existing subnames (no unregister) |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
-`icons-chain` / `wipe` / `redeploy` always hit chain (after validating input).
-Do not confuse them.
+`icons-chain` / `wipe` / `redeploy` / `snapshot-text` / `reset-text` always hit
+chain (after validating input). Do not confuse them.
+
+`snapshot-text` / `reset-text` are a **chain text backup**. They are separate
+from `packages/roster/roster/icon-prompt-cache.json` and `icons-cache`.
+`redeploy` and `icons-cache` do not read the text snapshot.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
@@ -149,6 +155,31 @@ Writes a normalized import plan. Does not submit a transaction.
 ```bash
 python3 -m roster wipe
 python3 -m roster redeploy
+```
+
+### snapshot-text and reset-text (chain text backup)
+
+`snapshot-text` reads every registered character subname under `ENS_LABEL` and
+writes a JSON array of text fields only: `label`, `display_name`, `look`,
+`brief`, `injury_places`, `injuries`, `status`, `icon`. No private keys, tx
+hashes, or RPC URLs. Default output path is the checked-in file
+`packages/roster/roster/ens-text-snapshot.json` (override with `--out`).
+
+`reset-text` reads that JSON and `setText`s those fields back onto the
+**existing** registered subnames. It does not unregister names, does not touch
+the parent `.eth` name, and does not invent missing fields. If the file is
+missing, a label in the file is not registered, or a required field is blank,
+it stops and names the file, label, and field. It does not fall back to
+Fandom, fixtures, or `icon-prompt-cache.json`. Default input path is the same
+checked-in file (override with `--input`).
+
+```bash
+# From packages/roster/
+python3 -m roster snapshot-text
+python3 -m roster snapshot-text --out roster/ens-text-snapshot.json
+
+python3 -m roster reset-text
+python3 -m roster reset-text --input roster/ens-text-snapshot.json
 ```
 
 ### register (sends transactions)

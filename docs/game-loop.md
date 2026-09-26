@@ -110,6 +110,11 @@ type RoundState = {
 
 Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
+`chars[].alive` (and `seasons.characters` in Postgres) is a holding copy for the current
+season/bet window: the app updates it when the fight result is known so the bet window can
+run; on-chain settle finishes on Sui; only then is ENS text `status` written. Do not write
+ENS before settlement. Do not treat the holding copy as what pays out. After the ENS write,
+ENS is the authority. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
 
