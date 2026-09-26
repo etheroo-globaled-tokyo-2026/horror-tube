@@ -17,6 +17,7 @@ const battleBettingAbi = parseAbi([
   "function minBet() view returns (uint256)",
   "function openBattle(string fighterA, string fighterB, uint64 closesAt) returns (uint256)",
   "function placeBet(uint256 battleId, uint8 fighter) payable",
+  "function cancelBattle(uint256 battleId)",
 ]);
 
 export type BattleBettingPorts = {
@@ -34,6 +35,8 @@ export type BattleBettingPorts = {
     fighter: 0 | 1,
     valueWei: bigint,
   ) => Promise<Hash>;
+  /** Operator: cancel an open battle so stakes can be claimed as refunds. */
+  cancelBattle: (battleId: bigint) => Promise<Hash>;
 };
 
 function requiredBattleBettingEnv(
@@ -135,6 +138,23 @@ export function createBattleBettingPorts(
       if (receipt.status !== "success") {
         throw new Error(
           `BattleBetting.placeBet(battleId=${String(battleId)}, fighter=${String(fighter)}) tx reverted: ${hash}`,
+        );
+      }
+      return hash;
+    },
+    async cancelBattle(battleId) {
+      const { request } = await publicClient.simulateContract({
+        account,
+        address,
+        abi: battleBettingAbi,
+        functionName: "cancelBattle",
+        args: [battleId],
+      });
+      const hash = await walletClient.writeContract(request);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") {
+        throw new Error(
+          `BattleBetting.cancelBattle(battleId=${String(battleId)}) tx reverted: ${hash}`,
         );
       }
       return hash;

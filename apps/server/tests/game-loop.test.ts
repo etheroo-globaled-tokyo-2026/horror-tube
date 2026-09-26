@@ -66,6 +66,10 @@ function trackingBattleBetting(calls: string[]): BattleBettingPorts {
       );
       return `0xbet${String(battleId)}` as `0x${string}`;
     },
+    async cancelBattle(battleId) {
+      calls.push(`cancel:${String(battleId)}`);
+      return `0xcancel${String(battleId)}` as `0x${string}`;
+    },
   };
 }
 
@@ -639,5 +643,78 @@ describe("GameLoop phases", () => {
       () => loop.tick(now),
       /randomInt was not provided/u,
     );
+  });
+
+  it("after failVideo refuses bets, cancels the battle, and leaves bet for over", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        videoTimeoutSeconds: 5,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "fail-video" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    await loop.bet(0, 1);
+    assert.deepEqual(loop.getState().pool, [1, 0]);
+
+    await loop.failVideo("fal render failed: timeout");
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().error, "fal render failed: timeout");
+    assert.deepEqual(loop.getState().pool, [0, 0]);
+    assert.ok(
+      settle.betCalls.some((c) => c === "cancel:1"),
+      `expected cancelBattle, got ${JSON.stringify(settle.betCalls)}`,
+    );
+    await assert.rejects(
+      () => loop.bet(1, 1),
+      /bet is only allowed in the bet phase|video failure/u,
+    );
+  });
+
+  it("video timeout failVideo also leaves bet and refuses further stakes", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        videoTimeoutSeconds: 2,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "timeout-video" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    now += 2_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+    assert.match(loop.getState().error ?? "", /VIDEO_TIMEOUT_SECONDS/u);
+    assert.ok(settle.betCalls.some((c) => c.startsWith("cancel:")));
+    await assert.rejects(() => loop.bet(0, 1), /bet phase|video failure/u);
   });
 });
