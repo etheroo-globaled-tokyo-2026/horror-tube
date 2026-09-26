@@ -8,7 +8,10 @@ import {
   readKeypair,
   type Operator,
   type BettingConfig,
+  type SettleOutcome,
 } from "@horror-tube/betting";
+
+export const POOL_CANCELLED = "cancelled";
 
 export type BattleBettingPorts = {
   openBattle: (battleId: string, closesAtUnix: bigint) => Promise<void>;
@@ -47,9 +50,9 @@ export function createBattleBettingPorts(
     },
     async settle(battleId, side) {
       const pool = operator.poolId(battleId);
-      let digest: string | null;
+      let outcome: SettleOutcome;
       try {
-        digest = await operator.settle(battleId, side);
+        outcome = await operator.settle(battleId, side);
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause);
         throw new Error(
@@ -57,12 +60,18 @@ export function createBattleBettingPorts(
           { cause },
         );
       }
-      if (digest === null) {
+      if (outcome.kind === "already settled") {
         throw new Error(
           `Battle ${battleId}: pool ${pool} was already settled for side ${String(side)} before this call, so this process has no settle digest to record. Find the settle transaction on the explorer and record it by hand.`,
         );
       }
-      return digest;
+      if (outcome.kind === "cancelled") {
+        console.log(
+          `Sui settle skipped: battle ${battleId} pool ${pool} was cancelled before settle, so every ticket claims its stake back. Recording the settlement as ${POOL_CANCELLED}.`,
+        );
+        return POOL_CANCELLED;
+      }
+      return outcome.digest;
     },
     async readPoolTotals(battleId) {
       const pool = await operator.read(battleId);
