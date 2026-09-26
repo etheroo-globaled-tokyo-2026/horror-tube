@@ -18,9 +18,9 @@ import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { STAKES, T, Z, W8, LOW, say, walkRef, type WalkStep } from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
-import { typedFighterId } from "./typed-fighter.ts";
+import { roomNumber, typedFighterId } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -64,7 +64,13 @@ function hintText(): void {
   const credit = `${usd(coinBox.credit())} USDC`;
   const waiting = coinBox.waiting();
   const collect =
-    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · COLLECT ${b("OK")}` : "";
+    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · ${b("COLLECT")}` : "";
+  const bookingId = typedFighterId(T.buf, S.selectable);
+  const booking = bookingId === null ? undefined : S.chars[bookingId];
+  const open = (choose: string): string =>
+    booking === undefined
+      ? `${choose} ${b("0–9")}${collect}`
+      : `OPEN ${b(roomNumber(booking.id))} ${booking.short}`;
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.at === "sticker"
@@ -96,7 +102,7 @@ function hintText(): void {
     return;
   }
   h.innerHTML = hovered
-    ? `${b(num(hovered.id + 1))} ${hovered.name}`
+    ? `${b(roomNumber(hovered.id))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
@@ -116,9 +122,9 @@ function hintText(): void {
       : S.phase === "vote" || S.phase === "countdown"
         ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
         : S.phase === "waiting" || S.phase === "over"
-          ? `BOOK THE FIRST FIGHTER${collect}`
+          ? open("CHOOSE A ROOM")
           : S.phase === "pick"
-            ? `PICK THE NEXT FIGHTER${collect}`
+            ? open("CHOOSE WHO IS NEXT")
             : S.phase === "bet" && !S.bet && S.poolId === null
               ? "OPENING THE BOOK"
               : S.pending === "bet"
@@ -128,7 +134,7 @@ function hintText(): void {
                   : S.phase === "bet" && !S.bet && S.credit > 0
                     ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
                     : S.claim
-                      ? `COLLECT ${b("OK")}`
+                      ? b("COLLECT")
                       : S.credit <= 0
                         ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
                         : `NEXT ${b("N")}`;
@@ -147,7 +153,7 @@ function press(id: string): void {
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
     T.held = -1;
-    T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
+    T.buf = id;
   } else if (id === "clr") {
     T.buf = "";
     T.held = -1;

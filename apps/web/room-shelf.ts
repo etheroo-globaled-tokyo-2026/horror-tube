@@ -15,7 +15,8 @@ import {
   veneer,
 } from "./room-materials.ts";
 import { camera, renderer, scene, textTex } from "./room-render.ts";
-import { LOW, num, T, W8, wrap, Z, walkRef, type G } from "./room-state.ts";
+import { LOW, T, W8, wrap, Z, walkRef, type G } from "./room-state.ts";
+import { roomNumber } from "./typed-fighter.ts";
 
 export const VW = 320,
   VH = 544;
@@ -60,7 +61,7 @@ export function drawTape(ch: Character): void {
   g.font = "700 20px Silkscreen";
   g.fillText("HORROR TUBE", 16, 30);
   g.textAlign = "right";
-  g.fillText(num(ch.id + 1), VW - 16, 30);
+  g.fillText(roomNumber(ch.id), VW - 16, 30);
   g.imageSmoothingEnabled = false;
   g.drawImage(tinted(ch), VW / 2 - 70, 56, 140, 140);
   g.textAlign = "center";
@@ -237,7 +238,9 @@ export const tinted = (ch: Character): HTMLCanvasElement => {
   const g = ctx2d(cv, { willReadFrequently: true });
   g.fillStyle = COL.soot;
   g.fillRect(0, 0, 64, 64);
-  g.drawImage(ch.icon, 0, 0, 64, 64);
+  const trim = ch.icon.naturalWidth * 0.06,
+    side = ch.icon.naturalWidth - trim * 2;
+  g.drawImage(ch.icon, trim, trim, side, side, 0, 0, 64, 64);
   const img = g.getImageData(0, 0, 64, 64),
     d = img.data,
     ramp = ch.alive ? RAMP : [COL.soot, COL.char, COL.grime].map(rgb);
@@ -284,7 +287,7 @@ export function drawSpine(slot: Slot, ch: Character): void {
   g.font = "700 18px Silkscreen";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(num(ch.id + 1), w / 2, 21);
+  g.fillText(roomNumber(ch.id), w / 2, 21);
   paperLabel(g, 6, 38, w - 12, 90, ch.alive);
   g.save();
   g.translate(w / 2, 83);
@@ -304,10 +307,7 @@ export function updateShelf(shown: Character | null): void {
   shelf.visible = S.phase !== "gate" || W8.step === "done";
   for (const slot of slots) {
     const ch = S.chars[slot.id];
-    slot.mesh.visible =
-      shelf.visible &&
-      !!ch &&
-      shown !== ch;
+    slot.mesh.visible = shelf.visible && !!ch && shown !== ch;
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);

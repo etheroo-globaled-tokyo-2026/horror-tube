@@ -1,19 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { typedFighterId } from "../typed-fighter.ts";
+import { roomNumber, typedFighterId, typedRoomId } from "../typed-fighter.ts";
 
-describe("typedFighterId", () => {
-  const selectable = [2, 4, 6];
-
-  it("reads a 1-based two-digit number that the server marked selectable", () => {
-    assert.equal(typedFighterId("03", selectable), 2);
-    assert.equal(typedFighterId("07", selectable), 6);
+describe("room numbers", () => {
+  it("round-trips every id of a ten-resident roster through one key", () => {
+    for (let id = 0; id < 10; id++) assert.equal(typedRoomId(roomNumber(id)), id);
   });
 
-  it("refuses a short buffer, a non-digit, and an id that is not selectable", () => {
-    assert.equal(typedFighterId("3", selectable), null);
-    assert.equal(typedFighterId("0a", selectable), null);
-    assert.equal(typedFighterId("01", selectable), null);
+  it("books only a single digit the server marked selectable", () => {
+    assert.equal(typedFighterId(roomNumber(4), [2, 4, 6]), 4);
+    assert.equal(typedFighterId(roomNumber(3), [2, 4, 6]), null);
+    assert.equal(typedFighterId("", [2, 4, 6]), null);
+    assert.equal(typedFighterId("a", [2, 4, 6]), null);
   });
 });
