@@ -1,4 +1,5 @@
 import {
+  WorldIdPortalError,
   createIdkitRequestContext,
   enterRoomAction,
   loadWorldIdEnv,
@@ -11,12 +12,25 @@ import {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { text } from "node:stream/consumers";
 
+import { HttpError, type HttpErrorBody } from "./http-error.js";
+
 export type WorldIdHandlerDeps = {
   env?: NodeJS.ProcessEnv;
   fetch?: VerifyFetch;
 };
 
-type WorldIdResponseBody = IdkitRequestContext | ({ ok: true } & VerifiedHuman);
+type WorldIdResponseBody = IdkitRequestContext | ({ ok: true } & VerifiedHuman) | HttpErrorBody;
+
+export function worldIdHttpError(error: Error): HttpError {
+  if (!(error instanceof WorldIdPortalError)) return new HttpError(401, error.message);
+  if (error.fault === "misconfigured") {
+    return new HttpError(503, error.message, {
+      code: "world_id_misconfigured",
+      detail: error.detail,
+    });
+  }
+  return new HttpError(error.fault === "unavailable" ? 502 : 401, error.message);
+}
 
 function sendJson(res: ServerResponse, status: number, body: WorldIdResponseBody): void {
   const payload = JSON.stringify(body);
@@ -102,9 +116,11 @@ export async function handleWorldIdRequest(
       const verified = await verifyEnterRoomProof(idkitResult, deps);
       sendJson(res, 200, { ok: true, action: verified.action, nullifier: verified.nullifier });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`POST /world-id/verify failed: ${message}`);
-      sendText(res, 401, message);
+      const failure = worldIdHttpError(err instanceof Error ? err : new Error(String(err)));
+      console.error(
+        `POST /world-id/verify failed with HTTP ${String(failure.status)}: ${failure.message}`,
+      );
+      sendJson(res, failure.status, failure.body());
     }
     return true;
   }

@@ -5,7 +5,7 @@ import { extname, resolve, sep } from "node:path";
 import * as v from "valibot";
 
 import { StoreWriteError, type GameLoop } from "./game/loop.js";
-import { HttpError } from "./http-error.js";
+import { HttpError, type HttpErrorBody } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
@@ -55,7 +55,7 @@ const CONTENT_TYPES = new Map([
 export type JsonBody =
   | { ok: true }
   | { ok: false; error: string }
-  | { error: string }
+  | HttpErrorBody
   | { session: string }
   | { address: string }
   | { digest: string };
@@ -126,7 +126,8 @@ function serveStatic(res: ServerResponse, staticDir: string, urlPath: string): v
     sendNotFound(res);
     return;
   }
-  const type = CONTENT_TYPES.get(extname(resolved.path).toLowerCase()) ?? "application/octet-stream";
+  const type =
+    CONTENT_TYPES.get(extname(resolved.path).toLowerCase()) ?? "application/octet-stream";
   const stream = createReadStream(resolved.path);
   stream.once("open", () => {
     if (res.headersSent || res.writableEnded) {
@@ -399,9 +400,7 @@ async function handleRequest(
 
     sendNotFound(res);
   } catch (err) {
-    console.error(
-      `request handler failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    console.error(`request handler failed: ${err instanceof Error ? err.message : String(err)}`);
     sendInternalError(res);
   }
 }

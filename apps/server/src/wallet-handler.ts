@@ -15,7 +15,7 @@ import {
   type ShinamiPort,
 } from "./shinami-port.js";
 import { assertSponsorableKind, betPoolIds } from "./tx-policy.js";
-import { verifyEnterRoomProof } from "./world-id-handler.js";
+import { verifyEnterRoomProof, worldIdHttpError } from "./world-id-handler.js";
 
 const BODY_LIMIT = 1_000_000;
 
@@ -143,7 +143,8 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
               `Request body is not JSON. Underlying: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
-          if (!parsedProof.success) throw new HttpError(400, "World ID proof must be a JSON object.");
+          if (!parsedProof.success)
+            throw new HttpError(400, "World ID proof must be a JSON object.");
           const nullifier = await deps.verifyProof(raw);
           sendJson(res, 200, { session: issueSession(nullifier, deps.pepper) });
           return;
@@ -201,8 +202,14 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
         const error = err instanceof Error ? err : new Error(String(err));
         const status = error instanceof HttpError ? error.status : 500;
         const message = redact(error.message, deps.pepper, secret);
-        console.error(`POST ${urlPath} failed: ${message}`);
-        if (!res.headersSent) sendJson(res, status, { error: message });
+        console.error(`POST ${urlPath} failed with HTTP ${String(status)}: ${message}`);
+        if (!res.headersSent) {
+          sendJson(
+            res,
+            status,
+            error instanceof HttpError ? error.body(message) : { error: message },
+          );
+        }
       }
     },
   };
@@ -238,13 +245,11 @@ export function createWalletHandlerFromEnv(
         });
         return verified.nullifier;
       } catch (err) {
-        if (err instanceof HttpError) throw err;
-        const message = err instanceof Error ? err.message : String(err);
-        if (err instanceof SyntaxError) {
-          throw new HttpError(400, `Request body is not JSON. Underlying: ${message}`);
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (error instanceof SyntaxError) {
+          throw new HttpError(400, `Request body is not JSON. Underlying: ${error.message}`);
         }
-        const status = /HTTP 5\d\d|non-JSON/u.test(message) ? 502 : 401;
-        throw new HttpError(status, message);
+        throw worldIdHttpError(error);
       }
     },
     shinami: shinamiPort(accessKey),
