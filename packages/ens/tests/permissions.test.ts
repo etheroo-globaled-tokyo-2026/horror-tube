@@ -298,20 +298,19 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
     const chainId = await publicClient.getChainId();
     assert.equal(chainId, 31337);
-    // anvil automines one block per transaction, so the factory, implementation,
-    // and deployProxy transactions are the last three blocks.
-    const blockNumber = await publicClient.getBlockNumber();
-    const deployBlock = await publicClient.getBlock({ blockNumber });
-    assert.equal(deployBlock.transactions.length, 1);
-    const [deployTx] = deployBlock.transactions;
-    const deployReceipt = await publicClient.getTransactionReceipt({ hash: deployTx });
-    const [factoryReceipt, implReceipt] = await Promise.all(
-      [blockNumber - 2n, blockNumber - 1n].map(async (n) => {
-        const block = await publicClient.getBlock({ blockNumber: n });
-        assert.equal(block.transactions.length, 1);
-        return publicClient.getTransactionReceipt({ hash: block.transactions[0] });
-      }),
+    // Block layout differs between anvil versions, so collect every transaction
+    // on the fresh chain; the deploy is exactly factory, implementation, deployProxy.
+    const head = await publicClient.getBlockNumber();
+    const txHashes: Hex[] = [];
+    for (let n = 0n; n <= head; n += 1n) {
+      txHashes.push(...(await publicClient.getBlock({ blockNumber: n })).transactions);
+    }
+    assert.equal(txHashes.length, 3);
+    const [factoryReceipt, implReceipt, deployReceipt] = await Promise.all(
+      txHashes.map((hash) => publicClient.getTransactionReceipt({ hash })),
     );
+    const deployTx = deployReceipt.transactionHash;
+    const blockNumber = deployReceipt.blockNumber;
     assert(factoryReceipt.contractAddress);
     assert(implReceipt.contractAddress);
     const factory = getAddress(factoryReceipt.contractAddress);
