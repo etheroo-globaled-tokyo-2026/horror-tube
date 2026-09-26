@@ -1,5 +1,3 @@
-import { randomInt as nodeCryptoRandomInt } from "node:crypto";
-
 import {
   loadFalVideoConfig,
   loadNarrationConfig,
@@ -13,6 +11,7 @@ import {
   type NarrationResult,
 } from "./narrate.js";
 import {
+  cryptoRandomInt,
   nextRotationPair,
   type RandomInt,
   type RosterEntry,
@@ -28,15 +27,7 @@ export * from "./fal-video.js";
 export * from "./rotation.js";
 export * from "./battle-queue.js";
 
-/** Production random source for pairing. Tests inject their own. */
-export function cryptoRandomInt(maxExclusive: number): number {
-  if (!Number.isInteger(maxExclusive) || maxExclusive <= 0) {
-    throw new Error(
-      `cryptoRandomInt maxExclusive must be a positive integer. Got: ${maxExclusive}`,
-    );
-  }
-  return nodeCryptoRandomInt(0, maxExclusive);
-}
+export { cryptoRandomInt };
 
 /**
  * Bout start: previous winner vs a random living non-winner.

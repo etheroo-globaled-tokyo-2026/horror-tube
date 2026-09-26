@@ -1,7 +1,7 @@
 import {
   nextRotationPair,
   type RandomInt,
-} from "@horror-tube/fight";
+} from "@horror-tube/fight/rotation";
 
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";

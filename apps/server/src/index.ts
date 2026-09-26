@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { cryptoRandomInt } from "@horror-tube/fight";
+import { cryptoRandomInt } from "@horror-tube/fight/rotation";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
