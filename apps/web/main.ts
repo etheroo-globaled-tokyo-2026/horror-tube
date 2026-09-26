@@ -52,6 +52,8 @@ const T = {
   say: "",
   sayUntil: 0,
   phase: "",
+  held: -1,
+  hover: -1,
 };
 
 const canvas = $("#view");
@@ -342,7 +344,7 @@ const label = (
     g.fillText(text, w / 2, h / 2 + 2);
   });
 const remote = new THREE.Group();
-remote.position.set(0.3, -0.1, -0.62);
+remote.position.set(0.31, -0.17, -0.62);
 remote.rotation.set(-0.3, -0.22, -0.1);
 remote.scale.setScalar(0.82);
 camera.add(remote);
@@ -503,12 +505,138 @@ function drawTape(ch: Character): void {
   tapeTex.needsUpdate = true;
 }
 function tapeResident(): Character | null {
-  if (S.phase !== "vote" || S.cast) return null;
-  if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
-  return T.buf.length === 2 ? (S.chars[+T.buf - 1] ?? null) : null;
+  if (S.phase === "gate") return null;
+  if (S.phase === "vote" && !S.cast) {
+    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
+    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
+  }
+  return S.chars[T.held] ?? null;
+}
+
+const SHELF = { x: 0.88, z: -1.14, w: 0.8, h: 1.66, d: 0.28, rows: [1.3, 0.97] };
+const wood = lambert({ map: metalTex(COL.rustDeep) });
+const shelf = new THREE.Group();
+shelf.position.set(SHELF.x, 0, SHELF.z);
+shelf.rotation.y = -0.38;
+scene.add(shelf);
+const plank = (w: number, h: number, d: number, x: number, y: number, z: number): void => {
+  const m = box(w, h, d, wood);
+  m.position.set(x, y, z);
+  shelf.add(m);
+};
+for (const side of [-1, 1])
+  plank(0.03, SHELF.h, SHELF.d, (side * (SHELF.w - 0.03)) / 2, SHELF.h / 2, 0);
+plank(SHELF.w, 0.02, SHELF.d, 0, SHELF.h, 0);
+plank(SHELF.w, SHELF.h, 0.01, 0, SHELF.h / 2, -SHELF.d / 2);
+for (const y of [0.05, 0.5, ...SHELF.rows]) plank(SHELF.w - 0.06, 0.02, SHELF.d, 0, y - 0.01, 0);
+const SPINE = { w: 0.11, h: 0.3, d: 0.2 };
+const FILLER = 0.05;
+const fillerTex = [COL.soot, COL.char, COL.grime].map((bg, i) =>
+  tex(12, 56, (g) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, 12, 56);
+    g.fillStyle = COL.bone;
+    g.fillRect(2, 8 + i * 6, 8, 20 - i * 4);
+    g.fillStyle = COL.grime;
+    g.fillRect(3, 12 + i * 6, 6, 1);
+  }),
+);
+type Slot = {
+  mesh: THREE.Mesh;
+  id: number;
+  home: THREE.Vector3;
+  out: number;
+  key: string;
+  canvas: HTMLCanvasElement;
+  tex: THREE.CanvasTexture;
+};
+const slots: Slot[] = [];
+SHELF.rows.forEach((y, row) => {
+  let x = -(SHELF.w - 0.06) / 2 + 0.006;
+  const place = (w: number, map: THREE.Texture): THREE.Mesh => {
+    const m = box(w, SPINE.h, SPINE.d, [
+      plastic,
+      plastic,
+      plastic,
+      plastic,
+      basic({ map }),
+      plastic,
+    ]);
+    m.position.set(x + w / 2, y + SPINE.h / 2, SPINE.d / 2 - SHELF.d / 2 + 0.02);
+    shelf.add(m);
+    x += w + 0.002;
+    return m;
+  };
+  for (let i = 0; i < 5; i++) {
+    if (i === 2) place(FILLER, fillerTex[(row + 1) % 3]);
+    const canvas = document.createElement("canvas");
+    canvas.width = 48;
+    canvas.height = 132;
+    const t = new THREE.CanvasTexture(canvas);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.colorSpace = THREE.SRGBColorSpace;
+    const mesh = place(SPINE.w, t);
+    slots.push({
+      mesh,
+      id: row * 5 + i,
+      home: mesh.position.clone(),
+      out: 0,
+      key: "",
+      canvas,
+      tex: t,
+    });
+  }
+  place(FILLER, fillerTex[row % 3]);
+  place(FILLER, fillerTex[(row + 2) % 3]);
+});
+function drawSpine(slot: Slot, ch: Character): void {
+  const g = ctx2d(slot.canvas);
+  g.fillStyle = V(ch.hue);
+  g.fillRect(0, 0, 48, 132);
+  g.fillStyle = COL.soot;
+  g.fillRect(3, 3, 42, 64);
+  g.fillStyle = COL.bone;
+  g.font = "700 16px Silkscreen";
+  g.textAlign = "center";
+  g.textBaseline = "alphabetic";
+  g.fillText(num(ch.id + 1), 24, 18);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(avatar(ch), 4, 22, 40, 40);
+  g.fillStyle = COL.bone;
+  g.fillRect(6, 71, 36, 58);
+  g.save();
+  g.translate(24, 100);
+  g.rotate(-Math.PI / 2);
+  g.fillStyle = COL.soot;
+  let size = 16;
+  do g.font = `700 ${size--}px Silkscreen`;
+  while (g.measureText(ch.short).width > 54 && size > 8);
+  g.textBaseline = "middle";
+  g.fillText(ch.short, 0, 1);
+  g.restore();
+  slot.tex.needsUpdate = true;
+}
+function updateShelf(shown: Character | null): void {
+  shelf.visible = S.phase !== "gate";
+  for (const slot of slots) {
+    const ch = S.chars[slot.id];
+    slot.mesh.visible = shelf.visible && !!ch && ch.alive && shown !== ch;
+    if (!ch) continue;
+    const key = ch.id + ch.hue;
+    if (slot.key !== key) drawSpine(slot, ch);
+    slot.key = key;
+    const out = T.hover === slot.id ? 1 : 0;
+    slot.out = LOW ? out : slot.out + (out - slot.out) * 0.25;
+    slot.mesh.position.set(
+      slot.home.x,
+      slot.home.y + slot.out * 0.01,
+      slot.home.z + slot.out * 0.08,
+    );
+  }
 }
 function updateTape(now: number): void {
   const ch = tapeResident();
+  updateShelf(ch);
   if (ch) {
     const key = [ch.id, ch.alive, ch.fights, ch.kills, ch.damage, ch.lost].join();
     if (ch.id !== TAPE.id) TAPE.at = now;
@@ -939,15 +1067,17 @@ function drawTV(): void {
 function hintText(): void {
   const h = $("#hint");
   const b = (s: string): string => `<b>${s}</b>`;
-  h.innerHTML =
-    S.phase === "gate"
+  const hovered = S.chars[T.hover];
+  h.innerHTML = hovered
+    ? `${b(num(hovered.id + 1))} ${hovered.name}. Click to pull the tape.`
+    : S.phase === "gate"
       ? W8.step === "read"
         ? `Read the waiver. Press ${b("ENTER")} or click the line to sign with World ID.`
         : W8.step === "scan"
           ? `Scan the code on the TV with ${b("World App")}. Orb only.`
           : ""
       : S.phase === "vote" && !S.cast
-        ? `Type a resident number ${b("0–9")}, then ${b("OK")}. You pick two.`
+        ? `Pull a tape off the shelf to read it. Type its number, then ${b("OK")}. You pick two.`
         : S.phase === "bet" && !S.bet && S.credit > 0
           ? `${b("VOL ±")} changes your stake. ${b("Hold A or B")} to bet.`
           : S.claim
@@ -973,8 +1103,10 @@ function press(id: string): void {
       T.reveal = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
     }
-  } else if (id === "clr") T.buf = "";
-  else if (id === "ok") ok();
+  } else if (id === "clr") {
+    T.buf = "";
+    T.held = -1;
+  } else if (id === "ok") ok();
   else if (id === "+" || id === "-") {
     if (S.phase === "bet" && !S.bet)
       T.stake = Math.max(0, Math.min(2, T.stake + (id === "+" ? 1 : -1)));
@@ -1038,6 +1170,15 @@ const hitAt = (e: MouseEvent): string | null => {
   const id: string | undefined = h?.object.userData.keyId;
   return id ?? null;
 };
+const onShelf = (e: MouseEvent): THREE.Object3D | null => {
+  if (S.phase === "gate") return null;
+  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
+  if (tape.visible) targets.push(tape);
+  return ray.intersectObjects(targets, false)[0]?.object ?? null;
+};
+const slotOf = (o: THREE.Object3D | null): Slot | undefined => slots.find((s) => s.mesh === o);
 const onPaper = (e: MouseEvent): boolean => {
   if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
@@ -1130,14 +1271,33 @@ $("#forget").addEventListener("click", () => {
   location.reload();
 });
 const look = new THREE.Vector2();
+let pointer: MouseEvent | null = null;
+function updateHover(): void {
+  const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
+  if (hover === T.hover) return;
+  T.hover = hover;
+  hintText();
+}
 addEventListener("pointermove", (e) => {
+  pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null);
+  canvas.classList.toggle(
+    "hot",
+    !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null || !!onShelf(e),
+  );
 });
 canvas.addEventListener("pointerdown", (e) => {
   if (onPaper(e)) return sign();
   const part = coinPartAt(e);
   if (part !== null) return coinBox?.use(part);
+  const hit = onShelf(e);
+  if (hit) {
+    T.buf = "";
+    T.reveal = -1;
+    T.held = slotOf(hit)?.id ?? -1;
+    T.hover = -1;
+    return hintText();
+  }
   const id = hitAt(e);
   if (!id) return;
   if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
@@ -1205,6 +1365,7 @@ renderer.setAnimationLoop(() => {
   }
   remote.visible = !waiver;
   updateTape(performance.now());
+  updateHover();
   if (coinBox !== null) coinBox.group.visible = !waiver;
   $("#demo-room").hidden = S.phase === "gate";
   $("#demo-gate").hidden = S.phase !== "gate" || dark;
