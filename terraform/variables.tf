@@ -143,6 +143,42 @@ variable "world_id_signing_key" {
   sensitive   = true
 }
 
+variable "world_id_environment" {
+  description = "WORLD_ID_ENVIRONMENT for the app (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fight_media_spaces_access_key_id" {
+  description = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID for the app. Set via TF_VAR_fight_media_spaces_access_key_id from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fight_media_spaces_secret" {
+  description = "FIGHT_MEDIA_SPACES_SECRET for the app. Set via TF_VAR_fight_media_spaces_secret from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fight_media_spaces_bucket" {
+  description = "FIGHT_MEDIA_SPACES_BUCKET for the app. Set via TF_VAR_fight_media_spaces_bucket from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fight_media_spaces_cdn_host" {
+  description = "FIGHT_MEDIA_SPACES_CDN_HOST for the app. Set via TF_VAR_fight_media_spaces_cdn_host from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fight_media_spaces_endpoint" {
+  description = "FIGHT_MEDIA_SPACES_ENDPOINT for the app. Set via TF_VAR_fight_media_spaces_endpoint from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
 variable "quorum_votes" {
   description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
   type        = number

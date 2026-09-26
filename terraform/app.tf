@@ -132,6 +132,48 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "WORLD_ID_ENVIRONMENT"
+        value = var.world_id_environment
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
+        value = var.fight_media_spaces_access_key_id
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_SECRET"
+        value = var.fight_media_spaces_secret
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_BUCKET"
+        value = var.fight_media_spaces_bucket
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_CDN_HOST"
+        value = var.fight_media_spaces_cdn_host
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "FIGHT_MEDIA_SPACES_ENDPOINT"
+        value = var.fight_media_spaces_endpoint
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "QUORUM_VOTES"
         value = tostring(var.quorum_votes)
         scope = "RUN_TIME"
