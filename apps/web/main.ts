@@ -26,14 +26,13 @@ import {
   W8,
   LOW,
   boutNumber,
-  num,
   reelById,
   say,
   walkRef,
   type WalkStep,
 } from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
-import { typedFighterId, typedStake } from "./typed-fighter.ts";
+import { roomNumber, typedFighterId, typedStake } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -76,7 +75,13 @@ function hintText(): void {
   const credit = `${usd(coinBox.credit())} USDC`;
   const waiting = coinBox.waiting();
   const collect =
-    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · COLLECT ${b("OK")}` : "";
+    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · ${b("COLLECT")}` : "";
+  const bookingId = typedFighterId(T.buf, S.selectable);
+  const booking = bookingId === null ? undefined : S.chars[bookingId];
+  const open = (choose: string): string =>
+    booking === undefined
+      ? `${choose} ${b("0–9")}${collect}`
+      : `OPEN ${b(roomNumber(booking.id))} ${booking.short}`;
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.at === "sticker"
@@ -109,7 +114,7 @@ function hintText(): void {
   }
   const reel = reelById(VCR.hover);
   if (reel) {
-    h.innerHTML = `${b(`BOUT ${num(boutNumber(reel))}`)} ${esc(boutTitle(reel))}`;
+    h.innerHTML = `${b(`BOUT ${boutNumber(reel)}`)} ${esc(boutTitle(reel))}`;
     return;
   }
   if (VCR.over) {
@@ -139,21 +144,23 @@ function hintText(): void {
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" || S.phase === "countdown"
         ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
-        : S.phase === "waiting" || S.phase === "over" || S.phase === "pick"
-          ? `TYPE THE NUMBER · OK${collect}`
-          : S.phase === "bet" && !S.bet && S.poolId === null
-            ? "OPENING THE BOOK"
-            : S.pending === "bet"
-              ? "RECORDING YOUR BET…"
-              : S.pending === "claim"
-                ? "COLLECTING…"
-                : S.phase === "bet" && !S.bet && S.credit > 0
-                  ? `${b("A")} OR ${b("B")} · TYPE THE AMOUNT · ${b("OK")}`
-                  : S.claim
-                    ? `COLLECT ${b("OK")}`
-                    : S.credit <= 0
-                      ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                      : `NEXT ${b("N")}`;
+        : S.phase === "waiting" || S.phase === "over"
+          ? open("CHOOSE A ROOM")
+          : S.phase === "pick"
+            ? open("CHOOSE WHO IS NEXT")
+            : S.phase === "bet" && !S.bet && S.poolId === null
+              ? "OPENING THE BOOK"
+              : S.pending === "bet"
+                ? "RECORDING YOUR BET…"
+                : S.pending === "claim"
+                  ? "COLLECTING…"
+                  : S.phase === "bet" && !S.bet && S.credit > 0
+                    ? `${b("A")} OR ${b("B")} · TYPE THE AMOUNT`
+                    : S.claim
+                      ? b("COLLECT")
+                      : S.credit <= 0
+                        ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                        : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -170,7 +177,7 @@ function press(id: string): void {
   if (/^\d$/.test(id)) {
     VCR.held = "";
     if (S.phase === "bet" && !S.bet && S.pending === null) T.buf = (T.buf + id).slice(0, 6);
-    else T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
+    else T.buf = id;
   } else if (id === "clr") {
     T.buf = "";
     VCR.held = "";
@@ -270,7 +277,7 @@ function placeTypedBet(): void {
   const amt = typedStake(T.buf);
   if (amt === null) {
     sfx.deny();
-    return say("Type the amount, then OK.");
+    return say("Type the amount.");
   }
   if (amt > S.credit) {
     sfx.deny();
@@ -421,7 +428,7 @@ const WALK: WalkStep[] = [
     remote: false,
   },
   {
-    say: "EXPECTING A SURVIVOR? PRESS A OR B, TYPE THE AMOUNT, THEN OK.",
+    say: "EXPECTING A SURVIVOR? PRESS A OR B, THEN TYPE THE AMOUNT.",
     view: () => null,
     remote: true,
   },

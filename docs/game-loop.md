@@ -7,10 +7,9 @@ betting, humans and house bots vote for who they think will win. The winner stay
 ## The loop
 
 ```
- WAITING ──human books one──▶ model picks opponent ──▶ VOTE (15s max) ──quorum──▶ COUNTDOWN
+ WAITING ──human books one──▶ model picks opponent ──▶ VOTE (waits for quorum) ──▶ COUNTDOWN
                                          after settle, human picks the next fighter, then VOTE again
-                                         │                                  │
-                                         └──────── timeout, no quorum ──────┤
+                                                                            │
                                                                             ▼
                   BET (story + video are made now)
                   video plays once ready; closes 5s after
@@ -31,9 +30,8 @@ betting, humans and house bots vote for who they think will win. The winner stay
   living fighters except the champion. A verified human picks the next one (`POST /next-fighter` `{ fighter }`). The
   model is not called. A dead fighter, the champion, or an unknown id is refused by name.
 - **Vote:** each human (one World ID nullifier per round) and each house bot picks which of the two will win. Bots
-  vote only after a human has voted, and their votes count toward `QUORUM_VOTES`. Voting closes at quorum plus
-  `VOTE_COUNTDOWN_SECONDS`, or at `VOTE_TIMEOUT_SECONDS` from the open, whichever is earlier. Without quorum the
-  round stores the tally it has (possibly empty) and goes on. The tally is stored in Postgres before `bet` and shown
+  vote only after a human has voted, and their votes count toward `QUORUM_VOTES`. Voting stays open with no
+  time limit until quorum, then closes `VOTE_COUNTDOWN_SECONDS` later. The tally is stored in Postgres before `bet` and shown
   on `RoundState`.
 - **After settle:** the winner stays on. The next bout is that champion plus a living challenger from the pairing
   model, then another vote. One living fighter ends the season.
@@ -147,7 +145,6 @@ Read from `.env`. Add each variable to `.env.example` with an empty value.
 | ----------------------------------------- | ------------------- | ------------------- |
 | `QUORUM_VOTES`                            | 1                   | 2                   |
 | `VOTE_COUNTDOWN_SECONDS`                  | 10                  | 10                  |
-| `VOTE_TIMEOUT_SECONDS`                    | 15                  | 15                  |
 | `PAIRING_MAX_ATTEMPTS`                    | 3                   | 3                   |
 | `PAIRING_TIMEOUT_SECONDS`                 | 30                  | 30                  |
 | `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` | 5                   | 5                   |

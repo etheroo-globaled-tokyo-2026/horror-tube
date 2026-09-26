@@ -23,7 +23,6 @@ import type { PairingRequest, PairingRunner } from "../src/pairing-job.js";
 const baseConfig: GameLoopConfig = {
   quorumVotes: 2,
   voteCountdownSeconds: 10,
-  voteTimeoutSeconds: 15,
   bettingCloseAfterVideoStartSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
@@ -205,14 +204,19 @@ async function votingLoop(overrides: Parameters<typeof makeLoop>[0] = {}) {
   return harness;
 }
 
-async function closeVoteByTimeout(harness: ReturnType<typeof makeLoop>): Promise<void> {
-  await harness.step(harness.loop.config.voteTimeoutSeconds * 1000);
-  assert.equal(harness.loop.getState().phase, "bet");
+async function closeVoteByQuorum(harness: Pick<ReturnType<typeof makeLoop>, "loop" | "step">) {
+  const fighters = harness.loop.getState().fighters;
+  assert.ok(fighters);
+  for (let i = 0; i < harness.loop.config.quorumVotes; i += 1) {
+    await harness.loop.voteWithNullifier(`voter-${String(i)}`, fighters[0]);
+  }
+  await harness.step(harness.loop.config.voteCountdownSeconds * 1000);
 }
 
 async function startedLoop(overrides: Parameters<typeof makeLoop>[0] = {}) {
   const harness = await votingLoop(overrides);
-  await closeVoteByTimeout(harness);
+  await closeVoteByQuorum(harness);
+  assert.equal(harness.loop.getState().phase, "bet");
   return harness;
 }
 
@@ -257,7 +261,6 @@ const opens = (betCalls: string[]): string[] => betCalls.filter((c) => c.startsW
 const configEnv = {
   QUORUM_VOTES: "2",
   VOTE_COUNTDOWN_SECONDS: "10",
-  VOTE_TIMEOUT_SECONDS: "15",
   BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5",
   VIDEO_TIMEOUT_SECONDS: "300",
   SETTLE_SECONDS: "8",
@@ -279,7 +282,6 @@ describe("game loop config", () => {
     const env = {
       QUORUM_VOTES: "2",
       VOTE_COUNTDOWN_SECONDS: "10",
-      VOTE_TIMEOUT_SECONDS: "15",
       VIDEO_TIMEOUT_SECONDS: "300",
       SETTLE_SECONDS: "8",
     };
@@ -357,7 +359,7 @@ describe("start", () => {
     assert.equal(voted.battleId, null);
     assert.equal(harness.deps.pairings.length, 0);
     assert.deepEqual(harness.deps.betCalls, []);
-    await closeVoteByTimeout(harness);
+    await closeVoteByQuorum(harness);
     await flushFightJob();
     const state = harness.loop.getState();
     assert.equal(state.phase, "bet");
@@ -529,8 +531,7 @@ describe("GameLoop phases", () => {
     await loop.chooseNextFighter(2);
     assert.deepEqual(loop.getState().fighters, [0, 2]);
     assert.equal(loop.getState().phase, "vote");
-    await step(baseConfig.voteTimeoutSeconds * 1_000);
-    assert.equal(loop.getState().phase, "bet");
+    await closeVoteByQuorum({ loop, step });
     assert.notEqual(loop.getState().battleId, battleId);
   });
 
@@ -734,7 +735,7 @@ describe("GameLoop phases", () => {
         },
       },
     });
-    await harness.step(harness.loop.config.voteTimeoutSeconds * 1000);
+    await closeVoteByQuorum(harness);
     await flushFightJob();
     const { loop, deps } = harness;
     assert.equal(loop.getState().phase, "over");
@@ -759,7 +760,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "over");
 
     await loop.start(0);
-    await step(baseConfig.voteTimeoutSeconds * 1_000);
+    await closeVoteByQuorum({ loop, step });
     await flushFightJob();
     assert.deepEqual(
       requests.map((r) => r.battleId),
@@ -814,7 +815,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "pick");
     assert.equal(loop.getState().round, 2);
     await loop.chooseNextFighter(2);
-    await step(baseConfig.voteTimeoutSeconds * 1_000);
+    await closeVoteByQuorum({ loop, step });
     await flushFightJob();
     assert.deepEqual(
       requests.map((r) => r.priorFrameUrl),
@@ -1096,7 +1097,7 @@ describe("chain call retries", () => {
 describe("prediction vote", () => {
   it("counts one pick of the two fighters and stores that tally before betting", async () => {
     const { loop, deps, step } = await votingLoop({
-      config: { quorumVotes: 2, voteCountdownSeconds: 10, voteTimeoutSeconds: 15 },
+      config: { quorumVotes: 2, voteCountdownSeconds: 10 },
     });
     await assert.rejects(
       () => loop.voteWithNullifier("outsider", 3),
@@ -1118,28 +1119,17 @@ describe("prediction vote", () => {
     assert.equal(deps.roundStore.tallies.size, 1);
   });
 
-  it("closes at the timeout without quorum and still opens betting", async () => {
-    const harness = await votingLoop({ config: { quorumVotes: 2, voteTimeoutSeconds: 15 } });
+  it("stays in vote without quorum however long it waits", async () => {
+    const harness = await votingLoop({ config: { quorumVotes: 2 } });
     await harness.loop.voteWithNullifier("human-1", 1);
-    await closeVoteByTimeout(harness);
-    assert.deepEqual(harness.loop.getState().tally, [0, 1]);
-  });
-
-  it("does not let the countdown run past the vote timeout", async () => {
-    const harness = await votingLoop({
-      config: { quorumVotes: 1, voteCountdownSeconds: 30, voteTimeoutSeconds: 15 },
-    });
-    await harness.loop.voteWithNullifier("human-1", 0);
-    assert.equal(harness.loop.getState().phase, "countdown");
-    assert.equal(harness.loop.getState().endsAt, 15_000);
-    await harness.step(15_000);
-    assert.equal(harness.loop.getState().phase, "bet");
-    assert.deepEqual(harness.loop.getState().tally, [1, 0]);
+    await harness.step(3_600_000);
+    assert.equal(harness.loop.getState().phase, "vote");
+    assert.equal(harness.loop.getState().endsAt, null);
   });
 
   it("a house bot votes only after a human, and that vote counts toward quorum", async () => {
     const harness = makeLoop({
-      config: { quorumVotes: 2, voteCountdownSeconds: 10, voteTimeoutSeconds: 15 },
+      config: { quorumVotes: 2, voteCountdownSeconds: 10 },
       randomInt: pinnedRandom(0, 1),
       houseBots: {
         chains: [
@@ -1205,7 +1195,7 @@ describe("house bot", () => {
     await step(60_000);
     assert.deepEqual(botCalls, [], "a bot never acts before a human starts the bout");
     await harness.loop.start(0);
-    await closeVoteByTimeout(harness);
+    await closeVoteByQuorum(harness);
     assert.ok(harness.loop.getState().poolId, "pool opens after the vote closes");
     return { ...harness, totals, botCalls, step };
   }

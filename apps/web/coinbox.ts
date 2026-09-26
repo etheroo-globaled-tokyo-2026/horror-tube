@@ -249,7 +249,6 @@ export function createCoinBox(
   const [drawerCanvas, dg] = layer(FW, DRAWER_H);
   const topTex = pixelTexture(topCanvas);
   const drawerTex = pixelTexture(drawerCanvas);
-  topTex.userData.text = true;
   let link: { wallet: GameWallet; coinType: string } | null = null;
   const stickerSpace = (): void => {
     dg.translate(STICKER[0] + STICKER[2] / 2, STICKER[1] + STICKER[3] / 2);

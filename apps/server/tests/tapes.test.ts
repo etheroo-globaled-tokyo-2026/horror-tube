@@ -27,7 +27,6 @@ const TapesErr = v.object({ ok: v.literal(false), error: v.string() });
 const config = {
   quorumVotes: 1,
   voteCountdownSeconds: 1,
-  voteTimeoutSeconds: 1,
   bettingCloseAfterVideoStartSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
@@ -152,6 +151,9 @@ describe("GET /tapes", () => {
     const base = await listen(game);
 
     await game.start(0);
+    const fighters = game.getState().fighters;
+    assert.ok(fighters);
+    await game.voteWithNullifier("voter-1", fighters[0]);
     clock = 1_000;
     await game.tick(clock);
     assert.equal(game.getState().phase, "bet");

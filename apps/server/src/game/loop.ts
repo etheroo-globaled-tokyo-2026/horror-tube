@@ -154,7 +154,6 @@ export class GameLoop {
   private votes: [number, number] = [0, 0];
   private tally: [number, number] | null = null;
   private roundId: string | null = null;
-  private voteClosesAt: number | null = null;
   private votingClosed = false;
   private readonly pendingVotes = new Set<Promise<void>>();
   private fighters: [number, number] | null = null;
@@ -338,9 +337,7 @@ export class GameLoop {
     const now = this.now();
     if (this.phase === "vote" && this.voters >= this.config.quorumVotes) {
       this.phase = "countdown";
-      const countdownEnds = now + this.config.voteCountdownSeconds * 1000;
-      this.endsAt =
-        this.voteClosesAt === null ? countdownEnds : Math.min(countdownEnds, this.voteClosesAt);
+      this.endsAt = now + this.config.voteCountdownSeconds * 1000;
     }
   }
 
@@ -674,7 +671,7 @@ export class GameLoop {
         `fighter rejected: ${challenger.ensLabel} (character ${String(fighterId)}) is the champion and stays on. Pick the next fighter.`,
       );
     }
-    await this.enterVote([this.champion, fighterId], this.now());
+    await this.enterVote([this.champion, fighterId]);
   }
 
   private async startFreshBout(bookedId: number): Promise<void> {
@@ -715,7 +712,7 @@ export class GameLoop {
       `start: season ${seasonId} fresh bout ${this.labelOf(fighters[0])} vs ${this.labelOf(fighters[1])}`,
     );
     try {
-      await this.enterVote(fighters, this.now());
+      await this.enterVote(fighters);
     } catch (cause) {
       await this.markSeasonEnded();
       throw cause;
@@ -751,7 +748,7 @@ export class GameLoop {
     return id;
   }
 
-  private async enterVote(fighters: [number, number], now: number): Promise<void> {
+  private async enterVote(fighters: [number, number]): Promise<void> {
     const seasonId = this.seasonId;
     if (seasonId === null) {
       throw new Error(`enterVote: round ${String(this.round)} has no open season.`);
@@ -789,15 +786,13 @@ export class GameLoop {
       bot.pick = null;
       bot.voteRetry = null;
     }
-    this.voteClosesAt = now + this.config.voteTimeoutSeconds * 1000;
-    this.endsAt = this.voteClosesAt;
+    this.endsAt = null;
     this.emit();
   }
 
   private async closeVoting(): Promise<void> {
     this.votingClosed = true;
     this.endsAt = null;
-    this.voteClosesAt = null;
     await Promise.allSettled(this.pendingVotes);
     const roundId = this.roundId;
     const fighters = this.fighters;

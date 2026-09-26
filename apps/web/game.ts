@@ -547,6 +547,9 @@ const fighters = (): Pair => {
 };
 export { char, fighters };
 
+export const replaying = (): boolean =>
+  (S.phase === "pick" || S.phase === "vote" || S.phase === "countdown" || S.phase === "over") &&
+  S.round > 1;
 setInterval(() => {
   refreshTimer();
   if (S.phase === "fight") S.frame++;
