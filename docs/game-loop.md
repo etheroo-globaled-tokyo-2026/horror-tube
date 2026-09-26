@@ -110,6 +110,9 @@ type RoundState = {
 
 Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
+`chars[].alive` in this push is a holding copy for the current season/bet window (same rule as
+`seasons.characters` in Postgres). ENS text record `status` is the authority; settle writes ENS,
+then refreshes the holding copy. BattleBetting settle reads ENS, never Postgres.
 
 **Actions from the client:**
 

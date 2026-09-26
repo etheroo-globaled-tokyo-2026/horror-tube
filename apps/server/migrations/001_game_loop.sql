@@ -1,6 +1,13 @@
 -- Game-loop tables (docs/game-loop.md, issue #69).
 -- Character ids are ENS labels. No stakes table.
--- Character alive/kills/damage live on seasons.characters (jsonb).
+--
+-- Authority: ENS text record `status` is the source of truth for alive/dead.
+-- BattleBetting settle reads ENS, not Postgres (docs/battle-betting.md).
+-- seasons.characters is a holding copy for the current season / bet window only
+-- (vote list, RoundState.chars, resume). Settle writes ENS first; then this row
+-- is refreshed from ENS. Never treat Postgres alive/dead as authoritative.
+-- kills/damage in the same jsonb are season-loop holding fields the same way.
+--
 -- gen_random_uuid() is built into PostgreSQL 13+ (Managed Postgres on DigitalOcean).
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -13,7 +20,9 @@ CREATE TABLE IF NOT EXISTS seasons (
   created_at timestamptz NOT NULL DEFAULT now(),
   ended_at timestamptz,
   champion_ens_label text,
+  -- Holding copy for this season (not source of truth). Shape:
   -- [{ "ens_label": string, "alive": boolean, "kills": number, "damage": number }, ...]
+  -- `alive` mirrors ENS text `status` (`dead` => false; otherwise true). Refresh from ENS after settle.
   characters jsonb NOT NULL DEFAULT '[]'::jsonb
 );
 

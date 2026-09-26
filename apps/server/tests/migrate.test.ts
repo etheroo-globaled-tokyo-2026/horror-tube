@@ -61,6 +61,13 @@ describe("migration SQL shape", () => {
     assert.match(sql, /fighter_b_ens_label/u);
     assert.match(sql, /ens_label/u);
     assert.match(sql, /characters jsonb/u);
+    assert.match(sql, /holding copy/iu);
+    assert.match(sql, /ENS text record `status` is the source of truth/u);
+    assert.match(sql, /Refresh from ENS after settle/u);
+    assert.doesNotMatch(
+      sql,
+      /Character alive\/kills\/damage live on seasons\.characters/u,
+    );
 
     assert.match(sql, /world_id_nullifier/u);
     assert.match(sql, /votes_round_nullifier_unique/u);
