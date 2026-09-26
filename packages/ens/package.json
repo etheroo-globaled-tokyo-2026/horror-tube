@@ -1,0 +1,21 @@
+{
+  "name": "@horror-tube/ens",
+  "private": true,
+  "scripts": {
+    "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "tsx scripts/register-eth-label.ts check",
+    "register": "tsx scripts/register-eth-label.ts",
+    "subnames": "tsx scripts/character-subnames.ts",
+    "dashboard": "tsx scripts/dashboard.ts"
+  },
+  "dependencies": {
+    "viem": "^2.56.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "dotenv": "^18.0.3",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2"
+  }
+}

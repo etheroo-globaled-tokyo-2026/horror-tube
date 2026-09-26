@@ -22,47 +22,52 @@ The secret stays in the child process environment for that invocation; it is not
 
 ### Spaces API keys (icon uploads)
 
-Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** from the environment. There are **no defaults** — if either is missing or blank, stop. Do not put real values in `.env` committed to git; `.env.example` lists only empty names.
+Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`** in the repo `.env`. There are **no defaults** — if either is missing or blank, stop. Do not commit real values. `.env.example` lists only empty names, and the `# 1password:` comment above each name is the path to read once when `.env` is missing.
 
-`terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Do not treat those names as interchangeable.
+`terraform apply` still expects the DigitalOcean provider env name **`SPACES_SECRET_ACCESS_KEY`**. App uploads use **`SPACES_SECRET`**. Copy `SPACES_SECRET` from `.env` into `SPACES_SECRET_ACCESS_KEY` for that command.
 
-Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command.
+The AWS CLI profile **`ethtokyo-spaces`** reads those two `.env` values through `scripts/spaces-credential-process`. That script does not call 1Password. In `~/.aws/config`:
+
+```ini
+[profile ethtokyo-spaces]
+region = sgp1
+endpoint_url = https://sgp1.digitaloceanspaces.com
+request_checksum_calculation = when_required
+response_checksum_validation = when_required
+credential_process = /absolute/path/to/horror-tube/scripts/spaces-credential-process
+```
+
+`credential_process` is the absolute path of `scripts/spaces-credential-process` in this checkout. Shells in this repo set `AWS_PROFILE=ethtokyo-spaces`. A shell that still has `AWS_PROFILE=PowerUserAccess-598726163780` or `AWS_SESSION_TOKEN` sends the Together account instead of Spaces. Export `AWS_PROFILE=ethtokyo-spaces` and unset `AWS_SESSION_TOKEN` for the command.
+
+If `.env` is missing, or either Spaces variable is blank, the script exits and names `.env.example`. Fill `.env` from those comments, then rerun. Do not call `op read` on every upload.
 
 Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-spaces` is limited to bucket `horror-tube-icons-sgp1-m4k9` with permission `readwrite` (UI: Read/Write/Delete). The CDN hostname is only a public read front for that same bucket; there is no separate CDN key. Sharing `spaces_access_key_id` and `spaces_secret` with the team shares that bucket only, not the DigitalOcean account and not the Postgres database.
-
-A fresh agent shell may already have `AWS_PROFILE` or an SSO session token; if those are set, the AWS CLI ignores the Spaces key or sends the wrong token. Unset them in the same command.
-
-Read the keys inside a subshell first: `env A="$(…)" B="$A"` does not work, because the parent shell expands `$A` before `env` sets it, so `B` is empty and the AWS CLI silently uses `~/.aws` credentials instead. The `:?` checks stop the command if `op read` fails or a value is blank:
 
 ```bash
 (
   set -euo pipefail
   : "${KEY:?KEY (object key) is required}"
-  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
-  SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
-  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
-  : "${SPACES_SECRET:?SPACES_SECRET is required}"
-  env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_SESSION_TOKEN \
-    AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
-    AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
-    aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
-    --endpoint-url "https://sgp1.digitaloceanspaces.com" \
+  AWS_PROFILE=ethtokyo-spaces aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
     --acl public-read
 )
 ```
 
-`terraform apply` takes the same key under the provider's names, `SPACES_ACCESS_KEY_ID` and `SPACES_SECRET_ACCESS_KEY`:
+`terraform apply` still loads the DigitalOcean API token from 1Password for that one command. Spaces keys come from `.env`:
 
 ```bash
 (
   set -euo pipefail
+  root=$(git rev-parse --show-toplevel)
+  set -a
+  # shellcheck disable=SC1091
+  source "$root/.env"
+  set +a
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
-  SPACES_ACCESS_KEY_ID="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_access_key_id')"
-  SPACES_SECRET_ACCESS_KEY="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
   : "${TF_VAR_do_token:?TF_VAR_do_token is required}"
-  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
-  : "${SPACES_SECRET_ACCESS_KEY:?SPACES_SECRET_ACCESS_KEY is required}"
-  export TF_VAR_do_token SPACES_ACCESS_KEY_ID SPACES_SECRET_ACCESS_KEY
+  export TF_VAR_do_token SPACES_ACCESS_KEY_ID
+  export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
   terraform apply
 )
 ```
