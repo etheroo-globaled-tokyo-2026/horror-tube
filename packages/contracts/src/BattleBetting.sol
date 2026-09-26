@@ -68,6 +68,7 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
     event BetPlaced(uint256 indexed battleId, address indexed bettor, uint8 fighter, uint256 amount);
     event BattleSettled(uint256 indexed battleId, uint8 winner, uint256 fee);
     event BattleCancelled(uint256 indexed battleId);
+    event BettingClosedEarly(uint256 indexed battleId, uint64 closesAt);
     event Claimed(uint256 indexed battleId, address indexed bettor, uint256 amount);
     event FeesWithdrawn(address indexed treasury, uint256 amount);
     event FeeBpsSet(uint16 feeBps);
@@ -169,6 +170,15 @@ contract BattleBetting is AccessControl, ReentrancyGuardTransient {
         accruedFees += fee;
         _releaseFighters(battle);
         emit BattleSettled(battleId, winner, fee);
+    }
+
+    /// The game ends betting when the fight video is ready, which isn't known at open, so
+    /// `closesAt` is the latest close and the operator can end betting sooner.
+    function closeBetting(uint256 battleId) external onlyRole(OPERATOR_ROLE) {
+        Battle storage battle = _requireOpen(battleId);
+        if (block.timestamp >= battle.closesAt) revert BettingClosed(battleId, battle.closesAt);
+        battle.closesAt = uint64(block.timestamp);
+        emit BettingClosedEarly(battleId, battle.closesAt);
     }
 
     function cancelBattle(uint256 battleId) external onlyRole(OPERATOR_ROLE) {

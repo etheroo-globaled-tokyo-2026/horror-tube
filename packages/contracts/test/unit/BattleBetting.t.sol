@@ -214,6 +214,27 @@ contract BattleBettingTest is Test {
         vm.stopPrank();
     }
 
+    function test_operatorCanEndBettingBeforeClosesAt() public {
+        uint256 id = _open();
+        _bet(alice, id, 0, 0.01 ether);
+        bytes32 operatorRole = betting.OPERATOR_ROLE();
+        vm.prank(alice);
+        vm.expectRevert(_unauthorized(alice, operatorRole));
+        betting.closeBetting(id);
+
+        vm.prank(operator);
+        betting.closeBetting(id);
+
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(BattleBetting.BettingClosed.selector, id, uint64(block.timestamp)));
+        betting.placeBet{value: MIN_BET}(id, 1);
+
+        _kill("freddy");
+        betting.settleBattle(id);
+        assertEq(uint8(betting.getBattle(id).status), uint8(BattleBetting.Status.Settled));
+    }
+
     function test_settleWaitsForCloseAndExactlyOneDeadFighter() public {
         uint256 id = _open();
         uint64 closesAt = betting.getBattle(id).closesAt;

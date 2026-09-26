@@ -7,7 +7,7 @@ import {PinnedEns} from "./PinnedEns.sol";
 
 /// Runs real transactions from the PRIVATE_KEY wallet against the deployment at
 /// BATTLE_BETTING_ADDRESS: checks which ENS name and resolver it reads, then opens a throwaway
-/// `e2e-a` vs `e2e-b` battle, bets on both fighters, cancels it and claims the refund.
+/// battle between fresh fighters, bets on both, closes betting early, cancels it and claims the refund.
 /// Settling needs a live ENS status change, so the Sepolia fork test covers that path.
 contract E2eBattleBetting is Script {
     function run() external {
@@ -38,6 +38,7 @@ contract E2eBattleBetting is Script {
         );
         betting.placeBet{value: minBet}(battleId, 0);
         betting.placeBet{value: 2 * minBet}(battleId, 1);
+        betting.closeBetting(battleId);
         betting.cancelBattle(battleId);
         uint256 owed = betting.claimable(battleId, wallet);
         uint256 heldBeforeClaim = address(betting).balance;
