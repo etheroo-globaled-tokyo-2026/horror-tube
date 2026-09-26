@@ -152,6 +152,8 @@ The app runtime `DATABASE_URL` is set in Terraform from `digitalocean_database_c
 
 ### App runtime secrets (TF_VAR from `.env`, never in tfvars)
 
+**Path:** 1Password is the human source of truth. The operator machine copies values into App Platform env at `terraform apply` via `TF_VAR_*` (sourced from the local `.env` for that one command). The App Platform instance does **not** read a `.env` (or any other secret file); DigitalOcean decrypts `type = "SECRET"` (and injects `GENERAL`) into `process.env` at runtime. DigitalOcean Secrets Manager (`doctl secrets`) is **not** the runtime path — there is no App Platform bind and no Terraform mount for those values.
+
 Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed), plus BUILD_TIME Vite env. Source them from the repo `.env` for that one command:
 
 | App env | Terraform variable | Notes |
@@ -170,8 +172,14 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_APP_ID` | `TF_VAR_world_id_app_id` | from `.env` |
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
+| `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (`production` or `staging`) |
+| `FIGHT_MEDIA_SPACES_ACCESS_KEY_ID` | `TF_VAR_fight_media_spaces_access_key_id` | from `.env` |
+| `FIGHT_MEDIA_SPACES_SECRET` | `TF_VAR_fight_media_spaces_secret` | from `.env` |
+| `FIGHT_MEDIA_SPACES_BUCKET` | `TF_VAR_fight_media_spaces_bucket` | from `.env` |
+| `FIGHT_MEDIA_SPACES_CDN_HOST` | `TF_VAR_fight_media_spaces_cdn_host` | from `.env` |
+| `FIGHT_MEDIA_SPACES_ENDPOINT` | `TF_VAR_fight_media_spaces_endpoint` | from `.env` |
 
-`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet).
+`FAL_KEY` / `FAL_MODEL` stay in `.env.example` for local video work; they are not wired into App Platform here (nothing in this service reads them yet). Laptop-only and one-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `SEPOLIA_RPC_URL`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them.
 
 Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
 
@@ -196,6 +204,12 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   : "${WORLD_ID_APP_ID:?WORLD_ID_APP_ID is required. See .env.example.}"
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
+  : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
+  : "${FIGHT_MEDIA_SPACES_ACCESS_KEY_ID:?FIGHT_MEDIA_SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${FIGHT_MEDIA_SPACES_SECRET:?FIGHT_MEDIA_SPACES_SECRET is required. See .env.example.}"
+  : "${FIGHT_MEDIA_SPACES_BUCKET:?FIGHT_MEDIA_SPACES_BUCKET is required. See .env.example.}"
+  : "${FIGHT_MEDIA_SPACES_CDN_HOST:?FIGHT_MEDIA_SPACES_CDN_HOST is required. See .env.example.}"
+  : "${FIGHT_MEDIA_SPACES_ENDPOINT:?FIGHT_MEDIA_SPACES_ENDPOINT is required. See .env.example.}"
   TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
   export TF_VAR_do_token
   export TF_VAR_ens_label="$ENS_LABEL"
@@ -211,6 +225,12 @@ Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key re
   export TF_VAR_world_id_app_id="$WORLD_ID_APP_ID"
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
+  export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
+  export TF_VAR_fight_media_spaces_access_key_id="$FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
+  export TF_VAR_fight_media_spaces_secret="$FIGHT_MEDIA_SPACES_SECRET"
+  export TF_VAR_fight_media_spaces_bucket="$FIGHT_MEDIA_SPACES_BUCKET"
+  export TF_VAR_fight_media_spaces_cdn_host="$FIGHT_MEDIA_SPACES_CDN_HOST"
+  export TF_VAR_fight_media_spaces_endpoint="$FIGHT_MEDIA_SPACES_ENDPOINT"
   export SPACES_ACCESS_KEY_ID
   export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
   cd "$root/terraform"

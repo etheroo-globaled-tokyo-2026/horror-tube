@@ -1,12 +1,11 @@
-import { config as loadDotenv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { readGamePort, readStaticDir } from "./env.js";
+import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
 import { createGameServer, listenGameServer } from "./server.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-loadDotenv({ path: join(repoRoot, ".env") });
+loadRepoDotenv(join(repoRoot, ".env"));
 
 const port = readGamePort();
 const staticDir = readStaticDir();

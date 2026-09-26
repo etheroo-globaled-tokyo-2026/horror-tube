@@ -1,3 +1,4 @@
+import { config as loadDotenv } from "dotenv";
 import { existsSync, statSync } from "node:fs";
 
 export function requiredEnv(
@@ -11,6 +12,22 @@ export function requiredEnv(
     );
   }
   return value;
+}
+
+/**
+ * Load a `.env` file only when it exists (laptop checkout).
+ * App Platform has no `.env` on disk; the process uses injected env only.
+ * A missing file is not an error. Missing required variables still fail by name.
+ */
+export function loadRepoDotenv(envPath: string): { loaded: boolean } {
+  if (!existsSync(envPath)) {
+    return { loaded: false };
+  }
+  const result = loadDotenv({ path: envPath });
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  return { loaded: true };
 }
 
 export function readGamePort(env: NodeJS.ProcessEnv = process.env): number {
