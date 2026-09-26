@@ -311,7 +311,7 @@ describe("GameLoop ENS status", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "reset-over" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady(
+    await loop.setVideoReady(
       "https://cdn.example/v.mp4",
       1,
       "https://cdn.example/frames/seed.jpg",
@@ -388,7 +388,7 @@ describe("GameLoop phases", () => {
 
     await loop.attachAgentResult(sampleAgentInsert());
     loop.setOutcome(0, 3);
-    loop.setVideoReady(
+    await loop.setVideoReady(
       "https://cdn.example/videos/fight1.mp4",
       4_000,
       "https://cdn.example/frames/fight1.jpg",
@@ -519,7 +519,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "settle-on" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
@@ -591,7 +591,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "fail-status" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
@@ -645,7 +645,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(sampleAgentInsert({ id: "wrong-winner" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
@@ -660,7 +660,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().error !== null, true);
   });
 
-  it("refuses a playback report when no agent result is attached", async () => {
+  it("refuses setVideoReady when no agent result is attached", async () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
@@ -686,12 +686,11 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop.tick(now);
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
-    await assert.rejects(() => startPlayback(loop), /no battle_results row is attached/u);
-    now += 60_000;
-    await loop.tick(now);
-    assert.equal(loop.getState().phase, "bet");
-    assert.equal(loop.getState().bettingClosesAt, null);
+    await assert.rejects(
+      () => loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg"),
+      /no battle_results row is attached/u,
+    );
+    assert.equal(loop.getState().videoUrl, null);
     assert.deepEqual(settle.calls, []);
   });
 
@@ -746,7 +745,7 @@ describe("GameLoop phases", () => {
     assert.equal(loop2.getState().phase, "bet");
     await loop2.attachAgentResult(agentInsertForAlphaWin({ id: "dup-path" }));
     loop2.setOutcome(0, 0);
-    loop2.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop2.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop2);
     now += 1_000;
     await loop2.tick(now);
@@ -786,8 +785,11 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop2.tick(now);
     assert.equal(loop2.getState().phase, "bet");
-    assert.throws(() => loop2.setVideoReady("  ", 1000, "https://cdn.example/frames/seed.jpg"), /non-empty/u);
-    assert.throws(
+    await assert.rejects(
+      () => loop2.setVideoReady("  ", 1000, "https://cdn.example/frames/seed.jpg"),
+      /non-empty/u,
+    );
+    await assert.rejects(
       () =>
         loop2.setVideoReady(
           "https://cdn.example/v.mp4",
@@ -824,7 +826,7 @@ describe("GameLoop phases", () => {
     await loop.tick(now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "no-random" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
     now += 1_000;
     await loop.tick(now);
@@ -1186,7 +1188,7 @@ describe("betting cutoff", () => {
     await loop.tick(clock.now);
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "cutoff-row" }));
     loop.setOutcome(0, 2);
-    loop.setVideoReady("https://cdn.example/v.mp4", VIDEO_MS, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", VIDEO_MS, "https://cdn.example/frames/seed.jpg");
     const poolId = loop.getState().poolId;
     assert.ok(poolId);
     return { loop, clock, settle, poolId };
@@ -1440,7 +1442,7 @@ describe("chain call retries", () => {
   async function readyAlphaWin(loop: GameLoop): Promise<void> {
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "retry-row" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
     await startPlayback(loop);
   }
 
@@ -1648,7 +1650,7 @@ describe("house bot", () => {
   async function readyVideo(loop: GameLoop): Promise<void> {
     await loop.attachAgentResult(agentInsertForAlphaWin({ id: "bot-row" }));
     loop.setOutcome(0, 0);
-    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+    await loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
   }
 
   it("votes only after a human, reaching quorum, and its vote is stored under its address and tallied", async () => {

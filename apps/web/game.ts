@@ -518,7 +518,7 @@ const fighters = (): Pair => {
 export { char, fighters };
 
 export const replaying = (): boolean =>
-  (S.phase === "vote" || S.phase === "countdown") && !!S.last && !!S.videoUrl;
+  (S.phase === "vote" || S.phase === "countdown") && !!S.last;
 
 setInterval(() => {
   refreshTimer();
