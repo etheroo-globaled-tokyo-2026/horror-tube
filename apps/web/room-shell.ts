@@ -23,6 +23,10 @@ export const wallM = rough(wallTex);
 export const back = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.8), wallM);
 back.position.set(0, 1.4, -1.8);
 scene.add(back);
+export const behind = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.8), wallM);
+behind.position.set(0, 1.4, 2.2);
+behind.rotation.y = Math.PI;
+scene.add(behind);
 for (const side of [-1, 1]) {
   const w = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.8), wallM);
   w.position.set(side * 2.2, 1.4, 0.2);

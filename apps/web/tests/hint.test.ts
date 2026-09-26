@@ -4,7 +4,11 @@ import { describe, it } from "node:test";
 import { errorHint, type HintNote } from "../hint.ts";
 
 describe("errorHint", () => {
-  const rejected: HintNote = { phase: "bet", note: `BET REJECTED. <img src=x onerror="pwn()">`, noteKind: "bad" };
+  const rejected: HintNote = {
+    phase: "bet",
+    note: `BET REJECTED. <img src=x onerror="pwn()">`,
+    noteKind: "bad",
+  };
 
   it("shows a bad note in the room, escaped", () => {
     const hint = errorHint(rejected);

@@ -48,6 +48,7 @@ const key = (
   keyById.set(id, m);
   return m;
 };
+key("power", "POWER", 0.032, 0.163, 0.042, 0.018, COL.bloodDeep, COL.bone, 8);
 key("A", "A", -0.03, 0.125, 0.05, 0.036, COL.bone, COL.soot, 22);
 key("B", "B", 0.03, 0.125, 0.05, 0.036, COL.sulfur, COL.soot, 22);
 key("-", "VOL−", -0.03, 0.08, 0.05, 0.026, COL.grime, COL.bone, 11);

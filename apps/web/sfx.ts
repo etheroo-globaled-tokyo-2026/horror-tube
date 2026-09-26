@@ -424,9 +424,37 @@ export function ambience(level: number, bulb: number, lightsOut: boolean): void 
 }
 
 export const isMuted = (): boolean => muted;
+const loud = gain(muted ? 0 : 1);
+loud.connect(ctx.destination);
+const decoded = new Map<string, AudioBuffer>();
+export function preload(urls: string[]): void {
+  for (const url of urls)
+    fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => decoded.set(url, buf))
+      .catch((err: Error) => console.error(`Sound ${url} failed to load: ${err.message}`));
+}
+export function sample(url: string, level = 1): void {
+  if (!allowed()) return;
+  const buf = decoded.get(url);
+  if (buf === undefined) {
+    console.error(`Sound ${url} is not loaded yet`);
+    return;
+  }
+  const s = ctx.createBufferSource();
+  s.buffer = buf;
+  s.connect(gain(level)).connect(loud);
+  s.start(now());
+}
+
 export function toggleMute(): void {
   muted = !muted;
   master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.05);
+  loud.gain.setTargetAtTime(muted ? 0 : 1, ctx.currentTime, 0.05);
   try {
     localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
   } catch {
