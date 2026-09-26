@@ -6,7 +6,8 @@
     "test": "sui move test --path move",
     "typecheck": "tsc --noEmit",
     "deploy": "tsx --env-file=../../.env src/deploy.ts",
-    "mint": "tsx --env-file=../../.env src/mint.ts"
+    "mint": "tsx --env-file=../../.env src/mint.ts",
+    "accounts": "tsx --env-file=../../.env src/accounts.ts"
   },
   "dependencies": {
     "@horror-tube/betting": "workspace:*",

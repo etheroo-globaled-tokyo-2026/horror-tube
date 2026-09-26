@@ -132,8 +132,10 @@ coin instead: `packages/test-usdc`, module `test_usdc::usdc`. It has no value.
   with `coin::send_funds` (where `/tx` spends from). Max 1,000 USDC per call.
 - `pnpm test-usdc:deploy` publishes it and prints `TEST_USDC_TYPE` and `TEST_USDC_FAUCET_ID`.
   `pnpm test-usdc:mint <address> <units>` mints base units to that address balance and prints its
-  new balance. Both CLIs load `@horror-tube/betting` from `dist`, so run
-  `pnpm --filter @horror-tube/betting build` first.
+  new balance. `pnpm test-usdc:accounts <count> <usdc-each> <sui-each>` (e.g. `20 500 0.5`) creates
+  keypairs, saves them to the gitignored `packages/test-usdc/accounts.json`, and in one transaction
+  gives each the admin's SUI and freshly minted test USDC. The CLIs load `@horror-tube/betting` from
+  `dist`, so run `pnpm --filter @horror-tube/betting build` first.
 - Switch the game to it: set `SUI_USDC_TYPE` to the `TEST_USDC_TYPE` value and run
   `pnpm betting:deploy`, which creates its house for `SUI_USDC_TYPE` (it also publishes a new betting
   package, so replace every ID it prints). `apps/web/wallet.ts` hard-codes `USDC_TYPE`, which must match.
