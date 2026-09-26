@@ -39,6 +39,13 @@ describe("spacesRegionFromEndpoint", () => {
   it("rejects a non-URL endpoint", () => {
     assert.throws(() => spacesRegionFromEndpoint("not-a-url"), /FIGHT_MEDIA_SPACES_ENDPOINT/u);
   });
+
+  it("rejects a host that is not digitaloceanspaces.com", () => {
+    assert.throws(
+      () => spacesRegionFromEndpoint("https://sgp1.amazonaws.com"),
+      /FIGHT_MEDIA_SPACES_ENDPOINT.*digitaloceanspaces\.com/u,
+    );
+  });
 });
 
 describe("readFightMediaConfig", () => {

@@ -22,17 +22,31 @@ export type UploadFightVideoOptions = {
   env?: NodeJS.ProcessEnv;
   /** Override config instead of reading env. */
   config?: FightMediaConfig;
-  /** Object id for videos/<id>.mp4. Defaults to a new UUID (never overwrite). */
-  objectId?: string;
   /** Injectable PUT. Defaults to an S3 client against the Spaces endpoint. */
   putObject?: PutFightVideo;
 };
+
+export function buildPutFightVideoInput(
+  config: FightMediaConfig,
+  body: Uint8Array,
+  objectId: string,
+): PutFightVideoInput {
+  return {
+    Bucket: config.bucket,
+    Key: videoObjectKey(objectId),
+    Body: body,
+    ACL: "public-read",
+    ContentType: "video/mp4",
+  };
+}
 
 function createSpacesPutObject(config: FightMediaConfig): PutFightVideo {
   const clientConfig: S3ClientConfig = {
     region: config.region,
     endpoint: config.endpoint,
     forcePathStyle: false,
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
@@ -53,8 +67,9 @@ function createSpacesPutObject(config: FightMediaConfig): PutFightVideo {
 }
 
 /**
- * Upload fight mp4 bytes to Spaces under videos/<id>.mp4 and return the public CDN URL.
+ * Upload fight mp4 bytes to Spaces under videos/<uuid>.mp4 and return the public CDN URL.
  * That URL is what RoundState.videoUrl uses. Fails closed — no placeholder URL.
+ * Do not pass a fal.media URL here; download those bytes first, then upload.
  */
 export async function uploadFightVideo(options: UploadFightVideoOptions): Promise<string> {
   if (options.body.byteLength === 0) {
@@ -62,42 +77,18 @@ export async function uploadFightVideo(options: UploadFightVideoOptions): Promis
   }
 
   const config = options.config ?? readFightMediaConfig(options.env ?? process.env);
-  const objectId = options.objectId ?? randomUUID();
-  const key = videoObjectKey(objectId);
+  const putInput = buildPutFightVideoInput(config, options.body, randomUUID());
   const putObject = options.putObject ?? createSpacesPutObject(config);
-
-  const putInput: PutFightVideoInput = {
-    Bucket: config.bucket,
-    Key: key,
-    Body: options.body,
-    ACL: "public-read",
-    ContentType: "video/mp4",
-  };
 
   try {
     await putObject(putInput);
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     throw new Error(
-      `Spaces put_object failed for s3://${config.bucket}/${key}: ${detail}. Refusing to return a placeholder video URL.`,
+      `Spaces put_object failed for s3://${config.bucket}/${putInput.Key}: ${detail}. Refusing to return a placeholder video URL.`,
       { cause },
     );
   }
 
-  return fightMediaCdnUrl(config.cdnHost, key);
-}
-
-/** Exported for tests that assert request construction without a live Spaces PUT. */
-export function buildPutFightVideoInput(
-  config: FightMediaConfig,
-  body: Uint8Array,
-  objectId: string,
-): PutFightVideoInput {
-  return {
-    Bucket: config.bucket,
-    Key: videoObjectKey(objectId),
-    Body: body,
-    ACL: "public-read",
-    ContentType: "video/mp4",
-  };
+  return fightMediaCdnUrl(config.cdnHost, putInput.Key);
 }

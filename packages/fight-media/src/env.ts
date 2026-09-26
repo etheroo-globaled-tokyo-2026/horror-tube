@@ -17,6 +17,8 @@ export type FightMediaConfig = {
   region: string;
 };
 
+const SPACES_HOST_SUFFIX = ".digitaloceanspaces.com";
+
 export function spacesRegionFromEndpoint(endpoint: string): string {
   let host: string;
   try {
@@ -27,7 +29,12 @@ export function spacesRegionFromEndpoint(endpoint: string): string {
       { cause },
     );
   }
-  const region = host.split(".", 1)[0]?.trim() ?? "";
+  if (!host.endsWith(SPACES_HOST_SUFFIX)) {
+    throw new Error(
+      `FIGHT_MEDIA_SPACES_ENDPOINT host must end with ${SPACES_HOST_SUFFIX}. Got: ${JSON.stringify(host)}`,
+    );
+  }
+  const region = host.slice(0, -SPACES_HOST_SUFFIX.length).split(".", 1)[0]?.trim() ?? "";
   if (region === "") {
     throw new Error(
       `FIGHT_MEDIA_SPACES_ENDPOINT host has no Spaces region prefix. Got: ${JSON.stringify(host)}`,
