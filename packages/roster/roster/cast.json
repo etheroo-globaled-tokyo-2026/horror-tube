@@ -1,33 +1,43 @@
 [
   {
+    "label": "jason",
     "source": "https://villains.fandom.com/wiki/Jason_Voorhees_(Friday_the_13th)"
   },
   {
+    "label": "freddy",
     "source": "https://villains.fandom.com/wiki/Freddy_Krueger_(original)"
   },
   {
+    "label": "chucky",
     "source": "https://villains.fandom.com/wiki/Chucky_(Child%27s_Play)"
   },
   {
+    "label": "pinhead",
     "source": "https://villains.fandom.com/wiki/Pinhead_(Hellraiser)"
   },
   {
+    "label": "godzilla",
     "source": "https://godzilla.fandom.com/wiki/Godzilla_(1954)"
   },
   {
+    "label": "frankenstein",
     "look_source": "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)",
     "brief_source": "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)"
   },
   {
+    "label": "count",
     "source": "https://movie-monster.fandom.com/wiki/Count_Dracula"
   },
   {
+    "label": "wolf",
     "source": "https://movie-monster.fandom.com/wiki/Wolf_Man"
   },
   {
+    "label": "leatherface",
     "source": "https://mortalkombat.fandom.com/wiki/Leatherface"
   },
   {
+    "label": "imhotep",
     "source": "https://villains.fandom.com/wiki/Imhotep_(Universal_Monsters)"
   }
 ]
