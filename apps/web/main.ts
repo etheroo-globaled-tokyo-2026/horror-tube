@@ -120,9 +120,10 @@ composer.addPass(ao);
 composer.addPass(new OutputPass());
 const levels = { value: 255 };
 const dither = new ShaderPass({
-    uniforms: { tDiffuse: { value: null }, levels },
-    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
-    fragmentShader: `
+  uniforms: { tDiffuse: { value: null }, levels },
+  vertexShader:
+    "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `
       uniform sampler2D tDiffuse; uniform float levels; varying vec2 vUv;
       const mat4 B = mat4(0.,8.,2.,10., 12.,4.,14.,6., 3.,11.,1.,9., 15.,7.,13.,5.);
       void main() {
@@ -146,7 +147,8 @@ const blit = new THREE.Mesh(
   new THREE.PlaneGeometry(2, 2),
   new THREE.ShaderMaterial({
     uniforms: { map: blitMap, linear: blitLinear },
-    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    vertexShader:
+      "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
     fragmentShader: `
       uniform sampler2D map; uniform float linear; varying vec2 vUv;
       void main() {
@@ -390,15 +392,6 @@ const wallTex = tex(
   [4, 1],
 );
 const floorTex = tex(128, 128, (g, w, h) => planks(g, w, h, 16, COL.char, [COL.soot]), [3, 3]);
-const tvFrontTex = tex(256, 200, (g, w, h) => {
-  g.fillStyle = COL.char;
-  g.fillRect(0, 0, w, h);
-  g.fillStyle = COL.grime;
-  g.fillRect(222, 8, 28, 80);
-  g.fillStyle = COL.soot;
-  for (let y = 11; y < 86; y += 4)
-    for (let x = 224 + ((y >> 2) % 2) * 2; x < 249; x += 4) g.fillRect(x, y, 2, 2);
-});
 const label = (
   text: string,
   bg: string,
@@ -708,7 +701,9 @@ const teak = rough(
     scratches(g, tr, [0, 0, w, h], 12, COL.rust, 0.4);
   }),
 );
-tv.add(box(1.02, 0.8, 0.72, [teak, teak, teak, teak, rough(tvFrontTex), teak]));
+const body = box(1.02, 0.8, 0.63, teak);
+body.position.z = -0.045;
+tv.add(body);
 const ivory = lambert({
   map: tex(
     128,
@@ -752,22 +747,22 @@ const rounded = (
   p.quadraticCurveTo(x, y, x + c, y);
 };
 const maskOutline = new THREE["Shape"]();
-rounded(maskOutline, -0.505, -0.395, 0.85, 0.79, 0.02);
+rounded(maskOutline, -0.505, -0.395, 1.01, 0.79, 0.02);
 const hole = new THREE.Path();
-rounded(hole, -0.435, -0.2775, 0.75, 0.555, 0.07);
+rounded(hole, -0.47, -0.315, 0.82, 0.63, 0.08);
 maskOutline.holes.push(hole);
 const mask = new THREE.Mesh(
   new THREE.ExtrudeGeometry(maskOutline, {
-    depth: 0.01,
+    depth: 0.092,
     bevelEnabled: true,
     bevelThickness: 0.008,
     bevelSize: 0.008,
     bevelSegments: 2,
     curveSegments: 6,
   }),
-  ivory,
+  [ivory, ivory],
 );
-const MASK = { x: -0.505, y: -0.395, w: 0.85, h: 0.79, px: 600 };
+const MASK = { x: -0.505, y: -0.395, w: 1.01, h: 0.79, px: 600 };
 const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), (g, w, h) => {
   const wr = seeded(13),
     at = (x: number, y: number): [number, number] => [
@@ -786,9 +781,9 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
   }
   g.globalAlpha = 1;
   for (let i = 0; i < 10; i++) blotch(g, wr, wr() * w, wr() * h, 30 + wr() * 70, COL.rust, 0.07);
-  const [hx, hy] = at(-0.435, 0.2775);
-  const hw = 0.75 * MASK.px,
-    hh = 0.555 * MASK.px;
+  const [hx, hy] = at(-0.47, 0.315);
+  const hw = 0.82 * MASK.px,
+    hh = 0.63 * MASK.px;
   for (const [lw, a, c] of [
     [22, 0.12, COL.grime],
     [12, 0.22, COL.grime],
@@ -798,7 +793,7 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
     g.strokeStyle = c;
     g.lineWidth = lw;
     g.beginPath();
-    rounded(g, hx, hy, hw, hh, 0.07 * MASK.px);
+    rounded(g, hx, hy, hw, hh, 0.08 * MASK.px);
     g.stroke();
   }
   g.globalAlpha = 1;
@@ -825,8 +820,22 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
       g.fillRect(fx + Math.sin(y * 0.05 + f) * 2, 190 + y, 4 - y / 90, 1);
   }
   g.globalAlpha = 1;
+  const [gx, gy] = at(0.37, 0.35);
+  const gw = 0.12 * MASK.px,
+    gh = 0.7 * MASK.px,
+    grilleH = 0.36 * MASK.px;
+  g.fillStyle = COL.soot;
+  g.beginPath();
+  rounded(g, gx, gy, gw, gh, 8);
+  g.fill();
+  g.fillStyle = COL.grime;
+  for (let y = gy + 8; y < gy + grilleH; y += 8)
+    for (let x = gx + 7 + ((y / 8) % 2) * 4; x < gx + gw - 6; x += 8) g.fillRect(x, y, 3, 3);
+  for (let x = gx + 6; x < gx + gw - 4; x += 6)
+    g.fillRect(x, gy + grilleH + 10, 2, gh - grilleH - 18);
   g.save();
-  g.translate(hx + 90, hy + hh + 40);
+  g.translate(hx + 90, hy + hh + 26);
+  g.scale(0.8, 0.8);
   g.rotate(-0.06);
   g.fillStyle = COL.bone;
   g.fillRect(-80, -15, 160, 30);
@@ -844,36 +853,80 @@ const maskTex = tex(Math.round(MASK.w * MASK.px), Math.round(MASK.h * MASK.px), 
 maskTex.wrapS = maskTex.wrapT = THREE.ClampToEdgeWrapping;
 maskTex.repeat.set(1 / MASK.w, 1 / MASK.h);
 maskTex.offset.set(-MASK.x / MASK.w, -MASK.y / MASK.h);
-mask.material = lambert({
-  map: maskTex,
-  bumpMap: maskTex,
-  bumpScale: 0.35,
-  color: new THREE.Color().setScalar(0.62),
-});
-mask.position.z = 0.368;
+mask.material = [
+  lambert({
+    map: maskTex,
+    bumpMap: maskTex,
+    bumpScale: 0.35,
+    color: new THREE.Color().setScalar(0.62),
+  }),
+  lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.28) }),
+];
+mask.position.z = 0.278;
 tv.add(mask);
+const loop = (x: number, y: number, w: number, h: number, c: number): THREE.Vector2[] => {
+  const sh = new THREE["Shape"]();
+  rounded(sh, x, y, w, h, c);
+  return sh.getSpacedPoints(64);
+};
+const mouth = loop(-0.47, -0.315, 0.82, 0.63, 0.08),
+  throat = loop(-0.43, -0.2725, 0.74, 0.545, 0.06);
+const funnelPos: number[] = [];
+for (let i = 0; i < mouth.length - 1; i++) {
+  const [a, b, c, d] = [mouth[i], mouth[i + 1], throat[i + 1], throat[i]];
+  if (!a || !b || !c || !d) continue;
+  funnelPos.push(
+    a.x,
+    a.y,
+    0.378,
+    b.x,
+    b.y,
+    0.378,
+    c.x,
+    c.y,
+    0.28,
+    a.x,
+    a.y,
+    0.378,
+    c.x,
+    c.y,
+    0.28,
+    d.x,
+    d.y,
+    0.28,
+  );
+}
+const funnelGeo = new THREE.BufferGeometry();
+funnelGeo.setAttribute("position", new THREE.Float32BufferAttribute(funnelPos, 3));
+funnelGeo.computeVertexNormals();
+tv.add(
+  new THREE.Mesh(
+    funnelGeo,
+    lambert({
+      color: new THREE.Color(COL.bone).multiplyScalar(0.45),
+      side: THREE.DoubleSide,
+    }),
+  ),
+);
 const badge = new THREE.Mesh(
   new THREE.PlaneGeometry(0.17, 0.026),
   lambert({ map: label("HORROR TUBE", COL.rustDeep, COL.bone, 340, 52, 30) }),
 );
-badge.position.set(-0.06, -0.337, 0.3875);
+badge.position.set(-0.06, -0.337, 0.3785);
 tv.add(badge);
 const knobM = lambert({ color: COL.soot });
+const knobMetal = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.7) });
 const knob = (x: number, y: number, rad: number, depth: number): void => {
-  const k = cyl(rad, rad * 1.08, depth, knobM, 14);
+  const k = cyl(rad, rad * 1.08, depth, knobMetal, 14);
   k.rotation.x = Math.PI / 2;
-  k.position.set(x, y, 0.36 + depth / 2);
-  const capM = cyl(rad * 0.45, rad * 0.45, 0.004, ivory, 10);
+  k.position.set(x, y, 0.378 + depth / 2);
+  const capM = cyl(rad * 0.45, rad * 0.45, 0.004, knobM, 10);
   capM.rotation.x = Math.PI / 2;
-  capM.position.set(x, y, 0.36 + depth + 0.002);
+  capM.position.set(x, y, 0.378 + depth + 0.002);
   tv.add(k, capM);
 };
-for (const y of [-0.02, -0.18]) knob(0.43, y, 0.021, 0.028);
-const stub = cyl(0.004, 0.004, 0.02, lambert({ color: COL.grime }), 6);
-stub.rotation.x = Math.PI / 2;
-stub.position.set(0.43, -0.1, 0.37);
-tv.add(stub);
-knob(0.43, -0.3, 0.042, 0.036);
+for (const y of [-0.05, -0.13, -0.21]) knob(0.43, y, 0.02, 0.026);
+knob(0.43, -0.3, 0.038, 0.036);
 const ears = new THREE.Group();
 ears.position.set(0.12, 0.4, -0.08);
 const earBase = cyl(0.045, 0.06, 0.035, knobM, 12);
@@ -896,15 +949,22 @@ for (const side of [-1, 1]) {
   }
 }
 tv.add(ears);
-const crt = new THREE.PlaneGeometry(0.78, 0.585, 12, 9);
-const cp = crt.getAttribute("position");
+const crt = new THREE.PlaneGeometry(0.78, 0.585, 32, 24);
+const cp = crt.getAttribute("position"),
+  cuv = crt.getAttribute("uv");
+const BULGE = 0.025,
+  BARREL = 0.06;
 for (let i = 0; i < cp.count; i++) {
   const x = cp.getX(i) / 0.39,
-    y = cp.getY(i) / 0.2925;
-  cp.setZ(i, 0.018 * (1 - x * x) * (1 - y * y));
+    y = cp.getY(i) / 0.2925,
+    u = cuv.getX(i) - 0.5,
+    v = cuv.getY(i) - 0.5;
+  cp.setZ(i, BULGE * (1 - x * x) * (1 - y * y));
+  cuv.setXY(i, 0.5 + u * (1 + BARREL * 4 * v * v), 0.5 + v * (1 + BARREL * 4 * u * u));
 }
+crt.computeVertexNormals();
 const screen = new THREE.Mesh(crt, basic({ map: tvTex, fog: false }));
-screen.position.set(-0.06, 0, 0.372);
+screen.position.set(-0.06, 0, 0.28);
 tv.add(screen);
 const glass = new THREE.Mesh(
   crt,
@@ -922,7 +982,7 @@ const glass = new THREE.Mesh(
     depthWrite: false,
   }),
 );
-glass.position.set(-0.06, 0, 0.374);
+glass.position.set(-0.06, 0, 0.282);
 tv.add(glass);
 const smudge = new THREE.Mesh(
   crt,
@@ -969,7 +1029,7 @@ const smudge = new THREE.Mesh(
     depthWrite: false,
   }),
 );
-smudge.position.set(-0.06, 0, 0.375);
+smudge.position.set(-0.06, 0, 0.283);
 tv.add(smudge);
 for (const m of [glass.material.map, smudge.material.map]) if (m) textTex(m);
 const tvGlow = new THREE.PointLight(COL.body, 1.2, 0, 2);
@@ -1035,7 +1095,9 @@ const key = (
     side,
     side,
     side,
-    basic({ map: textTex(label(text, bg, fg, Math.round(w * 3000), Math.round(h * 3000), font * 3)) }),
+    basic({
+      map: textTex(label(text, bg, fg, Math.round(w * 3000), Math.round(h * 3000), font * 3)),
+    }),
     side,
   ]);
   m.position.set(x, y, 0.022);
