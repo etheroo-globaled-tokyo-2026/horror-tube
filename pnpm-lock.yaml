@@ -190,6 +190,28 @@ importers:
 
   packages/roster: {}
 
+  packages/test-usdc:
+    dependencies:
+      '@horror-tube/betting':
+        specifier: workspace:*
+        version: link:../betting
+      '@mysten/sui':
+        specifier: ^2.33.0
+        version: 2.33.0(typescript@7.0.2)
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/world-id:
     dependencies:
       '@worldcoin/idkit-core':
