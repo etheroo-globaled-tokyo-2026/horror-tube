@@ -8,7 +8,7 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 
 | Network     | Contract                                                                                                                        | Deploy transaction                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Eth Sepolia | [`0x6420e9Af4F01Adc49178b8CfF708884AE763C674`](https://sepolia.etherscan.io/address/0x6420e9Af4F01Adc49178b8CfF708884AE763C674) | [`0x5c71…bc9d`](https://sepolia.etherscan.io/tx/0x5c7152478e208a8e6ee6edf8407296aece9a0a62d7627d0808775d9ab15cbc9d) |
+| Eth Sepolia | [`0x1941F407F8698562a0aB4e5Df892f5509F5f5f57`](https://sepolia.etherscan.io/address/0x1941F407F8698562a0aB4e5Df892f5509F5f5f57) | [`0x3ccc…eb6e`](https://sepolia.etherscan.io/tx/0x3ccc5ce6da3061eb3b465aec04cd20467499b9502c7afc471b2ff22c5e36eb6e) |
 
 - Source verified on Sourcify. Deploy records are in `packages/contracts/broadcast/`.
 - Parent name `horrortube.eth`; fighters are read at `<fighter>.horrortube.eth`.
@@ -85,9 +85,9 @@ Example: Alice 0.03 and Bob 0.01 on Jason, Carol 0.04 on Freddy, Jason wins. The
 
 The contract is the workspace package `@horror-tube/contracts` in `packages/contracts/`.
 After cloning, run `git submodule update --init`; forge-std and OpenZeppelin are submodules
-in `packages/contracts/lib/`. Foundry only reads `.env` from where it runs, so the package
-scripts that need `.env` run forge from the repo root with `--root packages/contracts`.
-`forge test` inside the package needs no `.env`.
+in `packages/contracts/lib/`. Foundry only reads `.env` from the directory it runs in, so the
+package scripts that need `.env` load the root `.env` into the shell (`set -a; . ../../.env`)
+and run forge inside the package. `forge test` needs no `.env`.
 
 | Command                    | What it does                                                                                                                                                                                                                                                                               |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

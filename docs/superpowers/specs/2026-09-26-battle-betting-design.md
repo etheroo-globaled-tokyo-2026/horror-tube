@@ -137,8 +137,10 @@ broadcast/                        committed deploy records
 
 - Compiler: solc 0.8.37.
 - Foundry only loads `.env` from the directory it runs in and the one holding
-  `foundry.toml` (tested). The package scripts that need `.env` run forge from the
-  repo root with `--root packages/contracts`; `forge test` needs no `.env`.
+  `foundry.toml` (tested). The package scripts that need `.env` load the root
+  `.env` into the shell and run forge inside the package (running from the repo
+  root with `--root` breaks forge's source verification); `forge test` needs no
+  `.env`.
 - `.env` is gitignored (`.env`, `.env.*`, except `.env.example`).
 - `[rpc_endpoints] sepolia = "${SEPOLIA_RPC_URL}"`.
 - `fs_permissions` allows reading `../ens/scripts/pin`.
