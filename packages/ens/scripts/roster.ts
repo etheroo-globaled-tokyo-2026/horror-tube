@@ -1,6 +1,9 @@
 import {
   type Address,
+  BaseError,
   type Hex,
+  HttpRequestError,
+  LimitExceededRpcError,
   type PublicClient,
   createPublicClient,
   decodeAbiParameters,
@@ -55,6 +58,16 @@ export async function defaultSleep(ms: number): Promise<void> {
 
 /** True when the RPC rejected the call for rate limiting (HTTP 429). */
 export function isRateLimitError(error: unknown): boolean {
+  // viem turns a 429 with a JSON-RPC body into LimitExceededRpcError, nested under call errors.
+  if (
+    error instanceof BaseError &&
+    error.walk(
+      (e) =>
+        e instanceof LimitExceededRpcError || (e instanceof HttpRequestError && e.status === 429),
+    ) !== null
+  ) {
+    return true;
+  }
   if (error !== null && typeof error === "object" && "status" in error) {
     if ((error as { status: unknown }).status === 429) {
       return true;
@@ -176,11 +189,9 @@ export async function labelsFromTransferTxHashes(
   for (const label of labels) {
     let status: number;
     try {
-      status = await withRateLimitRetry(
-        `getStatus(${label})`,
-        () => deps.getStatus(label),
-        { sleep: deps.sleep },
-      );
+      status = await withRateLimitRetry(`getStatus(${label})`, () => deps.getStatus(label), {
+        sleep: deps.sleep,
+      });
     } catch (error) {
       throw new Error(
         `UserRegistry.getStatus(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -496,13 +507,15 @@ async function readText(
   });
   let encoded: Hex;
   try {
-    encoded = await withRateLimitRetry(`resolve(text ${label}.${key})`, async () =>
-      (await publicClient.readContract({
-        address: resolverAddress,
-        abi: permissionedResolverAbi,
-        functionName: "resolve",
-        args: [dnsName, data],
-      })) as Hex,
+    encoded = await withRateLimitRetry(
+      `resolve(text ${label}.${key})`,
+      async () =>
+        (await publicClient.readContract({
+          address: resolverAddress,
+          abi: permissionedResolverAbi,
+          functionName: "resolve",
+          args: [dnsName, data],
+        })) as Hex,
     );
   } catch (error) {
     throw new Error(
@@ -644,10 +657,10 @@ export async function readRosterFromChain(
   publicClient: PublicClient = createPublicClient({
     chain: sepolia,
     transport: http(rpcUrl),
-    // viem splits Multicall3 once calldata exceeds batchSize bytes. 0 keeps the
-    // cast's getState and text resolves in one aggregate3. The call set is the
-    // cast plus CHARACTER_TEXT_KEYS, so this is not an operator setting.
-    batch: { multicall: { batchSize: 0, wait: 0 } },
+    // viem splits Multicall3 once calldata exceeds batchSize bytes, and 0 splits
+    // every call. Unbounded keeps the cast in one aggregate3: keyless public RPCs
+    // answer a burst of single calls with 429.
+    batch: { multicall: { batchSize: Number.POSITIVE_INFINITY, wait: 0 } },
   }),
 ): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
   return readRosterWithClient(publicClient, ensLabel, ethRegistry);
