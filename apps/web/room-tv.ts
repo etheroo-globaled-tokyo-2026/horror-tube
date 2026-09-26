@@ -769,7 +769,10 @@ export function drawTV(): void {
       text("TYPE THE NUMBER  ·  OK", Math.min(H - 24, end + 28), 24, COL.sulfur);
     } else {
       const ids = S.selectable.filter((id) => S.chars[id] !== undefined);
-      text(S.phase === "pick" ? "PICK THE NEXT FIGHTER" : "BOOK A FIGHTER", 56, 28, COL.sulfur);
+      text(S.phase === "pick" ? "PICK THE NEXT FIGHTER" : "PICK ONE FIGHTER", 56, 28, COL.sulfur);
+      if (S.phase === "waiting" && ids.length > 0) {
+        text("THE OTHER IS AT RANDOM", 96, 18, COL.bone, "DotGothic16", 400);
+      }
       if (ids.length === 0) {
         text(
           `tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`,
@@ -780,7 +783,7 @@ export function drawTV(): void {
           400,
         );
       } else {
-        text("TYPE THE NUMBER  ·  OK", 100, 18, COL.rust, "DotGothic16", 400);
+        text("TYPE THE NUMBER  ·  OK", S.phase === "waiting" ? 128 : 100, 18, COL.rust, "DotGothic16", 400);
         g.textAlign = "left";
         g.font = "22px DotGothic16";
         ids.forEach((id, i) => {

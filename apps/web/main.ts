@@ -117,7 +117,7 @@ function hintText(): void {
       : S.phase === "vote" || S.phase === "countdown"
         ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
         : S.phase === "waiting" || S.phase === "over"
-          ? "BOOK THE FIRST FIGHTER"
+          ? "PICK ONE. THE OTHER IS RANDOM"
           : S.phase === "pick"
             ? "PICK THE NEXT FIGHTER"
         : S.phase === "bet" && !S.bet && S.poolId === null

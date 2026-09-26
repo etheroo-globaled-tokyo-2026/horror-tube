@@ -327,7 +327,7 @@ describe("start", () => {
     assert.equal(deps.roundStore.seasons.length, 0);
   });
 
-  it("opens a vote on the pairing, then one bout when the vote times out", async () => {
+  it("opens a vote on the booked fighter and a random opponent", async () => {
     const requests: FightJobRequest[] = [];
     const harness = await votingLoop({
       deps: {
@@ -341,9 +341,7 @@ describe("start", () => {
     assert.equal(voted.phase, "vote");
     assert.deepEqual(voted.fighters, [0, 1]);
     assert.equal(voted.battleId, null);
-    assert.equal(harness.deps.pairings[0]?.championSubname, "alpha");
-    assert.equal(harness.deps.pairings[0]?.opening, true);
-    assert.deepEqual(harness.deps.pairings[0]?.candidateSubnames, ["bravo", "charlie", "delta"]);
+    assert.equal(harness.deps.pairings.length, 0);
     assert.deepEqual(harness.deps.betCalls, []);
     await closeVoteByTimeout(harness);
     await flushFightJob();
@@ -357,25 +355,18 @@ describe("start", () => {
     assert.deepEqual(harness.deps.roundStore.openSeasonIds(), ["season-1"]);
   });
 
-  it("asks the pairing model only about living fighters", async () => {
+  it("draws a random living opponent and never a dead one", async () => {
     const { loop, deps } = await votingLoop({
       ensStatuses: ["alive", "dead", "alive", "alive"],
+      randomInt: pinnedRandom(1),
     });
-    assert.deepEqual(deps.pairings[0]?.candidateSubnames, ["charlie", "delta"]);
-    assert.deepEqual(loop.getState().fighters, [0, 2]);
+    assert.equal(deps.pairings.length, 0);
+    assert.deepEqual(loop.getState().fighters, [0, 3]);
   });
 
-  it("stays waiting and stores no season when the pairing is not an eligible pair", async () => {
-    const { loop, deps } = makeLoop({
-      deps: {
-        pairing: async () => ({
-          fighterASubname: "alpha",
-          fighterBSubname: "alpha",
-          rationale: "same fighter twice",
-        }),
-      },
-    });
-    await assert.rejects(() => loop.start(0), /not a living eligible pair/u);
+  it("stays waiting and stores no season when the opponent draw is out of range", async () => {
+    const { loop, deps } = makeLoop({ randomInt: () => 9 });
+    await assert.rejects(() => loop.start(0), /randomInt\(3\)/u);
     assert.equal(loop.getState().phase, "waiting");
     assert.equal(deps.roundStore.seasons.length, 0);
     assert.deepEqual(deps.betCalls, []);
@@ -431,7 +422,7 @@ describe("start", () => {
     assert.match(warns.join("\n"), /ended leftover open season\(s\) season-1,season-2/u);
   });
 
-  it("names the missing randomInt when a house bot draws a side", async () => {
+  it("names the missing randomInt when the opening opponent is drawn", async () => {
     const deps = loopDeps();
     const loop = new GameLoop({
       config: baseConfig,
@@ -443,22 +434,11 @@ describe("start", () => {
       battleBetting: deps.battleBetting,
       fightJob: deps.fightJob,
       pairing: deps.pairing,
-      houseBots: {
-        chains: [
-          {
-            address: "0xb07",
-            bet: async () => "0xbet",
-            claimFinished: async () => ({ digest: "0xclaim", tickets: 0 }),
-          },
-        ],
-        stakeUnits: 1n,
-      },
+      houseBots: NO_HOUSE_BOTS,
     });
-    await loop.start(0);
-    await loop.voteWithNullifier("human-1", 0);
-    await loop.tick(0);
-    await flushFightJob();
-    assert.match(loop.getState().bots[0]?.error ?? "", /randomInt was not provided/u);
+    await assert.rejects(() => loop.start(0), /randomInt was not provided/u);
+    assert.equal(loop.getState().phase, "waiting");
+    assert.equal(deps.roundStore.seasons.length, 0);
   });
 
   it("starts a new season from over with the characters that started dead on chain still dead", async () => {
@@ -528,7 +508,7 @@ describe("GameLoop phases", () => {
     assert.equal(next.champion, 0);
     assert.equal(next.fighters, null);
     assert.deepEqual(next.selectable, [2, 3]);
-    assert.equal(deps.pairings.length, 1);
+    assert.equal(deps.pairings.length, 0);
     await assert.rejects(() => loop.chooseNextFighter(0), /champion and stays on/u);
     await assert.rejects(() => loop.chooseNextFighter(1), /dead and cannot fight/u);
     await loop.chooseNextFighter(2);
@@ -1161,7 +1141,7 @@ describe("prediction vote", () => {
   it("a house bot votes only after a human, and that vote counts toward quorum", async () => {
     const harness = makeLoop({
       config: { quorumVotes: 2, voteCountdownSeconds: 10, voteTimeoutSeconds: 15 },
-      randomInt: pinnedRandom(1),
+      randomInt: pinnedRandom(0, 1),
       houseBots: {
         chains: [
           {
