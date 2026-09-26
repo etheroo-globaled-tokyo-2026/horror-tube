@@ -539,3 +539,31 @@ canvas {
   color: var(--alive);
   box-shadow: inset 0 0 0 2px var(--alive);
 }
+
+mysten-dapp-kit-connect-modal {
+  --background: var(--char);
+  --foreground: var(--bone);
+  --primary: var(--bone);
+  --primary-foreground: var(--soot);
+  --secondary: var(--soot);
+  --secondary-foreground: var(--body);
+  --accent: var(--rust-deep);
+  --accent-foreground: var(--bone);
+  --muted: var(--soot);
+  --muted-foreground: var(--body);
+  --popover: var(--char);
+  --popover-foreground: var(--bone);
+  --border: var(--grime);
+  --input: var(--grime);
+  --ring: var(--sulfur);
+  --destructive: var(--blood);
+  --positive: var(--alive);
+  --radius: 0px;
+  --font-sans: var(--f-body);
+  --font-medium: 400;
+  --font-semibold: 400;
+  --cursor-button: url(assets/cursor-press.svg) 12 2, pointer;
+  --cursor-menu-item: var(--cursor-button);
+  --cursor-radio: var(--cursor-button);
+  -webkit-font-smoothing: none;
+}

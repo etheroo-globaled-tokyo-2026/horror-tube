@@ -5,17 +5,17 @@ about death, and the house already knows the winner. The flow is `docs/PLAN.md`.
 
 You sit alone in a rusty room in front of an old TV, with a TV remote in your hand.
 
-| File                    | What it is                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.                      |
-| `game.ts`               | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
-| `round-client.ts`       | Same-origin `GET /round`, SSE `/events`, `POST /vote`.                               |
-| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                |
-| `coinbox.ts`            | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.    |
-| `sfx.ts`                | Every sound, made live with Web Audio. No sound files.                               |
-| `sprites.ts`            | `paint` (pixel art) and the line helpers.                                            |
-| `ht.css`                | Tokens, plus the World ID gate and the cursors.                                      |
-| `system.html`           | The specimen page for the tokens.                                                    |
+| File              | What it is                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `main.ts`         | The 3D room (Three.js from npm), the TV picture and the remote.                                             |
+| `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
+| `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /vote`.                                                      |
+| `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
+| `coinbox.ts`      | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.                           |
+| `sfx.ts`          | Every sound, made live with Web Audio. No sound files.                                                      |
+| `sprites.ts`      | `paint` (pixel art) and the line helpers.                                                                   |
+| `ht.css`          | Tokens, plus the World ID gate and the cursors.                                                             |
+| `system.html`     | The specimen page for the tokens.                                                                           |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
@@ -73,6 +73,8 @@ reads the meter:
   the in-game wallet's address balance. Bets and the coin return spend only that balance; `POST /tx` rejects coin
   objects. Use Slush.
   Phantom dropped Sui on 2026-09-24.
+- The connect modal is themed from our tokens: `ht.css` sets the shadcn names dApp Kit reads (all of them, because
+  our `--muted` is a text colour and would leak in), and `coinbox.ts` adds the title font and backdrop to its shadow root.
 - PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
   but we did not confirm that Slush mobile opens it. Plain address first.
 - The meter: `client.core.getBalance` for the USDC type. After our own transaction, `waitForTransaction` first, then

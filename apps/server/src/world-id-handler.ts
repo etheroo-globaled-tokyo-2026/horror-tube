@@ -51,6 +51,7 @@ export async function verifyEnterRoomProof(
   return verifyProofOfHuman({
     rpId: worldId.rpId,
     environment: worldId.environment,
+    stagingToken: worldId.stagingToken,
     action: enterRoomAction(),
     signal: null,
     idkitResult,
