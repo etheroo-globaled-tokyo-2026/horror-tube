@@ -143,6 +143,11 @@ variable "world_id_signing_key" {
   sensitive   = true
 }
 
+variable "world_id_environment" {
+  description = "WORLD_ID_ENVIRONMENT for the app (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
+  type        = string
+}
+
 variable "quorum_votes" {
   description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
   type        = number
