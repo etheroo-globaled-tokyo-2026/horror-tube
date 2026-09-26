@@ -24,3 +24,4 @@ validates `ENS_LABEL` and `VITE_SEPOLIA_RPC_URL` and defaults both to the public
 | `docs/character-card-fields.md` | The ENS text records on each character.                              |
 | `docs/roster-json.md`           | Roster JSON and the CLIs that write characters to ENS.               |
 | `docs/ens-sepolia-parent.md`    | Registering the parent `.eth` name on Sepolia ENSv2.                 |
+| `docs/ens-vendor.md`            | Where ENSv2 is called, the permission flow, and the validation run.  |
