@@ -21,12 +21,17 @@ export const COINS = [5, 10, 20] as const;
 
 export const PAYOUT_STORAGE_KEY = "horror-tube.payout-address";
 
-export type CoinBoxPart = "slot" | "sticker" | "lock";
+export type CoinBoxPart = "slot" | "sticker" | "lock" | "body";
+export type CoinBoxView = "meter" | "sticker";
 
 export type CoinBox = {
   group: THREE.Group;
+  address: string;
+  credit: () => number;
   partAt: (ray: THREE.Raycaster) => CoinBoxPart | null;
-  use: (part: CoinBoxPart) => void;
+  view: (at: CoinBoxView) => [eye: THREE.Vector3, target: THREE.Vector3];
+  insert: (usdc: number) => void;
+  open: () => void;
 };
 
 type Rect = [x: number, y: number, w: number, h: number];
@@ -38,7 +43,7 @@ const TOP_H = SIZE.top * PX;
 const DRAWER_H = SIZE.drawer * PX;
 const WINDOW: Rect = [32, 22, 192, 64];
 const PLATE: Rect = [32, 96, 192, 72];
-const DRUM: Rect = [58, 178, 140, 32];
+const DRUM: Rect = [24, 172, 208, 42];
 const DIAL = { x: FW / 2, y: 316, r: 92 };
 const RULES: Rect = [40, 12, 176, 100];
 const STICKER: Rect = [12, 158, 232, 124];
@@ -110,20 +115,11 @@ function drawQr(g: CanvasRenderingContext2D, text: string, rect: Rect, ink: stri
       if (modules.get(row, col)) g.fillRect(x0 + col * cell, y0 + row * cell, cell, cell);
 }
 
-function panel(): HTMLDialogElement {
-  const dialog = document.createElement("dialog");
-  dialog.className = "coinbox";
-  document.body.append(dialog);
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
-  });
-  return dialog;
-}
-
 export function createCoinBox(
   wallet: GameWallet,
   onCredit: (usdc: number) => void,
   say: (text: string) => void,
+  onError: (message: string) => void,
 ): CoinBox {
   const colors = {
     soot: cssVar("soot"),
@@ -161,10 +157,10 @@ export function createCoinBox(
     c.fillRect(0, 0, w, h);
     c.globalAlpha = 1;
     for (let i = 0; i < 6; i++)
-      blotch(c, rand, rand() * w, rand() * h, 20 + rand() * 50, colors.rust, 0.08);
+      blotch(c, rand, rand() * w, rand() * h, 20 + rand() * 50, colors.rust, 0.06);
     for (let i = 0; i < 5; i++)
-      blotch(c, rand, rand() * w, rand() * h, 8 + rand() * 16, colors.grime, 0.12);
-    scratches(c, rand, [0, 0, w, h], 40, colors.grime, 0.4);
+      blotch(c, rand, rand() * w, rand() * h, 8 + rand() * 16, colors.grime, 0.08);
+    scratches(c, rand, [0, 0, w, h], 25, colors.grime, 0.35);
     for (const [x, y] of [
       [0, 0],
       [w, 0],
@@ -372,9 +368,9 @@ export function createCoinBox(
     shell,
   ]);
   drawer.position.set(0, -SIZE.top / 2, 0.005);
-  const pull = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.003, 5, 10, Math.PI), chrome);
+  const pull = new THREE.Mesh(new THREE.TorusGeometry(0.013, 0.0028, 5, 10, Math.PI), chrome);
   pull.rotation.z = Math.PI;
-  pull.position.set(0, SIZE.drawer / 2 - 0.13 * SIZE.drawer, front - 0.005 + 0.004);
+  pull.position.set(0, SIZE.drawer / 2 - (RULES[1] + RULES[3] + 10) / PX, front - 0.001);
   drawer.add(pull);
   const roof = new THREE["Shape"]();
   roof.moveTo(-SIZE.d / 2, 0);
@@ -395,7 +391,10 @@ export function createCoinBox(
   handle.position.set(dialX, dialY + box.position.y, front + 0.006);
   const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.012, 0.012, 10), chrome);
   hub.rotation.x = Math.PI / 2;
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.016, 0.005), chrome);
+  const blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.009, 0.004),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(colors.bone).multiplyScalar(0.3) }),
+  );
   blade.position.z = 0.004;
   handle.add(hub, blade);
   handle.rotation.z = 0.35;
@@ -442,14 +441,14 @@ export function createCoinBox(
     g.fillText("FULL", x0 + span + 6 + (ww - span - 24) / 2, wy + 19);
     g.fillStyle = g.strokeStyle = colors.soot;
     g.lineWidth = 1;
-    g.font = "700 11px Silkscreen";
+    g.font = "700 13px Silkscreen";
     for (let v = 0; v <= FULL; v++) {
       const x = x0 + (v / FULL) * span;
       g.fillRect(x, wy + 6, 1, v % 4 === 0 ? 14 : 7);
       if (v % 4 === 0) g.fillText(String(v), x, wy + 30);
     }
-    g.font = "10px DotGothic16";
-    g.fillText("USDC PAID FOR", wx + ww / 2 - 20, wy + 50);
+    g.font = "12px DotGothic16";
+    g.fillText("USDC PAID FOR", wx + ww / 2 - 20, wy + 51);
     const nx = x0 + (Math.min(credit, FULL) / FULL) * span;
     g.fillStyle = colors.bloodDeep;
     g.fillRect(nx - 1, wy + 2, 3, wh - 4);
@@ -460,20 +459,25 @@ export function createCoinBox(
       g.fillStyle = colors.char;
       g.fillRect(dx, dy, dw, dh);
       g.fillStyle = colors.blood;
-      g.font = "700 14px Silkscreen";
+      g.font = "700 18px Silkscreen";
       g.fillText(status, dx + dw / 2, dy + dh / 2 + 1);
     } else {
-      const digits = credit.toFixed(2).padStart(5, "0").replace(".", "");
-      const cell = dw / 4;
-      [...digits].forEach((d, i) => {
+      const cell = (dw - 16) / 4;
+      let x = dx;
+      g.font = "700 34px Silkscreen";
+      [...credit.toFixed(2).padStart(5, "0")].forEach((d, i) => {
+        if (d === ".") {
+          g.fillStyle = colors.blood;
+          g.fillRect(x + 5, dy + dh - 10, 6, 6);
+          x += 16;
+          return;
+        }
         g.fillStyle = i % 2 ? colors.char : colors.soot;
-        g.fillRect(dx + i * cell + 1, dy, cell - 2, dh);
+        g.fillRect(x + 1, dy, cell - 2, dh);
         g.fillStyle = colors.bone;
-        g.font = "700 22px Silkscreen";
-        g.fillText(d, dx + i * cell + cell / 2, dy + dh / 2 + 1);
+        g.fillText(d, x + cell / 2, dy + dh / 2 + 2);
+        x += cell;
       });
-      g.fillStyle = colors.blood;
-      g.fillRect(dx + dw / 2 - 2, dy + dh - 6, 4, 4);
     }
     topTex.needsUpdate = true;
   }
@@ -522,49 +526,11 @@ export function createCoinBox(
     say(`${fromUsdcUnits(units).toFixed(2)} USDC back to your wallet.`);
   }
 
-  const slotPanel = panel();
-  slotPanel.innerHTML = `<h2 class="lit">INSERT A COIN</h2><p>Your wallet opens once to approve.</p>
-    <div class="row">${COINS.map((c) => `<button class="btn primary" value="${c}">${c} USDC</button>`).join("")}</div>
-    <div class="row"><button class="btn" value="0">WALK AWAY</button></div>`;
-  slotPanel.addEventListener("click", (event) => {
-    if (!(event.target instanceof HTMLButtonElement)) return;
-    slotPanel.close();
-    const dollars = Number(event.target.value);
-    if (dollars > 0) run(() => deposit(dollars));
-  });
-
-  const stickerPanel = panel();
-  const qr = document.createElement("canvas");
-  void QRCode.toCanvas(qr, wallet.address, { margin: 2, scale: 6 });
-  stickerPanel.innerHTML = `<h2 class="lit">PAY BY PHONE</h2><p>Send testnet USDC on Sui to this box. The meter counts up when it lands.</p>`;
-  const address = document.createElement("p");
-  address.className = "ens";
-  address.textContent = wallet.address;
-  const close = document.createElement("button");
-  close.className = "btn";
-  close.textContent = "PUT IT BACK";
-  close.addEventListener("click", () => stickerPanel.close());
-  stickerPanel.append(qr, address, close);
-
-  const errorPanel = panel();
-  errorPanel.innerHTML = `<h2 class="lit">THE BOX SPAT IT OUT</h2>`;
-  const errorText = document.createElement("p");
-  const errorClose = document.createElement("button");
-  errorClose.className = "btn";
-  errorClose.textContent = "OK";
-  errorClose.addEventListener("click", () => errorPanel.close());
-  errorPanel.append(errorText, errorClose);
-
-  function showError(message: string): void {
-    errorText.textContent = message;
-    if (!errorPanel.open) errorPanel.showModal();
-  }
-
   function run(task: () => Promise<void>): void {
     if (busy) return;
     busy = true;
     task()
-      .catch((error: Error) => showError(error.message))
+      .catch((error: Error) => onError(error.message))
       .finally(() => {
         busy = false;
         setStatus("");
@@ -597,25 +563,38 @@ export function createCoinBox(
 
   return {
     group,
+    address: wallet.address,
+    credit: () => credit,
     partAt: (ray) => {
-      const hit = ray.intersectObjects([box, drawer, handle, lock, staple], true)[0];
+      const hit = ray.intersectObject(group, true)[0];
       if (hit === undefined) return null;
       if (hit.object.parent === handle) return "slot";
-      if (hit.object === staple || hit.object.parent === lock) return "lock";
-      if (hit.uv === undefined || hit.face?.materialIndex !== 4) return null;
+      if (hit.object === staple || hit.object.parent === lock || hit.object.parent === drawer)
+        return "lock";
+      if (hit.uv === undefined || hit.face?.materialIndex !== 4) return "body";
       if (hit.object === box) {
         const [x, y] = [hit.uv.x * FW, (1 - hit.uv.y) * TOP_H];
-        return Math.hypot(x - DIAL.x, y - DIAL.y) <= DIAL.r + 8 ? "slot" : null;
+        return Math.hypot(x - DIAL.x, y - DIAL.y) <= DIAL.r + 8 ? "slot" : "body";
       }
-      if (hit.object !== drawer) return null;
+      if (hit.object !== drawer) return "body";
       return inside(STICKER, hit.uv.x * FW, (1 - hit.uv.y) * DRAWER_H) ? "sticker" : "lock";
     },
-    use: (part) => {
-      if (part === "slot") {
-        turnHandle();
-        slotPanel.showModal();
-      } else if (part === "sticker") stickerPanel.showModal();
-      else openDrawer();
+    view: (at) => {
+      group.updateMatrixWorld();
+      const y =
+        at === "sticker"
+          ? drawer.position.y + SIZE.drawer / 2 - (STICKER[1] + STICKER[3] / 2) / PX
+          : 0.02;
+      const dist = at === "sticker" ? 0.17 : 0.44;
+      return [
+        group.localToWorld(new THREE.Vector3(0, y, front + dist)),
+        group.localToWorld(new THREE.Vector3(0, y, front)),
+      ];
     },
+    insert: (usdc) => {
+      turnHandle();
+      run(() => deposit(usdc));
+    },
+    open: openDrawer,
   };
 }

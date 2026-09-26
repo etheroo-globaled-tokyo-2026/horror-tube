@@ -110,13 +110,21 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
-- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the TV.
+- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the room.
+- **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
+  says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The vote clock holds until it ends
+  (`countdown.hold` in `game.ts`); the cast keeps loading.
+  1. The TV: `THE TV. EVERYTHING AIRS HERE.`
+  2. The shelf: `THE RESIDENTS. PULL A TAPE.`
+  3. The remote rises, LED blinking: `THE REMOTE. VOTE FOR TWO. THEY FIGHT.`
+  4. The meter: `THE METER. FEED IT TO BET.`
+  5. The remote again: `HOLD A OR B. BET ON WHO WALKS OUT.`
 - **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
   NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
-- **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (about 3 s on
-  the public RPC; new users never see it, it loads while they read the waiver). Until it lands, the TV shows a warm
-  test card, PLEASE STAND BY, and the hint says the TV is warming up. If the read fails, the TV says NO SIGNAL and
-  the hint shows the real error. No cache, no fallback cast.
+- **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (3 to 4 s on
+  the public RPC, which also rate-limits: scan log chunks one at a time and stop early; new users never see it, it loads while they read the waiver). Until it lands, the TV shows a warm
+  test card, PLEASE STAND BY, and the hint says the TV is warming up. If the read fails, the TV says NO SIGNAL,
+  the hint shows the first lines of the real error, and the full error is in the console. No cache, no fallback cast.
 - **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
@@ -132,7 +140,8 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     screen, a perforated speaker grille, knobs and a channel dial, rabbit ears. It is worn, not clean: nicotine
     yellowing, grime around the screen, cracks, rusty screws, cigarette burns, drag marks, fingerprints and a
     hairline crack on the glass, a missing knob, foil on an antenna, and a tape note: DON'T TURN IT OFF. It stands on
-    its own four splayed, tapered metal legs with brass tips and side stretchers, like the reference. Wear is
+    its own four splayed, tapered dull-chrome legs with brass tips and an H-frame, like the reference. The legs
+    are light so they read against the dark floor, and the camera looks low enough to show them. Wear is
     drawn with the helpers in `sprites.ts` (`blotch`, `drip`, `crack`, `scratches`, `screw`, `burn`).
   - Texels stay small (about 1 cm, 2 to 3 screen pixels) and clean: flowing grain lines, flat shapes, no random
     speckle. Big noisy texels are what made the room look like mush. Textures use nearest filtering up close and
@@ -167,7 +176,8 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Picking must not feel like a treat.** No glamour, no vote races, no faces before you choose.
-- **Copy is short and human**, not technical.
+- **Copy is short and human**, not technical, like CloverPit: a few words, then the key. Hover hints name things;
+  they do not explain how to click (`PICK TWO · NUMBER OK`, `STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.
 
@@ -186,10 +196,16 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   `USDC PAID FOR` window moves from 0 to `FULL` (20). The drum counter shows the exact number (`05.00`); real meters
   had their counter on the side, but the game needs the number in view. Bets are simulated today, so the meter does not
   move when you bet; the TV credit (`… LEFT · 5.00 USDC`) is the real balance plus simulated wins and losses.
-- **The coin dial:** deposit from a browser wallet. Click the dial or the wing handle: the handle turns, you pick a
-  coin (5 / 10 / 20 USDC), your wallet extension opens once to approve, and the needle rises.
-- **The rental sticker, PAY BY PHONE:** deposit from a phone wallet. A QR code on a crooked paper sticker on the
-  drawer. Scan it and send USDC. The meter counts up when the money lands.
+- **No popups.** Clicking the meter zooms the camera onto it, like CloverPit. Up close, the hint bar at the bottom
+  names what is under the cursor (`COIN DIAL`, `PADLOCK 5.00 USDC inside`, `PAY BY PHONE`), with no instructions.
+  `ESC`, Backspace or right-click steps back: coin choice → meter → room. From the room, the hint on hover is
+  `COIN METER 5.00 USDC`.
+- **The coin dial:** deposit from a browser wallet. Click the dial or the wing handle: the hint bar offers the coins
+  (`1` 5 USDC, `2` 10 USDC, `3` 20 USDC, clickable). The handle turns, your wallet extension opens once to approve,
+  and the needle rises.
+- **The rental sticker, PAY BY PHONE:** deposit from a phone wallet. Click it and the camera leans in until the QR is
+  big enough to scan from the screen; the hint bar shows the address, selectable to copy. Send USDC. The meter counts
+  up when the money lands.
 - **The padlock and the drawer:** withdraw. Real meters had no coin return: the collector unlocked the drawer and paid
   back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, and the credit goes back to
   the wallet that paid in.
@@ -197,9 +213,10 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   says `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
-- Keys: `D` the coin dial, `P` the sticker, `W` the padlock. Stakes are 1, 3 and 5 USDC.
+- Keys: `D` zooms in and offers the coins, `P` leans in on the sticker, `W` opens the padlock, `1`–`3` pick a coin.
+  While zoomed, the remote and the held tape are out of view and the remote keys are off. Stakes are 1, 3 and 5 USDC.
 - **Gas today:** the paying wallet needs testnet SUI for a deposit, and the in-game wallet needs SUI to pay back.
-  Errors stay in a panel ("THE BOX SPAT IT OUT") until closed.
+  Errors zoom onto the meter and stay in the hint bar (`THE BOX SPAT IT OUT …`) until you step back.
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).

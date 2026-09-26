@@ -165,27 +165,23 @@ async function collectRecentTransferSingleLogs(
   let searchedFrom = planned[0]!.fromBlock;
   let searchedTo = planned[0]!.toBlock;
 
-  const chunks = await Promise.all(
-    planned.map(async ({ fromBlock, toBlock }) => {
-      try {
-        return await publicClient.getLogs({
-          address,
-          event: transferSingleEvent,
-          fromBlock,
-          toBlock,
-        });
-      } catch (error) {
-        throw new Error(
-          `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }),
-  );
-
-  for (const [i, { fromBlock, toBlock }] of planned.entries()) {
+  for (const { fromBlock, toBlock } of planned) {
     searchedFrom = fromBlock < searchedFrom ? fromBlock : searchedFrom;
     searchedTo = toBlock > searchedTo ? toBlock : searchedTo;
-    const chunk = chunks[i]!;
+
+    let chunk: readonly { transactionHash: Hex }[];
+    try {
+      chunk = await publicClient.getLogs({
+        address,
+        event: transferSingleEvent,
+        fromBlock,
+        toBlock,
+      });
+    } catch (error) {
+      throw new Error(
+        `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     console.error(
       `discover: eth_getLogs fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()} logs=${String(chunk.length)}`,
