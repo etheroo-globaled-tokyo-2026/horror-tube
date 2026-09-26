@@ -15,6 +15,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  parseAbiItem,
   stringToBytes,
   toHex,
 } from "viem";
@@ -30,8 +31,9 @@ const ZERO_BYTES32 =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 const STATUS_REGISTERED = 2;
 export const REGISTER_SELECTOR = "0x85f3e643" as const;
-export const TRANSFER_SINGLE_TOPIC0 =
-  "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
+const transferSingleEvent = parseAbiItem(
+  "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
+);
 /** Inclusive block count per eth_getLogs window. Never larger than this. */
 export const MAX_LOG_CHUNK_BLOCKS = 49999n;
 /** Cap on backward windows from chain head. */
@@ -475,9 +477,9 @@ async function collectRecentTransferSingleLogs(
     try {
       chunk = await publicClient.getLogs({
         address,
+        event: transferSingleEvent,
         fromBlock,
         toBlock,
-        topics: [TRANSFER_SINGLE_TOPIC0],
       });
     } catch (error) {
       throw new Error(
