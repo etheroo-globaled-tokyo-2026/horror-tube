@@ -11,7 +11,6 @@ import {
   type GameWallet,
   SUI_TESTNET_GRPC,
   fromUsdcUnits,
-  getSuiBalance,
   getUsdcBalance,
   sendUsdc,
   toUsdcUnits,
@@ -521,8 +520,6 @@ export function createCoinBox(
   async function withdraw(): Promise<void> {
     const units = await getUsdcBalance(wallet);
     if (units === 0n) return say("Nothing to give back.");
-    if ((await getSuiBalance(wallet)) === 0n)
-      throw new Error("The coin return is jammed: the box has no testnet SUI to pay the gas.");
     const to = storedPayout() ?? (await connectBrowserWallet());
     if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");

@@ -32,7 +32,7 @@ import {
   createCoinBox,
 } from "./coinbox.ts";
 import QRCode from "qrcode";
-import { getGameWallet } from "./wallet.ts";
+import { getGameWallet, hasWalletSession, openGameWallet } from "./wallet.ts";
 import {
   fetchEnterRoomRequest,
   startEnterRoomProof,
@@ -2070,6 +2070,10 @@ async function beginWorldIdScan(): Promise<void> {
     if (signal.aborted) return;
     await verifyEnterRoomProof(idkitResult);
     if (signal.aborted) return;
+    await openGameWallet(JSON.stringify(idkitResult));
+    if (signal.aborted) return;
+    await mountCoinBox();
+    if (signal.aborted) return;
     verified();
   } catch (err) {
     if (signal.aborted) return;
@@ -2100,7 +2104,9 @@ function enterRoom(): void {
 }
 let coinBox: CoinBox | null = null;
 let chainCredit = 0;
-void getGameWallet().then((wallet) => {
+async function mountCoinBox(): Promise<void> {
+  if (coinBox !== null) return;
+  const wallet = await getGameWallet();
   coinBox = createCoinBox(
     wallet,
     (usdc) => {
@@ -2118,7 +2124,14 @@ void getGameWallet().then((wallet) => {
   coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
   shade(coinBox.group);
   scene.add(coinBox.group);
-});
+}
+if (hasWalletSession()) {
+  void mountCoinBox().catch((err: Error) => {
+    console.error(
+      `Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
     new THREE.CatmullRomCurve3(
