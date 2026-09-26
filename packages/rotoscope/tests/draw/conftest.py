@@ -1,5 +1,5 @@
 """Fixtures for the people drawing's tests: the staged clip's frames and one drawer for the session. MediaPipe's model
-files go to $ROTOSCOPE_MODELS, else pytest's cache."""
+files are shared with the CLI: $ROTOSCOPE_MODELS, else ~/.cache/rotoscope/mediapipe."""
 import os
 from pathlib import Path
 
@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 
 from draw_media import STAGED_FRAMES, media
+
+MODELS = Path.home() / ".cache" / "rotoscope" / "mediapipe"
 
 
 def pytest_configure(config):
@@ -21,10 +23,9 @@ def staged_frames() -> np.ndarray:
 
 
 @pytest.fixture(scope="session")
-def drawer(request):
+def drawer():
     pytest.importorskip("Vision")
     from rotoscope.backends.apple_vision import AppleVision
     from rotoscope.draw.people import V7Drawer
 
-    models = os.environ.get("ROTOSCOPE_MODELS")
-    return V7Drawer(AppleVision(), Path(models) if models else request.config.cache.mkdir("mediapipe-models"))
+    return V7Drawer(AppleVision(), Path(os.environ.get("ROTOSCOPE_MODELS", MODELS)))
