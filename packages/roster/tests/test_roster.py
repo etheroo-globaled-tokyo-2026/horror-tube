@@ -375,6 +375,50 @@ class ProposeTests(unittest.TestCase):
         self.assertEqual(lore.appearance, "A large man in a hockey mask.")
         self.assertEqual(lore.powers, "A large man in a hockey mask.")
 
+    def test_section_anchor_is_used_when_fandom_returns_blank_index(self):
+        sections = {
+            "parse": {
+                "title": "Count Dracula",
+                "pageid": 917,
+                "properties": {},
+                "categories": [],
+                "sections": [
+                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
+                    {
+                        "line": "Powers and Abilities",
+                        "index": "",
+                        "anchor": "Powers_and_Abilities",
+                    },
+                ],
+            }
+        }
+        body = {
+            "parse": {
+                "text": (
+                    '<h2><span id="Appearance">Appearance</span></h2>'
+                    "<p>A pale count in formal black clothes.</p>"
+                    '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
+                    "<p>He transforms and controls minds.</p>"
+                )
+            }
+        }
+
+        def fake(_host, params):
+            if str(params.get("prop", "")).startswith("sections"):
+                return sections
+            self.assertNotIn("section", params)
+            return body
+
+        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+            lore = fetch_page_lore(
+                resolve_page(
+                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
+                    wiki=None,
+                )
+            )
+        self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
+        self.assertEqual(lore.powers, "He transforms and controls minds.")
+
     def test_missing_look_section_fails(self):
         parse = {
             "parse": {
@@ -413,8 +457,8 @@ class ProposeTests(unittest.TestCase):
 
     def test_unknown_label_has_no_injury_places(self):
         with self.assertRaises(FandomError) as ctx:
-            injury_places_json_for_label("count")
-        self.assertIn("count", str(ctx.exception))
+            injury_places_json_for_label("unknown")
+        self.assertIn("unknown", str(ctx.exception))
         self.assertIn("injury_places", str(ctx.exception))
 
     def test_catalog_has_the_three_roster_batches(self):

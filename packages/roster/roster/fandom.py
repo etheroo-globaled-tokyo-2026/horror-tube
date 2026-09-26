@@ -162,7 +162,16 @@ def _find_section(
     for pattern in patterns:
         for line, section in plain_sections:
             if pattern.fullmatch(line):
-                return section["index"]
+                index = section.get("index")
+                if index:
+                    return str(index)
+                anchor = section.get("anchor")
+                if anchor:
+                    return f"anchor:{anchor}"
+                raise FandomError(
+                    f"{ref}: matched {name} section {line!r}, but api.php returned "
+                    "neither a section index nor anchor."
+                )
     lines = ", ".join(line for line, _ in plain_sections) or "(none)"
     raise FandomError(
         f"{ref}: no {name} section. Sections: {lines}. "
@@ -171,19 +180,35 @@ def _find_section(
 
 
 def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
-    data = fetch_api(
-        ref.host,
-        {
-            "action": "parse",
-            "pageid": str(pageid),
-            "prop": "text",
-            "section": index,
-            "disableeditsection": "1",
-            "disablelimitreport": "1",
-        },
-    )
+    params = {
+        "action": "parse",
+        "pageid": str(pageid),
+        "prop": "text",
+        "disableeditsection": "1",
+        "disablelimitreport": "1",
+    }
+    if index.startswith("anchor:"):
+        anchor = index.removeprefix("anchor:")
+        data = fetch_api(ref.host, params)
+        page_html = data["parse"]["text"]
+        escaped_anchor = re.escape(anchor)
+        match = re.search(
+            rf'<h[1-6]\b[^>]*>.*?\bid=(?P<quote>["\']){escaped_anchor}'
+            rf'(?P=quote).*?</h[1-6]\s*>(?P<body>.*?)(?=<h[1-6]\b|\Z)',
+            page_html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if match is None:
+            raise FandomError(
+                f"{ref}: {name} section anchor {anchor!r} was listed by api.php "
+                "but was not found in the rendered page."
+            )
+        section_html = match.group("body")
+    else:
+        data = fetch_api(ref.host, {**params, "section": index})
+        section_html = data["parse"]["text"]
     parser = _BlockText()
-    parser.feed(data["parse"]["text"])
+    parser.feed(section_html)
     parser.close()
     if not parser.blocks:
         raise FandomError(f"{ref}: {name} section {index} has no paragraph or list text.")
@@ -219,7 +244,17 @@ def page_section_index(ref: PageRef) -> dict[str, Any]:
         "pageid": parse["pageid"],
         "disambiguation": is_disambiguation(parse),
         "sections": [
-            {"index": section["index"], "line": _plain(section["line"])}
+            {
+                "index": str(
+                    section.get("index")
+                    or (
+                        f"anchor:{section['anchor']}"
+                        if section.get("anchor")
+                        else ""
+                    )
+                ),
+                "line": _plain(section["line"]),
+            }
             for section in parse["sections"]
         ],
     }
