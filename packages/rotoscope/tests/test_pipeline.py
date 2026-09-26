@@ -30,6 +30,14 @@ def test_every_frame_is_drawn_and_the_drawer_restarts_at_each_cut(clip):
     assert result.faces == [{"A"}] * 30
 
 
+@pytest.mark.parametrize("holder, looks", [("A", True), ("loose", False)])
+def test_hands_are_looked_for_only_when_a_shot_puts_a_prop_in_someones_hands(clip, holder, looks):
+    seg, hands = FakeSegmenter(), FakeHands()
+    pipeline.rotoscope(clip, shot_list(holder), Config(), seg, hands, FakeDrawer())
+    assert any(p.kind == "hand" for p in seg.calls[0][1]) == looks
+    assert (hands.calls > 0) == looks
+
+
 @pytest.mark.parametrize("holder, colour", [("A", CAST["A"]), ("loose", LOOSE)])
 def test_a_held_prop_is_drawn_in_its_holders_colour_and_a_loose_one_grey(clip, holder, colour):
     result = pipeline.rotoscope(clip, shot_list(holder), Config(), FakeSegmenter(), FakeHands(), FakeDrawer())

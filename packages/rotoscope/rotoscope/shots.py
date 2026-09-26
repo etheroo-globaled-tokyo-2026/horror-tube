@@ -32,6 +32,10 @@ class Shot:
     cast: tuple[CastMember, ...]
     props: tuple[PropSpec, ...]
 
+    def held(self) -> set[str]:
+        """The find phrases of the props the shot puts in someone's hands: each with a copy that has a holder."""
+        return {p.find for p in self.props if p.holder != LOOSE}
+
     def play(self) -> dict[str, str]:
         """Each prop's find phrase: "held" when every copy the shot lists has a holder, so a loose copy is set
         dressing; "loose" when a loose copy is part of the scene."""
