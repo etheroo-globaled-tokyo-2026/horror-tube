@@ -64,15 +64,21 @@ reads the meter:
 - Coin return: the in-game wallet sends USDC back with `tx.coin` + `transferObjects`.
 
 **Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. The Sui skills say
-never keep keys in the browser. We break that rule on purpose, for testnet only. Privy fixes it.
+never keep keys in the browser. We break that rule on purpose, for testnet only. The server wallet fixes it.
 
-**Later: a real login wallet.** It must keep World ID as the only login, with no popups:
+**Later: a wallet that follows the human, not the browser.** World ID must stay the only login, with no popups.
+Researched 2026-09-26:
 
-- **Privy** (pick): our server signs a JWT after World ID (Privy JWT-based auth). Sui is "Tier 2": raw signing only, so
-  we write a small `Signer` adapter (`rawSign` over the blake2b intent digest).
-- **Turnkey:** the same idea, if Privy's Tier 2 gets in the way.
-- **Not zkLogin / Enoki:** zkLogin only takes fixed providers (Google, Apple, Twitch…). No custom issuer, so World ID
-  cannot be the only login, and it opens an OAuth popup.
+- **Next step (when our backend exists):** move the key to the server. One Ed25519 key per World ID nullifier, encrypted
+  with a Worker secret, kept in a Durable Object. The same human gets the same wallet on any device. We hold the keys
+  (custodial): OK for testnet.
+- **Later pick: Shinami Invisible Wallets + Gas Station.** Sui-native, backend-only, the wallet id is our nullifier,
+  gas sponsorship built in. Almost the same flow as our own server keys, so the move is small. Not confirmed: free
+  testnet limits.
+- **Privy (was the pick):** custom JWT login is free, but needs a "Request access" approval, also for test apps. Sui is
+  server-only raw signing, and the browser SDK without React has no Sui. Too much friction for Sui.
+- **Not usable:** zkLogin / Enoki (fixed OAuth providers only), Crossmint (no Sui), Dynamic (own login is enterprise
+  only). **Costly:** Turnkey (25 free signatures a month), Web3Auth (custom JWT is $69/mo), Para (custom OIDC server).
 
 **Options we did not pick:** blink.cash (ignored). World App wallet (a confirm screen per transaction). Enoki gas
 sponsorship (paid tiers only; testnet pricing unclear).
