@@ -81,6 +81,24 @@ python3 -m roster propose \
   --out /tmp/pinhead.json
 ```
 
+When one article has the body and another has the fight kit, pass both pages.
+They must produce the same label. A disambiguation URL fails.
+
+```bash
+python3 -m roster sections \
+  --source 'https://villains.fandom.com/wiki/Frankenstein'
+
+python3 -m roster propose \
+  --n 1 \
+  --look-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal)' \
+  --brief-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)' \
+  --out /tmp/frankenstein.json
+```
+
+`sections` prints headings only. Use it instead of an inline script. The roster
+interpreter is Python 3.9, and a backslash inside an f-string expression is a
+SyntaxError there.
+
 ### import (plan only)
 
 ```bash

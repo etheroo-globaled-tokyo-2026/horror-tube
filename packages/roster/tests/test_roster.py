@@ -14,7 +14,7 @@ from roster import __main__ as cli
 from roster.fandom import FandomError, fetch_page_lore, resolve_page
 from roster.plan import build_import_plan, build_register_plan, build_removal_plan, subname
 
-from roster.propose import propose_sheets, sheet_from_lore, sheets_payload
+from roster.propose import propose_sheets, sheet_from_battle_pages, sheet_from_lore, sheets_payload
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -392,6 +392,105 @@ class TestRegisterRejectsFixtures(unittest.TestCase):
     def test_register_refuses_fixture_path(self):
         code = cli.main(["register", "--input", str(FIXTURE)])
         self.assertEqual(code, 1)
+
+
+def _battle_api(host, params):
+    if params.get("prop") == "text":
+        if params["section"] == "4":
+            body = "<p>Huge hulking man with green skin and a bolted neck.</p>"
+        else:
+            body = "<p>Superhuman Strength: He tears a man limb from limb.</p>"
+        return {"parse": {"text": body}}
+    title = params["page"]
+    if "disambiguation" in params.get("page", ""):
+        return {
+            "parse": {
+                "title": "Frankenstein",
+                "pageid": 7337,
+                "properties": {"disambiguation": ""},
+                "categories": [{"category": "Disambiguation_pages"}],
+                "sections": [{"index": "1", "line": "Similar characters"}],
+            }
+        }
+    if "Dracula" in title:
+        sections = [{"index": "2", "line": "Powers and Abilities"}]
+    elif "Mary" in title:
+        sections = [{"index": "7", "line": "Powers and Abilities"}]
+    else:
+        sections = [{"index": "4", "line": "Appearance"}]
+    return {
+        "parse": {
+            "title": title,
+            "pageid": 1,
+            "properties": {},
+            "categories": [],
+            "sections": sections,
+        }
+    }
+
+
+class BattleProfileTests(unittest.TestCase):
+    def test_appearance_and_powers_from_two_pages_share_frankenstein(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_battle_api):
+            sheet = sheet_from_battle_pages(
+                resolve_page(
+                    "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal)",
+                    wiki=None,
+                ),
+                resolve_page(
+                    "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)",
+                    wiki=None,
+                ),
+            )
+        self.assertEqual(sheet["label"], "frankenstein")
+        self.assertIn("green skin", sheet["look"])
+        self.assertIn("Superhuman Strength", sheet["brief"])
+
+    def test_mismatched_labels_fail(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_battle_api):
+            with self.assertRaises(FandomError) as ctx:
+                sheet_from_battle_pages(
+                    resolve_page(
+                        "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal)",
+                        wiki=None,
+                    ),
+                    resolve_page(
+                        "https://villains.fandom.com/wiki/Dracula_(Castlevania)",
+                        wiki=None,
+                    ),
+                )
+        self.assertIn("share one label", str(ctx.exception))
+
+    def test_disambiguation_look_page_fails(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_battle_api):
+            with self.assertRaises(FandomError) as ctx:
+                sheet_from_battle_pages(
+                    resolve_page(
+                        "https://villains.fandom.com/wiki/Frankenstein_disambiguation",
+                        wiki=None,
+                    ),
+                    resolve_page(
+                        "https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)",
+                        wiki=None,
+                    ),
+                )
+        self.assertIn("disambiguation", str(ctx.exception))
+
+    def test_sections_command_prints_headings(self):
+        with mock.patch("roster.fandom.fetch_api", side_effect=_battle_api):
+            with mock.patch("sys.stdout") as stdout:
+                code = cli.main(
+                    [
+                        "sections",
+                        "--source",
+                        "https://villains.fandom.com/wiki/Frankenstein_disambiguation",
+                    ]
+                )
+        self.assertEqual(code, 0)
+        written = "".join(call.args[0] for call in stdout.write.call_args_list)
+        payload = json.loads(written)
+        self.assertTrue(payload["disambiguation"])
+        self.assertEqual(payload["sections"][0]["line"], "Similar characters")
 
 
 if __name__ == "__main__":

@@ -168,8 +168,8 @@ def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
     return parser.blocks[0]
 
 
-def fetch_page_lore(ref: PageRef) -> PageLore:
-    parse = fetch_api(
+def _parse_page(ref: PageRef) -> dict[str, Any]:
+    return fetch_api(
         ref.host,
         {
             "action": "parse",
@@ -178,8 +178,41 @@ def fetch_page_lore(ref: PageRef) -> PageLore:
             "redirects": "1",
         },
     )["parse"]
+
+
+def _reject_disambiguation(ref: PageRef, parse: dict[str, Any]) -> None:
     if is_disambiguation(parse):
-        raise FandomError(f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page.")
+        raise FandomError(
+            f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page."
+        )
+
+
+def page_section_index(ref: PageRef) -> dict[str, Any]:
+    """Section headings from api.php. Does not read section bodies."""
+    parse = _parse_page(ref)
+    return {
+        "title": parse["title"],
+        "pageid": parse["pageid"],
+        "disambiguation": is_disambiguation(parse),
+        "sections": [
+            {"index": section["index"], "line": _plain(section["line"])}
+            for section in parse["sections"]
+        ],
+    }
+
+
+def read_named_section(ref: PageRef, pattern: re.Pattern[str], *, name: str) -> tuple[str, str]:
+    """Return (page title, first paragraph) for one heading. Fails if the page is a disambiguation."""
+    parse = _parse_page(ref)
+    _reject_disambiguation(ref, parse)
+    index = _find_section(parse, pattern, name=name, ref=ref)
+    text = _section_text(ref, parse["pageid"], index, name=name)
+    return parse["title"], text
+
+
+def fetch_page_lore(ref: PageRef) -> PageLore:
+    parse = _parse_page(ref)
+    _reject_disambiguation(ref, parse)
     appearance = _find_section(parse, APPEARANCE_RE, name="Appearance", ref=ref)
     powers = _find_section(parse, POWERS_RE, name="Powers and abilities", ref=ref)
     return PageLore(
