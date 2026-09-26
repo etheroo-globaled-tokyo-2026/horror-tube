@@ -66,8 +66,7 @@ function parsePrivateKey(value: string, envName: string): Hex {
 }
 
 function loadAgentKey(env: NodeJS.ProcessEnv) {
-  // The resolver rejects a key that lacks the status/injuries role.
-  // PRIVATE_KEY stays off this process so the admin key is not deployed with the game.
+  // WARNING: never read PRIVATE_KEY here; the admin key must not ship with the game process.
   const privateKey = parsePrivateKey(
     requiredSettleEnv("AGENT_PRIVATE_KEY", env),
     "AGENT_PRIVATE_KEY",
@@ -211,7 +210,6 @@ async function readTextRecord(
       functionName: "resolve",
       args: [dnsName, data],
     });
-    // SAFETY: PermissionedResolver.resolve returns ABI-encoded bytes (Hex).
     encoded = resolved;
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
