@@ -33,7 +33,12 @@ import {
 } from "./coinbox.ts";
 import QRCode from "qrcode";
 import { getGameWallet, hasWalletSession, openGameWallet } from "./wallet.ts";
-import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
+import {
+  fetchEnterRoomRequest,
+  startEnterRoomProof,
+  verifyEnterRoomProof,
+  type GateSlot,
+} from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -592,8 +597,15 @@ burnLight.position.set(STOOL.x, STOOL.top + 0.11, STOOL.z + 0.05);
 scene.add(burnLight);
 const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
-type Waiver = { step: Step; at: number; ink: number; qrUri: string; fail: string };
-const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "" };
+type Waiver = {
+  step: Step;
+  at: number;
+  ink: number;
+  qrUri: string;
+  fail: string;
+  slot: GateSlot | null;
+};
+const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "", slot: null };
 const SCRIBBLE = Array.from({ length: 28 }, (_, i): [number, number] => [
   70 + i * 9,
   388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
@@ -1732,7 +1744,14 @@ function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
+        text(
+          W8.slot === "judge"
+            ? "JUDGE · SCAN WITH WORLD APP"
+            : `PRACTICE ${String(W8.slot ?? "")} · SCAN`,
+          oy + side + 36,
+          28,
+          COL.sulfur,
+        );
         text(
           "Orb only. We check it on our side.",
           oy + side + 68,
@@ -1780,13 +1799,28 @@ function drawTV(): void {
         "DotGothic16",
         400,
       );
+    } else if (W8.step === "read") {
+      noise = 0.15;
+      fill(COL.soot);
+      text(
+        W8.slot === "judge"
+          ? "JUDGE"
+          : W8.slot === null
+            ? "PICK A SCAN"
+            : `PRACTICE ${String(W8.slot)}`,
+        180,
+        56,
+        COL.sulfur,
+      );
+      text(W8.slot === null ? "1 2 3 4 5  OR  J" : "ENTER TO SIGN", 270, 32, COL.bone);
+      text("EACH NUMBER IS ONE PROOF", 340, 22, COL.rust, "DotGothic16", 400);
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
       text("SCAN FAILED", 190, 48, COL.blood);
       text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
       text("YOU ARE NOT IN.", 340, 24, COL.rust);
-    } else if (W8.step !== "read") {
+    } else {
       noise = 0;
       fill(COL.soot);
       const k = LOW ? 1 : Math.min(1, (now - W8.at) / 320);
@@ -1821,11 +1855,7 @@ function drawTV(): void {
       const ch = char(T.reveal);
       text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
-      text(
-        S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.",
-        330,
-        26,
-      );
+      text(S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
     } else {
       text(`${T.buf.padEnd(2, "_")}`, 170, 110);
       const n = +T.buf,
@@ -1993,29 +2023,33 @@ function hintText(): void {
     ? `${b(num(hovered.id + 1))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
-        ? `SIGN WITH WORLD ID ${b("ENTER")}`
+        ? W8.slot === "judge"
+          ? `JUDGE SCAN ${b("ENTER")}`
+          : W8.slot === null
+            ? `PRACTICE ${b("1-5")} · JUDGE ${b("J")}`
+            : `PRACTICE ${b(String(W8.slot))} ${b("ENTER")}`
         : W8.step === "scan"
           ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
           : W8.fail !== ""
             ? `NOT IN · TRY AGAIN ${b("ENTER")}`
-          : W8.step === "done" && S.noteKind === "bad"
-            ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
-            : W8.step === "done"
-              ? "WARMING UP"
-              : `NEXT ${b("ENTER")}`
+            : W8.step === "done" && S.noteKind === "bad"
+              ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
+              : W8.step === "done"
+                ? "WARMING UP"
+                : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
         ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
         : S.phase === "countdown" && !S.cast
           ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
-        : S.phase === "bet" && !S.bet && S.credit > 0
-          ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
-          : S.claim
-            ? `COLLECT ${b("OK")}`
-            : S.phase === "over"
-              ? `AGAIN ${b("OK")}`
-              : S.credit <= 0
-                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                : `NEXT ${b("N")}`;
+          : S.phase === "bet" && !S.bet && S.credit > 0
+            ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+            : S.claim
+              ? `COLLECT ${b("OK")}`
+              : S.phase === "over"
+                ? `AGAIN ${b("OK")}`
+                : S.credit <= 0
+                  ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                  : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -2132,8 +2166,27 @@ function step(name: Step): void {
   hintText();
 }
 let scanAbort: AbortController | null = null;
+function practiceSlot(key: string): 1 | 2 | 3 | 4 | 5 | null {
+  if (key === "1") return 1;
+  if (key === "2") return 2;
+  if (key === "3") return 3;
+  if (key === "4") return 4;
+  if (key === "5") return 5;
+  return null;
+}
+function armSlot(slot: GateSlot): void {
+  if (W8.step === "signed" || W8.step === "done") return;
+  scanAbort?.abort();
+  scanAbort = null;
+  W8.qrUri = "";
+  W8.fail = "";
+  W8.ink = 0;
+  W8.slot = slot;
+  paperDrawn = false;
+  step("read");
+}
 function sign(): void {
-  if (W8.step !== "read") return;
+  if (W8.step !== "read" || W8.slot === null) return;
   step("ink");
   const t0 = performance.now();
   const inkTimer = setInterval(() => {
@@ -2144,14 +2197,15 @@ function sign(): void {
   }, 30);
 }
 async function beginWorldIdScan(): Promise<void> {
-  if (W8.step !== "ink" && W8.step !== "scan") return;
+  if ((W8.step !== "ink" && W8.step !== "scan") || W8.slot === null) return;
+  const slot = W8.slot;
   scanAbort?.abort();
   scanAbort = new AbortController();
   const { signal } = scanAbort;
   W8.qrUri = "";
   step("scan");
   try {
-    const context = await fetchEnterRoomRequest();
+    const context = await fetchEnterRoomRequest(slot);
     if (signal.aborted) return;
     const proof = await startEnterRoomProof(context);
     if (signal.aborted) return;
@@ -2369,6 +2423,7 @@ function retry(): void {
     step("read");
   });
 }
+$("#judge-scan").addEventListener("click", () => armSlot("judge"));
 $("#no-orb").addEventListener("click", noOrb);
 $("#forget").addEventListener("click", () => {
   store((s) => s.removeItem("ht.verified"));
@@ -2443,7 +2498,10 @@ addEventListener(
     const waiverUp = S.phase === "gate" && W8.step !== "done";
     if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
-      if (k === "enter" && W8.step === "read") sign();
+      const practice = practiceSlot(k);
+      if (practice !== null) armSlot(practice);
+      else if (k === "j") armSlot("judge");
+      else if (k === "enter" && W8.step === "read") sign();
       else if (k === "enter") nextGateStep();
       else if (k === "x") noOrb();
       else return;
@@ -2617,8 +2675,7 @@ hooks.render = () => {
     const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && S.phase === "countdown")
-      say("Quorum reached. Voting closes soon.", 4200);
+    if (was === "vote" && S.phase === "countdown") say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();

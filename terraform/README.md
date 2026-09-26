@@ -176,6 +176,8 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
 | `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `production`) |
+| `WORLD_ID_PRACTICE_ACTIONS` | `TF_VAR_world_id_practice_actions` | from `.env`. Five comma-separated actions |
+| `WORLD_ID_JUDGE_ACTION` | `TF_VAR_world_id_judge_action` | from `.env`. Reserved for the judge scan |
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
@@ -215,6 +217,8 @@ Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key r
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
+  : "${WORLD_ID_PRACTICE_ACTIONS:?WORLD_ID_PRACTICE_ACTIONS is required. See .env.example.}"
+  : "${WORLD_ID_JUDGE_ACTION:?WORLD_ID_JUDGE_ACTION is required. See .env.example.}"
   : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
@@ -238,6 +242,8 @@ Example apply that passes `.env` into `TF_VAR_*` (plus the Spaces provider key r
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
   export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
+  export TF_VAR_world_id_practice_actions="$WORLD_ID_PRACTICE_ACTIONS"
+  export TF_VAR_world_id_judge_action="$WORLD_ID_JUDGE_ACTION"
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"

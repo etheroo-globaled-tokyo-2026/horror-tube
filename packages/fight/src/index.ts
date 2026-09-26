@@ -1,4 +1,10 @@
 import {
+  uploadFightVideo,
+  type FightMediaConfig,
+  type PutFightVideo,
+} from "@horror-tube/fight-media";
+
+import {
   loadFalVideoConfig,
   loadNarrationConfig,
   type FalVideoConfig,
@@ -16,6 +22,10 @@ import {
   type RandomInt,
   type RosterEntry,
 } from "./rotation.js";
+import {
+  downloadFightVideoBytes,
+  type FetchLike,
+} from "./store-video.js";
 import type { FightInput, FightTurnResult, LivingCard } from "./types.js";
 
 export * from "./types.js";
@@ -26,6 +36,7 @@ export * from "./narrate.js";
 export * from "./fal-video.js";
 export * from "./rotation.js";
 export * from "./battle-queue.js";
+export * from "./store-video.js";
 
 export { cryptoRandomInt };
 
@@ -80,6 +91,12 @@ export async function runFightTurn(
     narrationConfig?: NarrationConfig;
     falConfig?: FalVideoConfig;
     randomInt?: RandomInt;
+    /** Injectable HTTP for the fal mp4 download. Defaults to global fetch. */
+    fetch?: FetchLike;
+    /** Override Spaces config instead of reading FIGHT_MEDIA_SPACES_* from env. */
+    fightMediaConfig?: FightMediaConfig;
+    /** Injectable Spaces PUT. Defaults to the fight-media S3 client. */
+    putObject?: PutFightVideo;
   } = {},
 ): Promise<FightTurnResult> {
   const narrationConfig = deps.narrationConfig ?? loadNarrationConfig(env);
@@ -96,13 +113,20 @@ export async function runFightTurn(
     falConfig,
     deps.fal,
   );
+  const body = await downloadFightVideoBytes(video.videoUrl, deps.fetch);
+  const videoUrl = await uploadFightVideo({
+    body,
+    env,
+    config: deps.fightMediaConfig,
+    putObject: deps.putObject,
+  });
   return {
     turn: narrated.turn,
     ensLines: narrated.ensLines,
     nextOpponentSubname: narrated.nextOpponentSubname,
     rationale: narrated.rationale,
     videoPrompt: narrated.videoPrompt,
-    videoUrl: video.videoUrl,
+    videoUrl,
     expandedPrompt: video.expandedPrompt,
   };
 }

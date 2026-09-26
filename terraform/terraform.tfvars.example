@@ -38,4 +38,5 @@ skip_battle_settlement = "1"
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 
 # WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: production).
+# WORLD_ID_PRACTICE_ACTIONS and WORLD_ID_JUDGE_ACTION are passed the same way.
 # Do not put WORLD_ID_* secrets in this file.

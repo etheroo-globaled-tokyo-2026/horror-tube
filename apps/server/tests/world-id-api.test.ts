@@ -12,6 +12,8 @@ const TEST_ENV: NodeJS.ProcessEnv = {
   WORLD_ID_RP_ID: "rp_unit_test",
   WORLD_ID_SIGNING_KEY: SIGNING_KEY,
   WORLD_ID_ENVIRONMENT: "production",
+  WORLD_ID_PRACTICE_ACTIONS: "enter-room,enter-room-2,enter-room-3,enter-room-4,enter-room-5",
+  WORLD_ID_JUDGE_ACTION: "enter-room-judge",
 };
 
 describe("World ID HTTP", () => {
@@ -40,9 +42,13 @@ describe("World ID HTTP", () => {
     return `http://127.0.0.1:${String(addr.port)}`;
   }
 
-  it("POST /world-id/request returns a signed enter-room IDKit context", async () => {
+  it("POST /world-id/request signs the practice or judge action for that slot", async () => {
     const base = await start();
-    const res = await fetch(`${base}/world-id/request`, { method: "POST" });
+    const res = await fetch(`${base}/world-id/request`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slot: 1 }),
+    });
     assert.equal(res.status, 200);
     const body = (await res.json()) as {
       app_id: string;
@@ -58,6 +64,21 @@ describe("World ID HTTP", () => {
     assert.equal(body.rp_context.rp_id, "rp_unit_test");
     assert.ok(body.rp_context.signature.startsWith("0x"));
     assert.ok(body.rp_context.nonce.startsWith("0x"));
+    const judge = await fetch(`${base}/world-id/request`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slot: "judge" }),
+    });
+    assert.equal(judge.status, 200);
+    const judgeBody = (await judge.json()) as { action: string };
+    assert.equal(judgeBody.action, "enter-room-judge");
+    const bad = await fetch(`${base}/world-id/request`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slot: 9 }),
+    });
+    assert.equal(bad.status, 400);
+    assert.match(await bad.text(), /slot must be/);
   });
 
   it("POST /world-id/verify rejects non-JSON before calling the portal", async () => {
