@@ -20,6 +20,14 @@ _NON_LABEL_RE = re.compile(r"[^a-z0-9]+")
 _LEADING_ARTICLES = frozenset({"a", "an", "the"})
 
 
+def display_name_from_title(title: str) -> str:
+    display_name = re.sub(r"\([^)]*\)", " ", title)
+    display_name = " ".join(display_name.split())
+    if display_name == "":
+        raise FandomError(f"Cannot build display_name from title {title!r}.")
+    return display_name
+
+
 def label_from_title(title: str) -> str:
     # "Pinhead (Hellraiser)" -> "pinhead"
     cleaned = re.sub(r"\([^)]*\)", " ", title.strip().lower())
@@ -42,9 +50,10 @@ def sheet_from_lore(lore: PageLore) -> Character:
     """Map page sections into the roster character schema. Does not invent text."""
     character: dict[str, Any] = {
         "label": label_from_title(lore.title),
+        "display_name": display_name_from_title(lore.title),
         "look": first_sentence(lore.appearance),
         "brief": first_sentence(lore.powers),
-        "injuries": "",
+        "injuries": "[]",
         "status": "alive",
         "icon": "",
     }

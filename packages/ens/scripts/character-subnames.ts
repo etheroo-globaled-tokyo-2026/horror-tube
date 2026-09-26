@@ -31,7 +31,7 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
-import { readRosterFromChain } from "./dashboard.js";
+import { parseInjuries, readRosterFromChain } from "./dashboard.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
@@ -46,7 +46,14 @@ const ROLE_SET_RESOLVER = 1n << 24n;
 const ROLE_UNREGISTER = 1n << 12n;
 const CHARACTER_ROLE_BITMAP =
   ROLE_SET_SUBREGISTRY | ROLE_SET_RESOLVER | ROLE_UNREGISTER;
-const TEXT_KEYS = ["look", "brief", "injuries", "status", "icon"] as const;
+const TEXT_KEYS = [
+  "display_name",
+  "look",
+  "brief",
+  "injuries",
+  "status",
+  "icon",
+] as const;
 
 const textResolverAbi = parseAbi([
   "function text(bytes32 node, string key) view returns (string)",
@@ -67,6 +74,7 @@ type IconUpdate = {
 
 type CharacterSheet = {
   label: string;
+  display_name: string;
   look: string;
   brief: string;
   injuries: string;
@@ -562,11 +570,21 @@ async function main(): Promise<void> {
       for (const key of TEXT_KEYS) {
         texts[key] = await readText(resolverAddress, dnsName, key);
       }
+      const displayName = texts.display_name;
+      if (displayName === undefined || displayName.trim() === "") {
+        fail(`${label}: display_name is missing or blank.`);
+      }
+      const rawInjuries = texts.injuries;
+      if (rawInjuries === undefined) {
+        fail(`${label}: injuries text record was not read.`);
+      }
+      parseInjuries(label, rawInjuries);
       out[label] = {
         label,
+        display_name: displayName,
         look: texts.look ?? "",
         brief: texts.brief ?? "",
-        injuries: texts.injuries ?? "",
+        injuries: rawInjuries,
         status: texts.status ?? "",
         icon: texts.icon ?? "",
       };
@@ -629,6 +647,7 @@ async function main(): Promise<void> {
     for (const entry of plan.characters) {
       if (
         typeof entry.label !== "string" ||
+        typeof entry.display_name !== "string" ||
         typeof entry.look !== "string" ||
         typeof entry.brief !== "string" ||
         typeof entry.injuries !== "string" ||
@@ -637,6 +656,10 @@ async function main(): Promise<void> {
       ) {
         fail(`Plan entry missing required string fields: ${JSON.stringify(entry)}`);
       }
+      if (entry.display_name.trim() === "") {
+        fail(`Plan entry ${entry.label} has blank display_name.`);
+      }
+      parseInjuries(entry.label, entry.injuries);
       const id = labelId(entry.label);
       let status: number;
       try {
@@ -826,9 +849,10 @@ async function main(): Promise<void> {
     for (const sheet of roster.sheets) {
       byLabel[sheet.label] = {
         label: sheet.label,
+        display_name: sheet.display_name,
         look: sheet.look,
         brief: sheet.brief,
-        injuries: sheet.injuries,
+        injuries: JSON.stringify(sheet.injuries),
         status: sheet.status,
         icon: sheet.icon,
       };

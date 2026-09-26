@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from roster.validate import Character, RosterValidationError
+from roster.validate import Character, RosterValidationError, parse_injuries
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TSX = REPO_ROOT / "packages" / "ens" / "node_modules" / ".bin" / "tsx"
@@ -46,6 +46,35 @@ def ensure_parent_infrastructure() -> None:
     run_chain(["ensure"])
 
 
+def _chain_character(label: str, value: Mapping[str, Any], *, source: str) -> Character:
+    for key in ("label", "display_name", "look", "brief", "injuries", "status", "icon"):
+        if key not in value or not isinstance(value[key], str):
+            raise RosterValidationError(
+                f"{source} {label!r} missing string field {key!r}."
+            )
+    display_name = value["display_name"]
+    if display_name.strip() == "":
+        raise RosterValidationError(
+            f"{source} {label!r} has blank display_name."
+        )
+    raw_injuries = value["injuries"]
+    try:
+        injuries = parse_injuries(raw_injuries, context=f"{source} {label!r}")
+    except RosterValidationError as exc:
+        raise RosterValidationError(
+            f"{source} {label!r} has invalid injuries {raw_injuries!r}: {exc}"
+        ) from exc
+    return {
+        "label": value["label"],
+        "display_name": display_name,
+        "look": value["look"],
+        "brief": value["brief"],
+        "injuries": json.dumps(injuries, ensure_ascii=False),
+        "status": value["status"],
+        "icon": value["icon"],
+    }
+
+
 def snapshot_existing(labels: Sequence[str]) -> dict[str, Character]:
     if len(labels) == 0:
         return {}
@@ -70,19 +99,7 @@ def snapshot_existing(labels: Sequence[str]) -> dict[str, Character]:
             raise RosterValidationError(
                 f"Chain snapshot entry for {label!r} must be a character object."
             )
-        for key in ("label", "look", "brief", "injuries", "status", "icon"):
-            if key not in value or not isinstance(value[key], str):
-                raise RosterValidationError(
-                    f"Chain snapshot {label!r} missing string field {key!r}."
-                )
-        out[label] = {
-            "label": value["label"],
-            "look": value["look"],
-            "brief": value["brief"],
-            "injuries": value["injuries"],
-            "status": value["status"],
-            "icon": value["icon"],
-        }
+        out[label] = _chain_character(label, value, source="Chain snapshot")
     return out
 
 
@@ -122,19 +139,7 @@ def list_registered() -> dict[str, Character]:
             raise RosterValidationError(
                 f"Registered roster entry for {label!r} must be a character object."
             )
-        for key in ("label", "look", "brief", "injuries", "status", "icon"):
-            if key not in value or not isinstance(value[key], str):
-                raise RosterValidationError(
-                    f"Registered roster {label!r} missing string field {key!r}."
-                )
-        out[label] = {
-            "label": value["label"],
-            "look": value["look"],
-            "brief": value["brief"],
-            "injuries": value["injuries"],
-            "status": value["status"],
-            "icon": value["icon"],
-        }
+        out[label] = _chain_character(label, value, source="Registered roster")
     return out
 
 

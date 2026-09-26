@@ -416,7 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
             "icon, generate a face PNG from the on-chain look, upload to Spaces, and "
             "setText only the icon key to the https CDN URL. Skips characters that "
             "already have a non-empty https icon unless --override. Does not change "
-            "look, brief, injuries, or status."
+            "display_name, look, brief, injuries, or status."
         ),
     )
     icons_chain_p.add_argument(
@@ -526,7 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
         "register",
         help=(
             "Read chain state, then register character subnames and setText "
-            "(look, brief, injuries, status, icon). Sends transactions."
+            "(display_name, look, brief, injuries, status, icon). Sends transactions."
         ),
     )
     register_p.add_argument(

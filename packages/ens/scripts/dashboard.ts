@@ -90,14 +90,70 @@ const textResolverAbi = parseAbi([
 
 export type CharacterSheet = {
   label: string;
+  display_name: string;
   name: string;
   owner: string;
+  look: string;
+  brief: string;
+  injuries: string[];
+  status: string;
+  icon: string;
+};
+
+type CharacterTexts = {
+  display_name: string;
   look: string;
   brief: string;
   injuries: string;
   status: string;
   icon: string;
 };
+
+export function parseInjuries(label: string, raw: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `${label}: injuries must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `${label}: injuries must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}`,
+    );
+  }
+  return parsed.map((item, index) => {
+    if (typeof item !== "string" || item.trim() === "") {
+      throw new Error(
+        `${label}: injuries[${String(index)}] must be a non-empty string. Got ${JSON.stringify(raw)}`,
+      );
+    }
+    return item.trim();
+  });
+}
+
+export function characterSheetFromTexts(
+  label: string,
+  name: string,
+  owner: string,
+  texts: CharacterTexts,
+): CharacterSheet {
+  if (texts.display_name.trim() === "") {
+    throw new Error(`${label}: display_name is missing or blank.`);
+  }
+  return {
+    label,
+    display_name: texts.display_name.trim(),
+    name,
+    owner,
+    look: texts.look,
+    brief: texts.brief,
+    injuries: parseInjuries(label, texts.injuries),
+    status: texts.status,
+    icon: texts.icon,
+  };
+}
 
 export function ensAppUrl(name: string): string {
   return `https://app.ens.dev/${encodeURI(name)}`;
@@ -333,6 +389,13 @@ function renderIconHtml(icon: string): string {
   return `<span>${escapeHtml(icon)}</span>`;
 }
 
+function renderInjuriesHtml(injuries: readonly string[]): string {
+  if (injuries.length === 0) {
+    return "none";
+  }
+  return `<ul>${injuries.map((injury) => `<li>${escapeHtml(injury)}</li>`).join("")}</ul>`;
+}
+
 export function renderDashboardHtml(
   parentName: string,
   sheets: readonly CharacterSheet[],
@@ -341,12 +404,13 @@ export function renderDashboardHtml(
     .map((sheet) => {
       return [
         `<article class="sheet">`,
-        `<h2><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></h2>`,
+        `<h2>${escapeHtml(sheet.display_name)}</h2>`,
+        `<p class="name"><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></p>`,
         `<p class="addr"><a href="${escapeHtml(sepoliaAddressUrl(sheet.owner))}">${escapeHtml(sheet.owner)}</a></p>`,
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
-        `<dt>injuries</dt><dd>${escapeHtml(sheet.injuries === "" ? "(empty)" : sheet.injuries)}</dd>`,
+        `<dt>injuries</dt><dd>${renderInjuriesHtml(sheet.injuries)}</dd>`,
         `<dt>status</dt><dd class="status">${escapeHtml(sheet.status === "" ? "(empty)" : sheet.status)}</dd>`,
         `<dt>icon</dt><dd class="icon">${renderIconHtml(sheet.icon)}</dd>`,
         `</dl>`,
@@ -405,10 +469,11 @@ h1 {
   font-size: 1.1rem;
   margin-bottom: 0.35rem;
 }
-.sheet h2 a,
+.name a,
 .addr a {
   color: var(--sulfur);
 }
+.name,
 .addr {
   margin-bottom: 0.75rem;
   word-break: break-all;
@@ -618,12 +683,27 @@ async function loadCharacterSheets(
         `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    const display_name = await readText(
+      publicClient,
+      resolver,
+      dnsName,
+      "display_name",
+    );
     const look = await readText(publicClient, resolver, dnsName, "look");
     const brief = await readText(publicClient, resolver, dnsName, "brief");
     const injuries = await readText(publicClient, resolver, dnsName, "injuries");
     const status = await readText(publicClient, resolver, dnsName, "status");
     const icon = await readText(publicClient, resolver, dnsName, "icon");
-    sheets.push({ label, name, owner, look, brief, injuries, status, icon });
+    sheets.push(
+      characterSheetFromTexts(label, name, owner, {
+        display_name,
+        look,
+        brief,
+        injuries,
+        status,
+        icon,
+      }),
+    );
   }
   return sheets;
 }

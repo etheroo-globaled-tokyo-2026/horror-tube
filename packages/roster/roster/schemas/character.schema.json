@@ -5,13 +5,19 @@
   "description": "One character for roster import. Every key listed is required; empty string is allowed only where noted. Do not include strength, intelligence, luck, or role.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["label", "look", "brief", "injuries", "status", "icon"],
+  "required": ["label", "display_name", "look", "brief", "injuries", "status", "icon"],
   "properties": {
     "label": {
       "type": "string",
       "minLength": 1,
       "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
       "description": "Single lowercase DNS label for the subname under ENS_LABEL."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "description": "Human-readable character name. Must not be derived from the DNS label."
     },
     "look": {
       "type": "string",
@@ -25,7 +31,7 @@
     },
     "injuries": {
       "type": "string",
-      "description": "Carried damage text. Must be present; use \"\" when unhurt. Missing key is an error."
+      "description": "JSON array of non-empty injury strings. Must be present; use \"[]\" when unhurt."
     },
     "status": {
       "type": "string",

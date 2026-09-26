@@ -14,9 +14,15 @@ from roster import __main__ as cli
 from roster.fandom import FandomError, fetch_page_lore, resolve_page
 from roster.plan import build_import_plan, build_register_plan, build_removal_plan, subname
 
-from roster.propose import propose_sheets, sheet_from_lore, sheets_payload
+from roster.propose import (
+    display_name_from_title,
+    propose_sheets,
+    sheet_from_lore,
+    sheets_payload,
+)
 from roster.validate import (
     RosterValidationError,
+    is_dead_or_injured,
     load_characters,
     parse_characters,
     require_no_duplicate_labels,
@@ -47,9 +53,10 @@ def _lore(title):
 def _char(**overrides):
     base = {
         "label": "alpha",
+        "display_name": "Alpha",
         "look": "A figure in a coat.",
         "brief": "Walks forward without stopping.",
-        "injuries": "",
+        "injuries": "[]",
         "status": "",
         "icon": "",
     }
@@ -71,6 +78,18 @@ class SchemaTests(unittest.TestCase):
             parse_characters(data, source="missing-injuries")
         self.assertIn("injuries", str(ctx.exception))
 
+    def test_missing_display_name_key_fails(self):
+        data = _char()
+        del data["display_name"]
+        with self.assertRaises(RosterValidationError) as ctx:
+            parse_characters(data, source="missing-display-name")
+        self.assertIn("display_name", str(ctx.exception))
+
+    def test_blank_display_name_fails(self):
+        with self.assertRaises(RosterValidationError) as ctx:
+            parse_characters(_char(display_name=" \t "), source="blank-display-name")
+        self.assertIn("display_name", str(ctx.exception))
+
     def test_missing_status_key_fails(self):
         data = _char()
         del data["status"]
@@ -78,9 +97,47 @@ class SchemaTests(unittest.TestCase):
             parse_characters(data, source="missing-status")
         self.assertIn("status", str(ctx.exception))
 
-    def test_empty_injuries_string_ok(self):
-        characters = parse_characters(_char(injuries=""), source="ok")
-        self.assertEqual(characters[0]["injuries"], "")
+    def test_empty_injuries_list_ok(self):
+        characters = parse_characters(_char(injuries="[]"), source="ok")
+        self.assertEqual(characters[0]["injuries"], "[]")
+
+    def test_one_injury_is_trimmed(self):
+        characters = parse_characters(
+            _char(injuries='[" scar on cheek "]'), source="one-injury"
+        )
+        self.assertEqual(characters[0]["injuries"], '["scar on cheek"]')
+
+    def test_two_injuries_are_preserved(self):
+        characters = parse_characters(
+            _char(injuries='["ripped left sleeve", "slower swing"]'),
+            source="two-injuries",
+        )
+        self.assertEqual(
+            json.loads(characters[0]["injuries"]),
+            ["ripped left sleeve", "slower swing"],
+        )
+
+    def test_bare_injury_phrase_fails(self):
+        with self.assertRaises(RosterValidationError) as ctx:
+            parse_characters(_char(injuries="scar on cheek"), source="bare-injury")
+        self.assertIn("injuries", str(ctx.exception))
+
+    def test_invalid_injuries_json_fails(self):
+        with self.assertRaises(RosterValidationError) as ctx:
+            parse_characters(_char(injuries="["), source="invalid-injuries")
+        self.assertIn("injuries", str(ctx.exception))
+
+    def test_empty_injury_item_fails(self):
+        with self.assertRaises(RosterValidationError) as ctx:
+            parse_characters(_char(injuries='[" "]'), source="empty-injury")
+        self.assertIn("injuries", str(ctx.exception))
+
+    def test_dead_or_injured_uses_parsed_injury_list(self):
+        self.assertFalse(is_dead_or_injured(_char(injuries="[]", status="alive")))
+        self.assertTrue(
+            is_dead_or_injured(_char(injuries='["slower swing"]', status="alive"))
+        )
+        self.assertTrue(is_dead_or_injured(_char(injuries="[]", status="dead")))
 
     def test_invalid_status_rejected(self):
         with self.assertRaises(RosterValidationError) as ctx:
@@ -118,9 +175,12 @@ class ImportPlanTests(unittest.TestCase):
         self.assertIn("--on-existing", str(ctx.exception))
 
     def test_missing_on_existing_fails_for_injured(self):
-        incoming = [_char(label="jason", injuries="")]
+        incoming = [_char(label="jason", injuries="[]")]
         existing = {
-            "jason": _char(label="jason", injuries="ripped left sleeve, slower swing"),
+            "jason": _char(
+                label="jason",
+                injuries='["ripped left sleeve", "slower swing"]',
+            ),
         }
         with self.assertRaises(RosterValidationError) as ctx:
             build_import_plan(incoming, ens_label="horrortube", existing=existing)
@@ -140,8 +200,10 @@ class ImportPlanTests(unittest.TestCase):
         self.assertEqual(plan["skipped"][0]["label"], "jason")
 
     def test_restore_sets_status_alive_keeps_file_injuries(self):
-        incoming = [_char(label="jason", injuries="scar on cheek", status="dead")]
-        existing = {"jason": _char(label="jason", status="dead", injuries="old wound")}
+        incoming = [_char(label="jason", injuries='["scar on cheek"]', status="dead")]
+        existing = {
+            "jason": _char(label="jason", status="dead", injuries='["old wound"]')
+        }
         plan = build_import_plan(
             incoming,
             ens_label="horrortube",
@@ -151,7 +213,7 @@ class ImportPlanTests(unittest.TestCase):
         self.assertEqual(len(plan["characters"]), 1)
         entry = plan["characters"][0]
         self.assertEqual(entry["status"], "alive")
-        self.assertEqual(entry["injuries"], "scar on cheek")
+        self.assertEqual(entry["injuries"], '["scar on cheek"]')
         self.assertEqual(entry["action"], "restore_and_update")
         self.assertIn("jason.horrortube.eth", entry["name"])
 
@@ -237,12 +299,26 @@ class ResolvePageTests(unittest.TestCase):
 
 
 class ProposeTests(unittest.TestCase):
+    def test_display_name_removes_parenthetical_groups(self):
+        self.assertEqual(display_name_from_title("Pinhead (Hellraiser)"), "Pinhead")
+        self.assertEqual(
+            display_name_from_title("Michael Myers (Halloween)"), "Michael Myers"
+        )
+        self.assertEqual(display_name_from_title("Art the Clown"), "Art the Clown")
+
+    def test_display_name_fails_when_title_is_only_parentheticals(self):
+        title = "(Hellraiser) (1987)"
+        with self.assertRaises(FandomError) as ctx:
+            display_name_from_title(title)
+        self.assertIn(title, str(ctx.exception))
+
     def test_appearance_and_powers_become_sheet(self):
         sheet = sheet_from_lore(_lore("Pinhead (Hellraiser)"))
         self.assertEqual(sheet["label"], "pinhead")
+        self.assertEqual(sheet["display_name"], "Pinhead")
         self.assertTrue(sheet["look"].startswith("Pinhead's unique physical description"))
         self.assertTrue(sheet["brief"].startswith("Immortality: Pinhead is shown"))
-        self.assertEqual(sheet["injuries"], "")
+        self.assertEqual(sheet["injuries"], "[]")
         self.assertEqual(sheet["status"], "alive")
         self.assertEqual(sheet["icon"], "")
         self.assertNotIn("strength", sheet)
@@ -251,6 +327,7 @@ class ProposeTests(unittest.TestCase):
     def test_physical_appearance_section_is_used(self):
         sheet = sheet_from_lore(_lore("Michael Myers (Halloween)"))
         self.assertEqual(sheet["label"], "michael")
+        self.assertEqual(sheet["display_name"], "Michael Myers")
         self.assertIn("tall man", sheet["look"])
         self.assertIn("Inhuman Strength", sheet["brief"])
 

@@ -39,9 +39,10 @@ Checked in under `packages/roster/roster/schemas/`:
 | Key        | Rules                                                                         |
 | ---------- | ----------------------------------------------------------------------------- |
 | `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                           |
+| `display_name` | Non-empty human-readable name; never defaulted from `label`               |
 | `look`     | Non-empty string                                                              |
 | `brief`    | Non-empty string                                                              |
-| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default) |
+| `injuries` | String containing a JSON array of non-empty strings; use `"[]"` when unhurt. **Missing key is an error** |
 | `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
 | `icon`     | `""` or an `https://` URL. Missing key is an error                            |
 
@@ -95,8 +96,8 @@ Writes a normalized import plan. Does not submit a transaction.
 
 Ensures the parent has a UserRegistry subregistry and PermissionedResolver
 (deployed via pin `VerifiableFactory` if missing), reads chain status/text for
-each label, then registers and writes `look` / `brief` / `injuries` / `status` /
-`icon` via `setText`.
+each label, then registers and writes `display_name` / `look` / `brief` /
+`injuries` / `status` / `icon` via `setText`.
 
 ```bash
 python3 -m roster register --input /tmp/one-character.json
@@ -162,7 +163,7 @@ python3 -m roster icons \
 Discovers every registered character under `ENS_LABEL.eth` from chain. For each
 character whose on-chain `icon` is empty, generates a face PNG from the on-chain
 `look`, uploads to Spaces, and `setText`s **only** the `icon` key to the https
-CDN URL. Does not rewrite `look`, `brief`, `injuries`, or `status`. Skips
+CDN URL. Does not rewrite `display_name`, `look`, `brief`, `injuries`, or `status`. Skips
 characters that already have a non-empty https icon unless `--override`. Fails
 if `look` is empty (names the label). One failure stops the command.
 
@@ -182,7 +183,7 @@ for each. Use `plan-remove` if you only want the JSON plan.
 ## Character sheet dashboard
 
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
-and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
+and shows `display_name` / `look` / `brief` / `injuries` / `status` / `icon`. Needs
 `ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
 in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
 transactions.
