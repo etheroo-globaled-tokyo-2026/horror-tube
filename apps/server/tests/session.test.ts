@@ -50,6 +50,9 @@ function testLoop(roundStore = new MemoryRoundStore(), opens: string[] = []): Ga
       async writeLoserStatusDead() {
         throw new Error("session tests must not write status.");
       },
+      async writeStatusAlive() {
+        throw new Error("session tests must not revive a character.");
+      },
       async settleBattle(_battleId, _side) {
         throw new Error("session tests must not settle a battle.");
       },

@@ -78,6 +78,9 @@ function testLoop(store: MemoryBattleQueueStore, now: () => number): GameLoop {
       async writeLoserStatusDead() {
         return "0xstat";
       },
+      async writeStatusAlive() {
+        return "0xalive";
+      },
       async settleBattle() {
         return "0xsettle";
       },

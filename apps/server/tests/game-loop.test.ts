@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  MemoryBattleQueueStore,
-  type BattleQueueInsert,
-  type ChainWritePorts,
-} from "@horror-tube/fight/battle-queue";
+import { MemoryBattleQueueStore, type BattleQueueInsert } from "@horror-tube/fight/battle-queue";
 import type { RandomInt } from "@horror-tube/fight/rotation";
 
 import type { BattleBettingPorts } from "../src/battle-betting.js";
@@ -17,7 +13,13 @@ import {
 } from "../src/game/config.js";
 import { MemoryRoundStore } from "../src/db/rounds.js";
 import { botSide, type HouseBots } from "../src/game/house-bot.js";
-import { GameLoop, StartRefusedError, StoreWriteError, VoteRefusedError } from "../src/game/loop.js";
+import {
+  GameLoop,
+  StartRefusedError,
+  StoreWriteError,
+  VoteRefusedError,
+  type RosterWritePorts,
+} from "../src/game/loop.js";
 import { createHouseBotChains, readHouseBotStakeUnits } from "../src/house-bot-chain.js";
 import type { PairingRequest, PairingRunner } from "../src/pairing-job.js";
 const baseConfig: GameLoopConfig = {
@@ -58,7 +60,7 @@ function pinnedRandom(...draws: number[]): RandomInt {
   };
 }
 
-function trackingPorts(calls: string[]): ChainWritePorts {
+function trackingPorts(calls: string[]): RosterWritePorts {
   return {
     async writeWinnerInjuries() {
       calls.push("injuries");
@@ -67,6 +69,10 @@ function trackingPorts(calls: string[]): ChainWritePorts {
     async writeLoserStatusDead() {
       calls.push("status");
       return "0xstatus";
+    },
+    async writeStatusAlive({ subname }) {
+      calls.push(`alive:${subname}`);
+      return "0xalive";
     },
     async settleBattle(battleId, _side) {
       calls.push(`settle:${battleId}`);
@@ -385,15 +391,34 @@ describe("start", () => {
     assert.equal(deps.roundStore.seasons.length, 1);
   });
 
-  it("stays waiting and stores no season when fewer than 2 fighters live", async () => {
+  it("with fewer than 2 living on chain, offers everyone and revives the dead on start", async () => {
     const { loop, deps } = makeLoop({
+      ensLabels: ["alpha", "bravo", "charlie"],
+      ensStatuses: ["alive", "dead", "dead"],
+    });
+    const waiting = loop.getState();
+    assert.deepEqual(waiting.selectable, [0, 1, 2]);
+    assert.ok(waiting.chars.every((c) => c.alive));
+
+    await loop.start(1);
+    assert.deepEqual(deps.calls, ["alive:bravo", "alive:charlie"]);
+    assert.equal(loop.getState().phase, "bet");
+    assert.deepEqual(loop.getState().fighters, [1, 0]);
+  });
+
+  it("stays waiting and stores no season when the revival write fails", async () => {
+    const deps = loopDeps();
+    deps.chainWritePorts.writeStatusAlive = async () => {
+      throw new Error("rpc timeout on revival");
+    };
+    const { loop } = makeLoop({
       ensLabels: ["alpha", "bravo"],
       ensStatuses: ["alive", "dead"],
+      deps,
     });
-    await assert.rejects(() => loop.start(0), /fewer than 2 living/u);
+    await assert.rejects(() => loop.start(0), /rpc timeout on revival/u);
     assert.equal(loop.getState().phase, "waiting");
     assert.equal(deps.roundStore.seasons.length, 0);
-    assert.deepEqual(deps.betCalls, []);
   });
 
   it("ends every season a previous process left open before starting a new one", async () => {
@@ -434,7 +459,20 @@ describe("start", () => {
     assert.equal(deps.roundStore.seasons.length, 0);
   });
 
-  it("starts a new season from over with the characters that started dead on chain still dead", async () => {
+  it("keeps characters dead on chain dead in a new season while two or more live", async () => {
+    const { loop } = makeLoop({
+      ensLabels: ["alpha", "bravo", "charlie"],
+      ensStatuses: ["alive", "alive", "dead"],
+    });
+    assert.deepEqual(loop.getState().selectable, [0, 1]);
+    await loop.start(0);
+    assert.deepEqual(
+      loop.getState().chars.map((c) => c.alive),
+      [true, true, false],
+    );
+  });
+
+  it("after the last bout, revives the dead once the loser's death is written", async () => {
     const { loop, deps, step } = await startedLoop({
       config: fastConfig,
       ensLabels: ["alpha", "bravo", "charlie"],
@@ -448,13 +486,12 @@ describe("start", () => {
     assert.deepEqual(deps.roundStore.ended.get("season-1"), { championLabel: "alpha" });
 
     await loop.start(0);
+    const ensWrites = deps.calls.filter((c) => c === "status" || c.startsWith("alive:"));
+    assert.deepEqual(ensWrites, ["status", "alive:bravo", "alive:charlie"]);
     const state = loop.getState();
     assert.equal(state.phase, "bet");
     assert.equal(state.champion, null);
-    assert.deepEqual(
-      state.chars.map((c) => c.alive),
-      [true, true, false],
-    );
+    assert.ok(state.chars.every((c) => c.alive));
     assert.deepEqual(deps.roundStore.openSeasonIds(), ["season-2"]);
   });
 });
@@ -1068,7 +1105,12 @@ describe("betting cutoff", () => {
     loop.setOutcome(0, 0);
     const battleId = loop.getState().battleId;
     await assert.rejects(
-      () => loop.setVideoReady("https://cdn.example/v.mp4", VIDEO_MS, "https://cdn.example/frames/seed.jpg"),
+      () =>
+        loop.setVideoReady(
+          "https://cdn.example/v.mp4",
+          VIDEO_MS,
+          "https://cdn.example/frames/seed.jpg",
+        ),
       (cause: unknown) =>
         cause instanceof StoreWriteError &&
         cause.message.includes(`battle ${JSON.stringify(battleId)}`) &&

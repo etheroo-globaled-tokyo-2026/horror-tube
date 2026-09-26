@@ -29,6 +29,10 @@ export type CharRuntime = {
   damage: number;
 };
 
+export type RosterWritePorts = ChainWritePorts & {
+  writeStatusAlive: (args: { subname: string }) => Promise<string>;
+};
+
 export type GameLoopOptions = {
   config: GameLoopConfig;
   ensLabels: string[];
@@ -37,7 +41,7 @@ export type GameLoopOptions = {
   randomInt?: RandomInt;
   battleQueueStore: BattleQueueStore;
   roundStore: RoundStore;
-  chainWritePorts: ChainWritePorts;
+  chainWritePorts: RosterWritePorts;
   battleBetting: BattleBettingPorts;
   fightJob: FightJobRunner;
   pairing: PairingRunner;
@@ -140,12 +144,14 @@ function buildChars(ensLabels: string[], ensStatuses: string[]): CharRuntime[] {
 export class GameLoop {
   readonly config: GameLoopConfig;
   readonly ensLabels: string[];
-  private readonly initialAlive: boolean[];
+  private readonly aliveOnEns: boolean[];
+  private settleEnsWrite: Promise<void> = Promise.resolve();
+  private revival: Promise<void> | null = null;
   private readonly now: () => number;
   private readonly randomInt: RandomInt;
   private readonly battleQueueStore: BattleQueueStore;
   private readonly roundStore: RoundStore;
-  private readonly chainWritePorts: ChainWritePorts;
+  private readonly chainWritePorts: RosterWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
   private readonly pairing: PairingRunner;
@@ -225,7 +231,8 @@ export class GameLoop {
     }));
     this.botStakeUnits = options.houseBots.stakeUnits;
     this.chars = buildChars(options.ensLabels, options.ensStatuses);
-    this.initialAlive = this.chars.map((c) => c.alive);
+    this.aliveOnEns = this.chars.map((c) => c.alive);
+    if (this.programmeFinished()) for (const c of this.chars) c.alive = true;
   }
 
   subscribe(listener: Listener): () => void {
@@ -653,12 +660,13 @@ export class GameLoop {
   }
 
   private async startFreshBout(bookedId: number): Promise<void> {
+    await this.reviveRoster();
     const leftover = await this.roundStore.endOpenSeasons();
     if (leftover.length > 0) {
       console.warn(`start: ended leftover open season(s) ${leftover.join(",")}`);
     }
     const chars = this.ensLabels.map((ensLabel, id): CharRuntime => {
-      const alive = this.initialAlive[id];
+      const alive = this.aliveOnEns[id];
       if (alive === undefined) {
         throw new Error(
           `start: missing initial alive flag for ${ensLabel} at index ${String(id)}.`,
@@ -907,6 +915,7 @@ export class GameLoop {
     }
     if (!this.holdingCopyApplied) {
       loserChar.alive = false;
+      this.aliveOnEns[loserId] = false;
       winnerChar.kills += 1;
       winnerChar.damage += this.settleDamage;
       this.champion = winnerId;
@@ -915,7 +924,7 @@ export class GameLoop {
     this.phase = "settle";
     this.endsAt = now + this.config.settleSeconds * 1000;
     this.emit();
-    void this.writeQueuedEns(queued);
+    this.settleEnsWrite = this.writeQueuedEns(queued);
   }
 
   private async writeQueuedEns(queued: BattleQueueRecord): Promise<void> {
@@ -948,6 +957,9 @@ export class GameLoop {
       this.endsAt = null;
       await this.markSeasonEnded();
       this.emit();
+      this.reviveRoster().catch((cause: unknown) => {
+        console.error(`roster revival failed: ${errorText(cause)}. The next start retries it.`);
+      });
       return;
     }
     if (this.champion === null) {
@@ -981,9 +993,31 @@ export class GameLoop {
     return char;
   }
 
+  private programmeFinished(): boolean {
+    return this.aliveOnEns.filter(Boolean).length < 2;
+  }
+
+  private reviveRoster(): Promise<void> {
+    if (!this.programmeFinished()) return Promise.resolve();
+    this.revival ??= (async () => {
+      await this.settleEnsWrite;
+      for (const [id, alive] of this.aliveOnEns.entries()) {
+        if (alive) continue;
+        const label = this.labelOf(id);
+        const tx = await this.chainWritePorts.writeStatusAlive({ subname: label });
+        this.aliveOnEns[id] = true;
+        console.log(`roster revival: ${label} status=alive tx=${tx}`);
+      }
+    })().finally(() => {
+      this.revival = null;
+    });
+    return this.revival;
+  }
+
   private selectableIds(): number[] {
     if (this.phase === "waiting" || this.phase === "over") {
-      return this.initialAlive.flatMap((alive, id) => (alive ? [id] : []));
+      if (this.programmeFinished()) return this.ensLabels.map((_, id) => id);
+      return this.aliveOnEns.flatMap((alive, id) => (alive ? [id] : []));
     }
     if (this.phase === "pick" && this.champion !== null) {
       return this.chars.filter((c) => c.alive && c.id !== this.champion).map((c) => c.id);

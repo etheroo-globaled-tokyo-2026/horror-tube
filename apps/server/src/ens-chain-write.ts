@@ -2,10 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  parseInjuriesTextRecord,
-  type ChainWritePorts,
-} from "@horror-tube/fight/battle-queue";
+import { parseInjuriesTextRecord } from "@horror-tube/fight/battle-queue";
+import type { RosterWritePorts } from "./game/loop.js";
 import {
   type Address,
   type Hex,
@@ -23,19 +21,14 @@ import { privateKeyToAccount } from "viem/accounts";
 import { sepolia } from "viem/chains";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
-const ethRegistryAbi = parseAbi([
-  "function getResolver(string label) view returns (address)",
-]);
+const ethRegistryAbi = parseAbi(["function getResolver(string label) view returns (address)"]);
 const permissionedResolverAbi = parseAbi([
   "function setText(bytes name, string key, string value)",
   "function resolve(bytes name, bytes data) view returns (bytes)",
 ]);
-const textResolverAbi = parseAbi([
-  "function text(bytes32 node, string key) view returns (string)",
-]);
+const textResolverAbi = parseAbi(["function text(bytes32 node, string key) view returns (string)"]);
 
 const PIN_MARKDOWN_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -48,9 +41,7 @@ function requiredSettleEnv(
 ): string {
   const value = env[name];
   if (value === undefined || value.trim() === "") {
-    throw new Error(
-      `${name} is required. Set it in .env. See .env.example.`,
-    );
+    throw new Error(`${name} is required. Set it in .env. See .env.example.`);
   }
   return value.trim();
 }
@@ -76,9 +67,7 @@ function loadAgentKey(env: NodeJS.ProcessEnv) {
 
 function parseEnsLabel(value: string): string {
   if (value.includes(".")) {
-    throw new Error(
-      `ENS_LABEL must be one label, not a full name. Got: ${value}`,
-    );
+    throw new Error(`ENS_LABEL must be one label, not a full name. Got: ${value}`);
   }
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value)) {
     throw new Error(
@@ -100,9 +89,7 @@ function loadEthRegistryAddress(): Address {
   }
   const match = /\|\s*ETHRegistry\s*\|\s*\[(0x[a-fA-F0-9]{40})\]/u.exec(markdown);
   if (match === null || match[1] === undefined) {
-    throw new Error(
-      `Pinned ENS address table is missing ETHRegistry: ${PIN_MARKDOWN_PATH}`,
-    );
+    throw new Error(`Pinned ENS address table is missing ETHRegistry: ${PIN_MARKDOWN_PATH}`);
   }
   return getAddress(match[1]);
 }
@@ -123,9 +110,7 @@ function dnsEncodeName(name: string): Hex {
     }
     const encoded = new TextEncoder().encode(label);
     if (encoded.length === 0 || encoded.length > 255) {
-      throw new Error(
-        `dnsEncodeName: invalid label length ${String(encoded.length)} in ${name}`,
-      );
+      throw new Error(`dnsEncodeName: invalid label length ${String(encoded.length)} in ${name}`);
     }
     bytes.push(encoded.length);
     bytes.push(...encoded);
@@ -165,10 +150,7 @@ async function openEnsReader(env: NodeJS.ProcessEnv): Promise<EnsReader> {
     );
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `ETHRegistry.getResolver(${ensLabel}) failed: ${detail}`,
-      { cause },
-    );
+    throw new Error(`ETHRegistry.getResolver(${ensLabel}) failed: ${detail}`, { cause });
   }
   if (resolverRaw === ZERO_ADDRESS) {
     throw new Error(
@@ -229,10 +211,7 @@ async function readTextRecord(
   }
 }
 
-async function readInjuriesText(
-  clients: EnsClients,
-  dnsName: Hex,
-): Promise<string> {
+async function readInjuriesText(clients: EnsClients, dnsName: Hex): Promise<string> {
   return readTextRecord(clients, dnsName, "injuries", "injuries");
 }
 
@@ -249,10 +228,7 @@ export async function readRosterEnsStatuses(
       statuses.push(await readTextRecord(clients, dnsName, "status", name));
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(
-        `Failed to read ENS status for ${name}: ${detail}`,
-        { cause },
-      );
+      throw new Error(`Failed to read ENS status for ${name}: ${detail}`, { cause });
     }
   }
   return statuses;
@@ -277,19 +253,16 @@ async function setText(
     });
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `PermissionedResolver.setText(${subname}, ${key}) failed: ${detail}`,
-      { cause },
-    );
+    throw new Error(`PermissionedResolver.setText(${subname}, ${key}) failed: ${detail}`, {
+      cause,
+    });
   }
   console.log(
     `ENS setText sent label=${subname} key=${key} resolver=${clients.resolver} tx=${hash}`,
   );
   const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success") {
-    throw new Error(
-      `PermissionedResolver.setText(${subname}, ${key}) tx reverted: ${hash}`,
-    );
+    throw new Error(`PermissionedResolver.setText(${subname}, ${key}) tx reverted: ${hash}`);
   }
   console.log(`ENS setText done label=${subname} key=${key} tx=${hash}`);
   return hash;
@@ -309,7 +282,7 @@ export function readEnsWriteEnv(env: NodeJS.ProcessEnv = process.env): void {
 export function createEnsChainWritePorts(
   env: NodeJS.ProcessEnv = process.env,
   sui?: EnsSettlePort,
-): ChainWritePorts {
+): RosterWritePorts {
   return {
     async writeWinnerInjuries(args) {
       const clients = await openEnsClients(env);
@@ -317,19 +290,18 @@ export function createEnsChainWritePorts(
       const dnsName = dnsEncodeName(name);
       const current = await readInjuriesText(clients, dnsName);
       parseInjuriesTextRecord(current);
-      return setText(
-        clients,
-        dnsName,
-        args.subname,
-        "injuries",
-        JSON.stringify(args.injuries),
-      );
+      return setText(clients, dnsName, args.subname, "injuries", JSON.stringify(args.injuries));
     },
     async writeLoserStatusDead(args) {
       const clients = await openEnsClients(env);
       const name = characterName(args.subname, clients.ensLabel);
       const dnsName = dnsEncodeName(name);
       return setText(clients, dnsName, args.subname, "status", "dead");
+    },
+    async writeStatusAlive(args) {
+      const clients = await openEnsClients(env);
+      const name = characterName(args.subname, clients.ensLabel);
+      return setText(clients, dnsEncodeName(name), args.subname, "status", "alive");
     },
     async settleBattle(battleId, winningSide) {
       if (sui === undefined) {

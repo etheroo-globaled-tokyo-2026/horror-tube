@@ -35,7 +35,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 - `status=dead` shows the character crossed off and in black and white.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
-- A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
+- A new season starts from chain state. When fewer than two are alive on chain, the server revives everyone first. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
 
 ## The flow (game.ts)
 
@@ -177,8 +177,10 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
     status transaction, from `Tape.statusTx`), the narration, and the REC date. The server hides the live bout's
     tape until betting is over, because its cover names the winner.
   - **The VCR** sits on the TV's left shoulder: a black deck with a cassette door, a red LED, and a `--cold`
-    display that blinks 12:00 when empty and counts when it plays. While you hold a tape, the hint says to click the VCR. Click it with a bout tape in your hand to play
-    it; click again to eject the tape into your hand. Click the tape in your hand to put it back. Bet and fight phases take
+    display that blinks 12:00 when empty and counts when it plays. While you hold a tape, the hint says to drag it to the VCR. Drag a tape from the shelf
+    or your hand and drop it on the VCR to play it (the deck lights up while the tape is over it; a drop anywhere else
+    keeps it in your hand), or click the VCR with a tape in your hand; click again to eject the tape into your hand.
+    Click the tape in your hand to put it back. Bet and fight phases take
     the TV back and put the tape on the pile; so does the end of the tape.
   - The camera moves a little with the mouse (parallax).
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
