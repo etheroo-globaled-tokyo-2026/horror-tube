@@ -316,6 +316,164 @@ def spaces_store_from_env(env: Mapping[str, str]) -> SpacesIconStore:
     return SpacesIconStore.from_env(env)
 
 
+def should_skip_chain_icon(*, icon: str, override: bool) -> bool:
+    """Skip when chain already has a non-empty https icon and override is off."""
+    text = icon.strip()
+    if text == "":
+        return False
+    if not text.startswith("https://"):
+        raise IconGenerationError(
+            f"on-chain icon must be empty or an https URL. Got: {icon!r}"
+        )
+    return not override
+
+
+class IconChainWriter(Protocol):
+    """Writes only the ENS icon text record."""
+
+    def set_icons(
+        self, updates: Sequence[Mapping[str, str]]
+    ) -> list[dict[str, str]]:
+        """setText icon for each update; return label/icon/txHash rows."""
+        ...
+
+
+class FacePngGenerator(Protocol):
+    def __call__(self, look: str) -> bytes:
+        """Return a 100x100 PNG for the given look description."""
+        ...
+
+
+def sync_chain_icons(
+    characters: Sequence[Mapping[str, str]],
+    *,
+    generate_png: FacePngGenerator,
+    spaces: IconObjectStore,
+    cdn_host: str,
+    chain: IconChainWriter,
+    override: bool,
+    clock: Callable[[], int] | None = None,
+) -> list[dict[str, str]]:
+    """
+    For each registered character with an empty on-chain icon, generate from look,
+    upload to Spaces, and setText only the icon key to the https CDN URL.
+    """
+    now = clock if clock is not None else (lambda: int(time.time()))
+    results: list[dict[str, str]] = []
+
+    for character in characters:
+        label = character["label"]
+        look = character.get("look", "")
+        if not isinstance(look, str):
+            raise IconGenerationError(
+                f"{label}: look must be a string. Got {type(look).__name__}."
+            )
+        icon = character.get("icon", "")
+        if not isinstance(icon, str):
+            raise IconGenerationError(
+                f"{label}: icon must be a string. Got {type(icon).__name__}."
+            )
+
+        try:
+            if should_skip_chain_icon(icon=icon, override=override):
+                logger.info(
+                    "skipping %s; on-chain icon already set to %s",
+                    label,
+                    icon.strip(),
+                )
+                results.append(
+                    {
+                        "label": label,
+                        "action": "skipped",
+                        "icon": icon.strip(),
+                        "txHash": "",
+                    }
+                )
+                continue
+        except IconGenerationError as exc:
+            raise IconGenerationError(
+                f"Face icon for {label} failed. "
+                f"Processed {len(results)} character(s) before this failure. {exc}"
+            ) from exc
+
+        if look.strip() == "":
+            raise IconGenerationError(
+                f"{label}: look is empty on chain. "
+                "Refusing to generate a face icon without a character description. "
+                f"Processed {len(results)} character(s) before this failure."
+            )
+
+        canonical_key = canonical_icon_key(label)
+        try:
+            exists = spaces.object_exists(canonical_key)
+        except IconGenerationError as exc:
+            raise IconGenerationError(
+                f"Face icon for {label} failed while checking Spaces. "
+                f"Processed {len(results)} character(s) before this failure. {exc}"
+            ) from exc
+
+        if exists and override:
+            object_key = override_icon_key(label, now())
+        else:
+            object_key = canonical_key
+
+        # When the object already exists and we are not overriding Spaces, reuse
+        # the canonical CDN URL without calling Together again — but still setText
+        # when the chain icon was empty (or --override requires a new chain write).
+        reuse_existing = exists and not override
+        try:
+            if reuse_existing:
+                url = icon_cdn_url(cdn_host, canonical_key)
+                logger.info(
+                    "reusing existing Spaces object for %s at %s; "
+                    "setting on-chain icon only",
+                    label,
+                    url,
+                )
+            else:
+                png = generate_png(look)
+                spaces.put_public_png(object_key, png)
+                url = icon_cdn_url(cdn_host, object_key)
+                logger.info("uploaded %s -> %s", label, url)
+            if not url.startswith("https://"):
+                raise IconGenerationError(
+                    f"{label}: refusing non-https icon URL: {url!r}"
+                )
+            written = chain.set_icons([{"label": label, "icon": url}])
+        except IconGenerationError as exc:
+            raise IconGenerationError(
+                f"Face icon for {label} failed. "
+                f"Processed {len(results)} character(s) before this failure. {exc}"
+            ) from exc
+        except Exception as exc:
+            raise IconGenerationError(
+                f"Face icon for {label} failed. "
+                f"Processed {len(results)} character(s) before this failure. {exc}"
+            ) from exc
+
+        if len(written) != 1:
+            raise IconGenerationError(
+                f"{label}: set_icons returned {len(written)} result(s); expected 1."
+            )
+        tx_hash = written[0]["txHash"]
+        results.append(
+            {
+                "label": label,
+                "action": "uploaded" if not reuse_existing else "set",
+                "icon": url,
+                "txHash": tx_hash,
+            }
+        )
+        logger.info(
+            "set-icon label=%s icon=%s txHash=%s",
+            label,
+            url,
+            tx_hash,
+        )
+
+    return results
+
+
 def write_face_icons(
     characters: Sequence[Mapping[str, str]],
     out_dir: Path,

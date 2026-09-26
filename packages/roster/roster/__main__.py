@@ -1,4 +1,4 @@
-"""CLI: validate roster JSON, propose sheets, plan import/removal, register/unregister, generate face icons."""
+"""CLI: validate roster JSON, propose sheets, plan import/removal, register/unregister, generate face icons, sync icons onto chain."""
 
 from __future__ import annotations
 
@@ -8,16 +8,24 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
 from dotenv import load_dotenv
 
-from roster.chain import apply_register_plan, snapshot_existing, unregister_labels
+from roster.chain import (
+    apply_register_plan,
+    list_registered,
+    set_icons,
+    snapshot_existing,
+    unregister_labels,
+)
 from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
 from roster.icons import (
     IconGenerationError,
+    generate_face_png,
     required_env,
     spaces_store_from_env,
+    sync_chain_icons,
     write_face_icons,
 )
 from roster.plan import (
@@ -109,6 +117,77 @@ def cmd_icons(args: argparse.Namespace) -> int:
     print(f"Wrote character JSON with icon URLs: {out_path}")
     for character in updated:
         print(f"  {character['label']}: {character['icon']}")
+    return 0
+
+
+def _require_chain_env() -> None:
+    """Fail closed before any chain or CDN write when ENS write env is missing."""
+    for name in ("ENS_LABEL", "SEPOLIA_RPC_URL", "PRIVATE_KEY"):
+        raw = os.environ.get(name)
+        if raw is None or raw.strip() == "":
+            raise RosterValidationError(
+                f"{name} is required. Set it in .env. See .env.example. "
+                "Refusing to fall back."
+            )
+    _require_ens_label()
+
+
+class _LiveIconChain:
+    def set_icons(
+        self, updates: Sequence[Mapping[str, str]]
+    ) -> list[dict[str, str]]:
+        return set_icons(updates)
+
+
+def cmd_icons_chain(args: argparse.Namespace) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    _require_chain_env()
+    cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    spaces = spaces_store_from_env(os.environ)
+    api_key = required_env("TOGETHER_API_KEY", os.environ)
+    model = required_env("TOGETHER_IMAGE_MODEL", os.environ)
+    api_url = required_env("TOGETHER_API_URL", os.environ)
+
+    registered = list_registered()
+    if len(registered) == 0:
+        raise RosterValidationError(
+            "No registered character subnames found on chain under "
+            f"{_require_ens_label()}.eth. Refusing to invent a roster."
+        )
+    characters = [registered[label] for label in sorted(registered.keys())]
+    print(f"icons-chain: registered={len(characters)}")
+    for character in characters:
+        icon = character["icon"]
+        print(
+            f"  {character['label']}: "
+            f"icon={'empty' if icon.strip() == '' else icon}"
+        )
+
+    results = sync_chain_icons(
+        characters,
+        generate_png=lambda look: generate_face_png(
+            look,
+            api_key=api_key,
+            model=model,
+            api_url=api_url,
+        ),
+        spaces=spaces,
+        cdn_host=cdn_host,
+        chain=_LiveIconChain(),
+        override=bool(args.override),
+    )
+    print(f"icons-chain: done characters={len(results)}")
+    for row in results:
+        action = row["action"]
+        label = row["label"]
+        icon = row["icon"]
+        tx = row["txHash"]
+        if action == "skipped":
+            print(f"skipped {label}: on-chain icon already {icon}")
+        elif tx == "":
+            print(f"{action} {label}: {icon}")
+        else:
+            print(f"{action} {label}: {icon} txHash={tx}")
     return 0
 
 
@@ -329,6 +408,27 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     icons_p.set_defaults(func=cmd_icons)
+
+    icons_chain_p = sub.add_parser(
+        "icons-chain",
+        help=(
+            "Read registered character subnames from chain. For each empty on-chain "
+            "icon, generate a face PNG from the on-chain look, upload to Spaces, and "
+            "setText only the icon key to the https CDN URL. Skips characters that "
+            "already have a non-empty https icon unless --override. Does not change "
+            "look, brief, injuries, or status."
+        ),
+    )
+    icons_chain_p.add_argument(
+        "--override",
+        action="store_true",
+        help=(
+            "Regenerate and setText icon even when the on-chain icon is already a "
+            "non-empty https URL. Uploads under <label>-<unix-seconds>.png when the "
+            "canonical Spaces object already exists."
+        ),
+    )
+    icons_chain_p.set_defaults(func=cmd_icons_chain)
 
     propose_p = sub.add_parser(
         "propose",
