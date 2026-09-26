@@ -379,9 +379,14 @@ const legM = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.45) });
 const brassM = lambert({
   color: new THREE.Color(COL.sulfur).lerp(new THREE.Color(COL.rustDeep), 0.45),
 });
-const leg = (top: THREE.Vector3, foot: THREE.Vector3, r: number): void => {
+const leg = (
+  top: THREE.Vector3,
+  foot: THREE.Vector3,
+  r: number,
+  parent: THREE.Object3D = scene,
+): void => {
   const tip = foot.clone().lerp(top, 0.08);
-  scene.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
+  parent.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
 };
 const rails = [-1, 1].map((sx) => {
   const ends = [1, -1].map((sz): [THREE.Vector3, THREE.Vector3] => [
@@ -396,6 +401,8 @@ const rails = [-1, 1].map((sx) => {
 });
 scene.add(strut(rails[0], rails[1], 0.009, 0.009, legM));
 const STOOL = { x: 0, z: -0.75, top: 0.45 };
+const stool = new THREE.Group();
+scene.add(stool);
 const cushion = cyl(
   0.18,
   0.17,
@@ -420,13 +427,14 @@ const cushion = cyl(
   16,
 );
 cushion.position.set(STOOL.x, STOOL.top - 0.03, STOOL.z);
-scene.add(cushion);
+stool.add(cushion);
 for (let i = 0; i < 4; i++) {
   const a = Math.PI / 4 + (i * Math.PI) / 2;
   leg(
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.11, STOOL.top - 0.06, STOOL.z + Math.sin(a) * 0.11),
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.21, 0, STOOL.z + Math.sin(a) * 0.21),
     0.013,
+    stool,
   );
 }
 
@@ -1868,6 +1876,7 @@ function verified(): void {
 function enterRoom(): void {
   step("done");
   paper.visible = false;
+  stool.visible = false;
   $("#gate").hidden = true;
   void newSeason();
 }
