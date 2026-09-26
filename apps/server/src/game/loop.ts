@@ -1,3 +1,8 @@
+import {
+  nextRotationPair,
+  type RandomInt,
+} from "@horror-tube/fight/rotation";
+
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
 import {
@@ -19,6 +24,11 @@ export type GameLoopOptions = {
   ensLabels: string[];
   now?: () => number;
   verifyWorldId?: WorldIdVerifier;
+  /**
+   * Challenger draw for stage 2+ (winner stays on). Tests inject a pinned source.
+   * Defaults to a non-crypto sequential counter so production must pass cryptoRandomInt.
+   */
+  randomInt?: RandomInt;
 };
 
 type Listener = (state: RoundState) => void;
@@ -36,6 +46,7 @@ export class GameLoop {
   readonly ensLabels: string[];
   private readonly now: () => number;
   private readonly verifyWorldId: WorldIdVerifier;
+  private readonly randomInt: RandomInt;
   private readonly listeners = new Set<Listener>();
 
   private chars: CharRuntime[];
@@ -68,6 +79,13 @@ export class GameLoop {
     this.ensLabels = options.ensLabels;
     this.now = options.now ?? (() => Date.now());
     this.verifyWorldId = options.verifyWorldId ?? refuseUnverifiedWorldId;
+    this.randomInt =
+      options.randomInt ??
+      ((maxExclusive: number) => {
+        throw new Error(
+          `GameLoop randomInt was not provided. Pass cryptoRandomInt (or a test double) for winner-stays pairing. maxExclusive=${String(maxExclusive)}.`,
+        );
+      });
     this.chars = options.ensLabels.map((ensLabel, id) => ({
       id,
       ensLabel,
@@ -311,25 +329,22 @@ export class GameLoop {
   }
 
   private closeVoting(now: number): void {
-    const picksNeeded = this.slots();
+    // Stage 1 only: top two by votes. Stage 2+ pairs via enterBetFromRotation
+    // after settle (no challenger ballot).
+    if (this.champion !== null) {
+      throw new Error(
+        "closeVoting: stage 2+ must not collect a challenger ballot. Next bout starts from nextRotationPair after settle.",
+      );
+    }
     const ranked = this.rankCandidates();
-    if (ranked.length < picksNeeded) {
-      this.error = `Not enough votable characters to fill ${String(picksNeeded)} slot(s).`;
+    if (ranked.length < 2) {
+      this.error = `Not enough votable characters to fill 2 slot(s).`;
       this.phase = "over";
       this.endsAt = null;
       this.emit();
       return;
     }
-    let a: number;
-    let b: number;
-    if (this.champion !== null) {
-      a = this.champion;
-      b = ranked[0]!;
-    } else {
-      a = ranked[0]!;
-      b = ranked[1]!;
-    }
-    this.fighters = [a, b];
+    this.fighters = [ranked[0]!, ranked[1]!];
     this.winner = null;
     this.outcome = null;
     this.videoUrl = null;
@@ -412,14 +427,58 @@ export class GameLoop {
       return;
     }
     this.round += 1;
-    this.fighters = null;
     this.winner = null;
     this.pool = [0, 0];
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
-    // Keep videoUrl for vote-phase replay (docs/game-loop.md).
-    this.enterVote();
+    // Winner stays on: next challenger is random among living non-winners
+    // (fightInputFromRotation / nextRotationPair). No challenger ballot.
+    if (this.champion === null) {
+      throw new Error(
+        "afterSettle: champion is required before starting the next bout via rotation.",
+      );
+    }
+    this.enterBetFromRotation(this.champion, this.now());
+  }
+
+  /**
+   * Stage 2+ bout start: champion vs random living non-winner.
+   * Consumes nextRotationPair so narration cannot name a different opponent.
+   */
+  private enterBetFromRotation(championId: number, now: number): void {
+    const championLabel = this.ensLabels[championId];
+    if (championLabel === undefined) {
+      throw new Error(
+        `enterBetFromRotation: champion id ${String(championId)} has no ENS label.`,
+      );
+    }
+    const roster = this.chars.map((c) => {
+      const subname = this.ensLabels[c.id];
+      if (subname === undefined) {
+        throw new Error(
+          `enterBetFromRotation: character id ${String(c.id)} has no ENS label.`,
+        );
+      }
+      return {
+        subname,
+        status: (c.alive ? "alive" : "dead") as "alive" | "dead",
+      };
+    });
+    const pair = nextRotationPair(roster, championLabel, this.randomInt);
+    const challengerId = this.ensLabels.indexOf(pair.challengerSubname);
+    if (challengerId < 0) {
+      throw new Error(
+        `enterBetFromRotation: challenger ${JSON.stringify(pair.challengerSubname)} missing from ensLabels.`,
+      );
+    }
+    this.fighters = [championId, challengerId];
+    this.videoUrl = null;
+    this.error = null;
+    this.phase = "bet";
+    this.betOpenedAt = now;
+    this.endsAt = null;
+    this.emit();
   }
 
   private enterVote(): void {

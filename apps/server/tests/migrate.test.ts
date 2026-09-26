@@ -102,11 +102,11 @@ describe("connectionStringForVerifiedTls", () => {
 });
 
 describe("migration SQL shape", () => {
-  it("lists 001_game_loop.sql from the package migrations dir", async () => {
+  it("lists game-loop and battle-results migrations from the package migrations dir", async () => {
     const dir = migrationsDir();
     assert.equal(dir, join(packageRoot, "migrations"));
     const files = await listMigrationFiles(dir);
-    assert.deepEqual(files, ["001_game_loop.sql"]);
+    assert.deepEqual(files, ["001_game_loop.sql", "002_battle_results.sql"]);
   });
 
   it("defines seasons, rounds, votes, and tallies with ENS-label ids and tie-break", async () => {
@@ -129,6 +129,24 @@ describe("migration SQL shape", () => {
 
     assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS stakes/iu);
     assert.doesNotMatch(sql, /CREATE TABLE stakes/iu);
+  });
+
+  it("defines battle_results with gates and per-step tx hashes", async () => {
+    const sql = await readMigrationSql("002_battle_results.sql");
+    assert.match(sql, /CREATE TABLE IF NOT EXISTS battle_results/u);
+    assert.match(sql, /battle_id text NOT NULL/u);
+    assert.match(sql, /fighter_a_subname/u);
+    assert.match(sql, /fighter_b_subname/u);
+    assert.match(sql, /shots jsonb/u);
+    assert.match(sql, /ens_line_loser/u);
+    assert.match(sql, /ens_line_winner/u);
+    assert.match(sql, /next_opponent_subname/u);
+    assert.match(sql, /betting_closed boolean/u);
+    assert.match(sql, /playback_finished boolean/u);
+    assert.match(sql, /injuries_tx_hash/u);
+    assert.match(sql, /status_tx_hash/u);
+    assert.match(sql, /settlement_tx_hash/u);
+    assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS schema_migrations/u);
   });
 });
 
