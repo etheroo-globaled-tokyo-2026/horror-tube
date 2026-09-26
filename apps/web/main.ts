@@ -2168,6 +2168,10 @@ async function beginWorldIdScan(): Promise<void> {
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
+  window.setTimeout(() => {
+    if (W8.step !== "signed") return;
+    nextGateStep();
+  }, 1400);
 }
 function nextGateStep(): void {
   if (W8.step === "signed")
@@ -2377,6 +2381,7 @@ function cursorFor(pick: Pick | null): string {
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
+  if (S.phase === "gate" && W8.step === "signed") return nextGateStep();
   if (walk >= 0) return walkTo(walk + 1);
   const pick = pickAt(e);
   if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
