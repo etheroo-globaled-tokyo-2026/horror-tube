@@ -15,7 +15,8 @@ import {
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
-import { COL, RAMP } from "./room-palette.ts";
+import { BARS, COL, RAMP } from "./room-palette.ts";
+import { drawLogo } from "./logo.ts";
 import {
   TEAK,
   TV_Y,
@@ -698,20 +699,11 @@ export function drawTV(): void {
       text("The residents did not answer.", 270, 26, COL.bone, "DotGothic16", 400);
     } else if (W8.step === "done") {
       noise = 0.12;
-      const bars = [
-        COL.bone,
-        COL.sulfur,
-        COL.rust,
-        COL.rustDeep,
-        COL.blood,
-        COL.bloodDeep,
-        COL.grime,
-      ];
-      bars.forEach((c, i) => {
+      BARS.forEach((c, i) => {
         g.fillStyle = c;
-        g.fillRect((i * W) / bars.length, 0, W / bars.length + 1, 300);
+        g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
       });
-      band(300, H - 300);
+      drawLogo(g, W / 2, 196, 420);
       text("PLEASE STAND BY", 370, 40, COL.bone);
       text(
         `tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`,
