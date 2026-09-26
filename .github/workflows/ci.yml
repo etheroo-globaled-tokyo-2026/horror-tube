@@ -60,6 +60,13 @@ jobs:
       # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
       ENS_LABEL: "ci"
       VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
+      # Runtime game-loop env (docs/game-loop.md). Required by @horror-tube/server; no defaults.
+      QUORUM_VOTES: "1"
+      VOTE_COUNTDOWN_SECONDS: "15"
+      BET_MIN_SECONDS: "10"
+      VIDEO_TIMEOUT_SECONDS: "300"
+      SETTLE_SECONDS: "8"
+      ROSTER_ENS_LABELS: "ci-alpha,ci-bravo"
     steps:
       - uses: actions/checkout@v4
       - name: Build image
@@ -71,7 +78,15 @@ jobs:
       - name: Run container and check health + ffmpeg + index
         run: |
           set -euo pipefail
-          cid="$(docker run -d -e "GAME_PORT=${GAME_PORT}" -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
+          cid="$(docker run -d \
+            -e "GAME_PORT=${GAME_PORT}" \
+            -e "QUORUM_VOTES=${QUORUM_VOTES}" \
+            -e "VOTE_COUNTDOWN_SECONDS=${VOTE_COUNTDOWN_SECONDS}" \
+            -e "BET_MIN_SECONDS=${BET_MIN_SECONDS}" \
+            -e "VIDEO_TIMEOUT_SECONDS=${VIDEO_TIMEOUT_SECONDS}" \
+            -e "SETTLE_SECONDS=${SETTLE_SECONDS}" \
+            -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
+            -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
           cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           for i in $(seq 1 30); do
