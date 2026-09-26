@@ -24,7 +24,8 @@ the local validation of write permission. Parent-name registration is
 | `resolve` of `text(key)` for the roster reader | `packages/ens/scripts/roster.ts` | 339–369 |
 | Web game loads the roster through that reader | `apps/web/game.ts` | 174–180 |
 | Local anvil deploys the pinned resolver bytecode | `packages/ens/scripts/local-permissioned-resolver.ts` | 53–65 |
-| Tests call `setText`, then `resolve`, and compare the string | `packages/ens/tests/permissions.test.ts` | 324–382 |
+| Tests assert chain id 31337 and log `passFailLocation=` after deploy | `packages/ens/tests/permissions.test.ts` | 299–335 |
+| Tests call `setText`, then `resolve`, and compare the string | `packages/ens/tests/permissions.test.ts` | 363–426 |
 
 `grantSetterRoles` encodes `setText` calldata for one key
 (`grant-text-roles.ts` `buildSetTextSetter`). The resolver decodes that
@@ -97,3 +98,38 @@ permission cases above ran.
 
 `pnpm --filter @horror-tube/ens typecheck` exited 0 on both runs. CI on
 pull request 88 was green after the first run, including the `ens` job.
+
+## Where the pass/fail test ran
+
+The suite starts its own local anvil with `--chain-id 31337` and deploys the
+pinned bytecode there. The Sepolia address at the top of this note is where
+that bytecode came from. The suite sends nothing to Sepolia.
+
+After the deploy, the test asserts the chain id, checks that the factory,
+implementation, and `deployProxy` transactions came from the bootstrap
+address, and logs one `passFailLocation=` line. Every `setText` in the suite
+is signed by one of the four accounts below. A mined write is checked against
+its signer.
+
+| Field | Value |
+| --- | --- |
+| Chain | Local anvil started by the test |
+| Chain id | `31337` |
+| Resolver proxy (received the writes) | `0x0A87B698B0D94e96081d01863565Da2Ba1bd6282` |
+| Deploy block | `3` |
+| `deployProxy` transaction | `0x1c7b836f4710834f92ae539b8b3ee7dd42525cf72429c8526f0bad45b02cf507` |
+| `VerifiableFactory` | `0x5FbDB2315678afecb367f032d93F642f64180aa3` |
+| `PermissionedResolverImpl` (local copy) | `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` |
+
+| Role | Address | Result |
+| --- | --- | --- |
+| bootstrap | `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` | Writes all five keys: `status`, `injuries`, `look`, `brief`, `icon` |
+| roster | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` | Writes `look`, `brief`, `icon`. Reverts on `status` and `injuries` |
+| agent | `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` | Writes `status` and `injuries`. Reverts on `look`, `brief`, and `icon` |
+| third | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` | Reverts on all five keys |
+
+The four addresses are anvil's first four default dev accounts. Two runs of
+`tsx --test tests/permissions.test.ts` on anvil 1.8.3 logged the same line,
+the proxy address included. A fresh anvil with the same deploy order puts the
+proxy at the same address on every run. The test reads the deploy block from
+the `deployProxy` receipt.
