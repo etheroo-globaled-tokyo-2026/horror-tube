@@ -14,6 +14,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  parseAbiItem,
   stringToBytes,
   toHex,
 } from "viem";
@@ -31,6 +32,15 @@ const STATUS_REGISTERED = 2;
 export const REGISTER_SELECTOR = "0x85f3e643" as const;
 export const TRANSFER_SINGLE_TOPIC0 =
   "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62" as const;
+const transferSingleEvent = parseAbiItem(
+  "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
+);
+
+export function isPrunedHistoricalStateError(message: string): boolean {
+  return /historical state|missing trie node|state pruned|history has been pruned/iu.test(
+    message,
+  );
+}
 const LOG_CHUNK_SIZE = 40000n;
 
 const textResolverAbi = parseAbi([
@@ -282,11 +292,7 @@ async function hasBytecodeAt(
     return code !== undefined && code !== "0x";
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (
-      /historical state|is not available|missing trie node|state pruned|Unknown block/iu.test(
-        message,
-      )
-    ) {
+    if (isPrunedHistoricalStateError(message)) {
       return false;
     }
     throw new Error(
@@ -295,7 +301,7 @@ async function hasBytecodeAt(
   }
 }
 
-async function findContractBirthBlock(
+export async function findContractBirthBlock(
   publicClient: PublicClient,
   address: Address,
 ): Promise<bigint> {
@@ -329,11 +335,7 @@ async function historicalStateAvailable(
     return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (
-      /historical state|is not available|missing trie node|state pruned|Unknown block/iu.test(
-        message,
-      )
-    ) {
+    if (isPrunedHistoricalStateError(message)) {
       return false;
     }
     throw new Error(
@@ -342,7 +344,7 @@ async function historicalStateAvailable(
   }
 }
 
-async function findTransferLogStartBlock(
+export async function findTransferLogStartBlock(
   publicClient: PublicClient,
   address: Address,
 ): Promise<bigint> {
@@ -389,9 +391,9 @@ async function getLogsChunked(
   try {
     return await publicClient.getLogs({
       address,
+      event: transferSingleEvent,
       fromBlock,
       toBlock,
-      topics: [TRANSFER_SINGLE_TOPIC0],
     });
   } catch (error) {
     if (fromBlock === toBlock) {
