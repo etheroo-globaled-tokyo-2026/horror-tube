@@ -1,14 +1,7 @@
-import {
-  A,
-  L,
-  PORTRAITS,
-  css,
-  paint,
-  type Ctx,
-  type Draw,
-  type Kind,
-  type Layer,
-} from "./sprites.ts";
+import { parsePinAddressesFromMarkdown } from "@horror-tube/ens/scripts/pin.ts";
+import pinMarkdown from "@horror-tube/ens/scripts/pin/sepolia-addresses.md?raw";
+import { readRosterFromChain } from "@horror-tube/ens/scripts/roster.ts";
+import { A, L, css, ctx2d, paint, type Ctx, type Draw, type Layer } from "./sprites.ts";
 
 export const $ = (s: string): HTMLElement => {
   const el = document.querySelector<HTMLElement>(s);
@@ -43,93 +36,6 @@ export const mmss = (s: number): string =>
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
-const CAST: [name: string, handle: string, kind: Kind, bio: string[]][] = [
-  [
-    "Jason Voorhees",
-    "jason",
-    "mask",
-    ["Drowned at camp. Came back.", "Never runs. Always arrives.", "The lake still wants him."],
-  ],
-  [
-    "Freddy Krueger",
-    "freddy",
-    "hat",
-    ["Visits while you sleep.", "Wears the same sweater.", "Hates the smell of coffee."],
-  ],
-  [
-    "Leatherface",
-    "leatherface",
-    "leather",
-    ["Family man. Big family.", "Wears what he can find.", "The saw is always warm."],
-  ],
-  [
-    "Chucky",
-    "chucky",
-    "doll",
-    ["Small. Loud. Sharp.", "Someone else lives inside.", "Wants a new body. Yours."],
-  ],
-  [
-    "Pinhead",
-    "pinhead",
-    "pins",
-    ["Came when the box opened.", "Calls pain a gift.", "Speaks very politely."],
-  ],
-  [
-    "Ghostface",
-    "ghostface",
-    "ghost",
-    ["Likes scary movies.", "Could be anyone. Often is.", "Always calls first."],
-  ],
-  [
-    "Pennywise",
-    "pennywise",
-    "clown",
-    ["Lives under the town.", "Wakes every 27 years.", "Knows what scares you."],
-  ],
-  [
-    "Samara",
-    "samara",
-    "girl",
-    ["Lived at the bottom of a well.", "Watch the tape. Get a call.", "Seven days. Count them."],
-  ],
-  [
-    "Frankenstein",
-    "frankenstein",
-    "chin",
-    ["Stitched from many men.", "Afraid of fire.", "Wanted a friend. Killed one."],
-  ],
-  [
-    "Count Dracula",
-    "dracula",
-    "blank",
-    ["Old money. Old country.", "No reflection in mirrors.", "Only enters if invited."],
-  ],
-];
-export const CAPS = {
-  mask: ["machete", "regrowth", "silence"],
-  hat: ["claws", "dream walk", "burns"],
-  blank: ["kitchen knife", "patience", "the mask"],
-  leather: ["chainsaw", "family", "the house"],
-  doll: ["voodoo", "small size", "the voice"],
-  pins: ["chains", "the box", "pain"],
-  ghost: ["knife", "phone call", "the mask"],
-  clown: ["shapeshift", "fear feed", "sewers"],
-  hook: ["hook", "bees", "the mirror"],
-  girl: ["the tape", "the well", "seven days"],
-  hair: ["kitchen knife", "run", "survive"],
-  pony: ["traps", "stay awake", "nerve"],
-  short: ["flamethrower", "motion tracker", "nerve"],
-  chin: ["chainsaw hand", "boomstick", "one-liners"],
-  straw: ["stakes", "crossbow", "holy water"],
-  cross: ["crucifix", "faith", "research"],
-} satisfies Record<Kind, [string, string, string]>;
-export const DEMO = {
-  a: CAST.findIndex((c) => c[1] === "frankenstein"),
-  b: CAST.findIndex((c) => c[1] === "dracula"),
-  video: "assets/demo-fight.mp4",
-};
-export const isDemo = (pair: Pair | null): boolean =>
-  !!pair && pair.includes(DEMO.a) && pair.includes(DEMO.b);
 const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
@@ -147,13 +53,13 @@ export type Character = {
   short: string;
   ens: string;
   hue: Hue;
-  kind: Kind;
-  bio: string[];
+  brief: string;
+  injuries: string;
+  icon: HTMLImageElement;
   fights: number;
   alive: boolean;
   kills: number;
   damage: number;
-  lost: number;
 };
 export type Pair = [number, number];
 export type Phase = "gate" | "vote" | "story" | "bet" | "fight" | "settle" | "over";
@@ -172,7 +78,6 @@ export type GameState = {
   story: string;
   winner: number;
   dmg: number;
-  lost: string;
   bet: { side: number; amt: number } | null;
   side: number;
   amt: number;
@@ -201,7 +106,6 @@ export const S: GameState = {
   story: "",
   winner: -1,
   dmg: 0,
-  lost: "",
   bet: null,
   side: 0,
   amt: 0.03,
@@ -218,8 +122,7 @@ export const S: GameState = {
 };
 const col = (ch: Character): string => C[ch.hue];
 export const living = (): Character[] => S.chars.filter((c) => c.alive);
-const deadEns = (ch: Character): string =>
-  ch.alive ? ch.ens : ch.ens.replace(".horrortube", ".deadpool.horrortube");
+const deadEns = (ch: Character): string => (ch.alive ? ch.ens : ch.ens.replace(".", ".deadpool."));
 const pair = (): Pair | null => {
   const sorted = living().sort((a, b) => (S.votes[b.id] || 0) - (S.votes[a.id] || 0));
   const [a, b] = sorted;
@@ -237,24 +140,102 @@ export const note = (text: string, kind = ""): void => {
   render();
 };
 
-export function newSeason(): void {
-  S.chars = CAST.map(([name, handle, kind, bio], id) => ({
+const env = (name: string): string => {
+  const value = String(import.meta.env[name] ?? "").trim();
+  if (!value)
+    throw new Error(`${name} is required. Set it in the repo-root .env. See .env.example.`);
+  return value;
+};
+async function loadIcon(name: string, url: string): Promise<HTMLImageElement> {
+  if (!url.startsWith("https://"))
+    throw new Error(
+      `${name} has no https icon record (got ${JSON.stringify(url)}). Run: python -m roster icons-chain`,
+    );
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = url;
+  try {
+    await img.decode();
+  } catch (error) {
+    throw new Error(
+      `${name} icon failed to load from ${url}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return img;
+}
+const isAlive = (name: string, status: string): boolean => {
+  if (status === "alive" || status === "") return true;
+  if (status === "dead") return false;
+  throw new Error(
+    `${name} has unknown status ${JSON.stringify(status)}. Expected alive, dead, or "".`,
+  );
+};
+const ROSTER = (async () => {
+  const ethRegistry = parsePinAddressesFromMarkdown(pinMarkdown).ETHRegistry;
+  const { parentName, sheets } = await readRosterFromChain(
+    env("ENS_LABEL"),
+    env("VITE_SEPOLIA_RPC_URL"),
+    ethRegistry,
+  );
+  return {
+    parentName,
+    sheets: await Promise.all(
+      sheets.map(async (s) => ({
+        ...s,
+        alive: isAlive(s.name, s.status),
+        img: await loadIcon(s.name, s.icon),
+      })),
+    ),
+  };
+})();
+export async function newSeason(): Promise<void> {
+  let roster: Awaited<typeof ROSTER>;
+  try {
+    roster = await ROSTER;
+  } catch (error) {
+    note(`ENS READ FAILED. ${error instanceof Error ? error.message : String(error)}`, "bad");
+    throw error;
+  }
+  S.chars = roster.sheets.map((s, id) => ({
     id,
-    name,
-    short: (name.split(" ").at(-1) ?? name).toUpperCase(),
-    ens: handle + ".horrortube.eth",
+    name: s.label.toUpperCase(),
+    short: s.label.toUpperCase(),
+    ens: s.name,
     hue: HUES[id % 3],
-    kind,
-    bio,
+    brief: s.brief,
+    injuries: s.injuries,
+    icon: s.img,
     fights: 0,
-    alive: true,
+    alive: s.alive,
     kills: 0,
     damage: 0,
-    lost: 0,
   }));
   Object.assign(S, { round: 1, focus: 0, last: null, view: 1 });
-  log("NEW SEASON · every subname reset to status=alive", "t-house");
+  log(`NEW SEASON · ${S.chars.length} subnames read from ${roster.parentName}`, "t-house");
   startVote();
+}
+const faces = new Map<string, HTMLCanvasElement>();
+export function face(ch: Character): HTMLCanvasElement {
+  const key = ch.ens + (ch.alive ? "" : "x");
+  let cv = faces.get(key);
+  if (cv) return cv;
+  cv = document.createElement("canvas");
+  cv.width = cv.height = 100;
+  const g = ctx2d(cv, { willReadFrequently: true });
+  g.fillStyle = C[ch.hue];
+  g.fillRect(0, 0, 100, 100);
+  g.drawImage(ch.icon, 0, 0, 100, 100);
+  if (!ch.alive) {
+    const img = g.getImageData(0, 0, 100, 100),
+      d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = 0.3 * (d[i] ?? 0) + 0.59 * (d[i + 1] ?? 0) + 0.11 * (d[i + 2] ?? 0);
+      d[i] = d[i + 1] = d[i + 2] = l;
+    }
+    g.putImageData(img, 0, 0);
+  }
+  faces.set(key, cv);
+  return cv;
 }
 function startVote(): void {
   Object.assign(S, {
@@ -270,7 +251,6 @@ function startVote(): void {
     note: "",
   });
   for (const c of living()) S.votes[c.id] = (rnd() * 6) | 0;
-  if (S.round === 1) for (const id of [DEMO.a, DEMO.b]) S.votes[id] = (S.votes[id] ?? 0) + 24;
   log(`ROUND ${S.round} · VOTE OPEN`, "t-house");
   render();
 }
@@ -291,7 +271,7 @@ function startStory(): void {
   const [a, b] = S.fighters.map(char);
   if (!a || !b) return;
   const edge = 0.5 + (a.kills - b.kills) * 0.05 - (a.damage - b.damage) * 0.004;
-  S.winner = isDemo(S.fighters) ? S.fighters.indexOf(DEMO.a) : rnd() < edge ? 0 : 1;
+  S.winner = rnd() < edge ? 0 : 1;
   S.dmg = 15 + ((rnd() * 35) | 0);
   S.story = `${a.short} ${(CHAPTERS[S.round % CHAPTERS.length] ?? "").replace("{b}", b.short)}`;
   log(`LOADED ${a.ens} + ${b.ens}`, "t-house");
@@ -324,12 +304,9 @@ function startSettle(): void {
   l.fights++;
   w.kills++;
   w.damage = Math.min(95, w.damage + S.dmg);
-  const lost = (w.damage >= 67 ? 2 : w.damage >= 34 ? 1 : 0) - w.lost;
-  S.lost = lost > 0 ? (CAPS[w.kind][3 - w.lost - 1] ?? "") : "";
-  w.lost += Math.max(0, lost);
   log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
   log(`${deadEns(l)} · status=dead`, "t-house");
-  log(`${w.ens} · damage=${w.damage}${S.lost ? ` · lost ${S.lost}` : ""}`, "t-house");
+  log(`${w.ens} · damage=${w.damage}`, "t-house");
   S.result = 0;
   if (S.bet) {
     const total = S.pool[0] + S.pool[1];
@@ -380,8 +357,7 @@ setInterval(() => {
   if (S.phase !== "gate") paintFilm();
 }, 125);
 
-function figure(c: Ctx, ch: Character, i: number, f: number, dead: boolean, moving: boolean): void {
-  c.save();
+function pose(c: Ctx, i: number, f: number, dead: boolean, moving: boolean): void {
   if (i === 1) {
     c.translate(160, 0);
     c.scale(-1, 1);
@@ -390,13 +366,16 @@ function figure(c: Ctx, ch: Character, i: number, f: number, dead: boolean, movi
     c.translate(12, 86);
     c.rotate(-Math.PI / 2);
   } else c.translate(22 + (moving ? (f % 6 < 3 ? 2 : 0) : 0), 20 + (moving ? (f >> 1) % 2 : 0));
-  PORTRAITS[ch.kind](c);
+}
+function figure(c: Ctx, ch: Character, i: number, f: number, dead: boolean, moving: boolean): void {
+  c.save();
+  pose(c, i, f, dead, moving);
+  A(c, 16, 37, 13, 1.12, 1.88);
   L(c, 16, 33, 16, 48);
   L(c, 16, 48, 10, 63);
   if (ch.damage >= 50) L(c, 16, 48, 20, 56, 18, 63);
   else L(c, 16, 48, 22, 63);
-  if (ch.lost < 2) L(c, 16, 38, 29, moving ? 30 + (f % 4 < 2 ? 0 : 3) : 40);
-  else L(c, 16, 38, 20, 46);
+  L(c, 16, 38, 29, moving ? 30 + (f % 4 < 2 ? 0 : 3) : 40);
   c.restore();
 }
 const tri = (c: Ctx, ...p: number[]): void => {
@@ -471,11 +450,13 @@ function paintFilm(): void {
         },
       ],
     ];
+  const loop = f % 80,
+    moving = S.phase === "fight" || (rep && loop < 64),
+    dead =
+      S.phase === "settle" || S.phase === "over" || (rep && loop >= 64)
+        ? 1 - (shot?.winner ?? 0)
+        : -1;
   if (shot) {
-    const loop = f % 80,
-      moving = S.phase === "fight" || (rep && loop < 64),
-      dead =
-        S.phase === "settle" || S.phase === "over" || (rep && loop >= 64) ? 1 - shot.winner : -1;
     shot.fighters.forEach((id, i) =>
       layers.push([col(char(id)), (c) => figure(c, char(id), i, f, dead === i, moving)]),
     );
@@ -505,6 +486,15 @@ function paintFilm(): void {
     }
   }
   paint(film(), 160, 90, layers);
+  if (!shot) return;
+  const g = ctx2d(film());
+  g.imageSmoothingEnabled = false;
+  shot.fighters.forEach((id, i) => {
+    g.save();
+    pose(g, i, f, dead === i, moving);
+    g.drawImage(face(char(id)), 6, 2, 20, 20);
+    g.restore();
+  });
 }
 
 export const odds = (i: number): string => ((S.pool[0] + S.pool[1]) / (S.pool[i] ?? 0)).toFixed(2);
@@ -523,7 +513,7 @@ document.addEventListener("click", (e) => {
   } else if (act === "view") {
     S.view = Number(el.dataset.v) || (S.view === 1 ? 2 : 1);
     render();
-  } else if (act === "reset") newSeason();
+  } else if (act === "reset") void newSeason();
   else if (act === "ring") pick(Number(el.dataset.id));
   else if (act === "cast") {
     S.cast = hex(10);
