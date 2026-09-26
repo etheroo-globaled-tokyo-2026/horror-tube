@@ -31,7 +31,7 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
-import { parseInjuries, parseInjuryPlaces, readRosterFromChain } from "./dashboard.js";
+import { parseInjuries, parseInjuryPlaces, readRosterFromChain } from "./roster.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
@@ -849,7 +849,7 @@ async function main(): Promise<void> {
     const outPath = requireFlag(process.argv, "--out");
     let roster: Awaited<ReturnType<typeof readRosterFromChain>>;
     try {
-      roster = await readRosterFromChain(ensLabel, rpcUrl);
+      roster = await readRosterFromChain(ensLabel, rpcUrl, pin.ETHRegistry);
     } catch (error) {
       fail(
         `list registered characters failed: ${error instanceof Error ? error.message : String(error)}`,
