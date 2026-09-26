@@ -23,6 +23,7 @@ ENS: the fighter whose `status` text record is `dead` lost.
 | ----------------- | ----------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1                 | Operator                | `openBattle(fighterA, fighterB, closesAt)` | `closesAt` must be in the future. Both fighters must read alive on ENS and be in no other unsettled battle. New battle id (1, 2, 3, …); betting opens; the current fee rate is locked into the battle |
 | 2                 | Anyone                  | `placeBet(battleId, fighter)` + ETH        | Adds to the caller's stake on fighter 0 or 1 while `block.timestamp < closesAt`                                                                                                                       |
+| 2a                | Operator                | `closeBetting(battleId)`                   | Ends betting now instead of at `closesAt`; the game loop closes betting when the fight video is ready (`docs/game-loop.md`)                                                                           |
 | 3                 | —                       | —                                          | Betting closes by time; no transaction                                                                                                                                                                |
 | 4                 | Backend's ENS agent key | ENS `setText`                              | Loser's `status` becomes `dead` (PLAN.md step 10)                                                                                                                                                     |
 | 5                 | Anyone                  | `settleBattle(battleId)`                   | Allowed once `block.timestamp >= closesAt`. Reads both fighters' `status`; exactly one `dead` → the other fighter wins                                                                                |
@@ -55,7 +56,7 @@ wins. Fee = 2% × 0.04 = 0.0008. Alice gets 0.0594, Bob 0.0198, Carol nothing.
 | Role                         | Holder at deploy         | Can                                                                                          |
 | ---------------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
 | Admin (`DEFAULT_ADMIN_ROLE`) | Deployer (`PRIVATE_KEY`) | `setFeeBps` (max 1000 = 10%), `setTreasury`, `setMinBet`, `withdrawFees`, grant/revoke roles |
-| Operator (`OPERATOR_ROLE`)   | `OPERATOR_ADDRESS`       | `openBattle`, `cancelBattle`                                                                 |
+| Operator (`OPERATOR_ROLE`)   | `OPERATOR_ADDRESS`       | `openBattle`, `closeBetting`, `cancelBattle`                                                 |
 
 - Fees accrue in `accruedFees`, counted apart from bettors' money.
   `withdrawFees()` sends all of it to `treasury` and reverts
@@ -108,7 +109,7 @@ through the parent's resolver instead of an error; the test wallet owns
 
 - Events: `BattleOpened(battleId, fighterA, fighterB, closesAt, feeBps)`,
   `BetPlaced(battleId, bettor, fighter, amount)`,
-  `BattleSettled(battleId, winner, fee)`, `BattleCancelled(battleId)`,
+  `BattleSettled(battleId, winner, fee)`, `BattleCancelled(battleId)`, `BettingClosedEarly(battleId, closesAt)`,
   `Claimed(battleId, bettor, amount)`, `FeesWithdrawn(treasury, amount)`,
   `FeeBpsSet`, `TreasurySet`, `MinBetSet`.
 - Views: `getBattle(battleId)` (fighters, `closesAt`, `feeBps`, status, winner,

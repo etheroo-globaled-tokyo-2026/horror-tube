@@ -19,14 +19,15 @@ battles in Sepolia ETH. It settles from ENS: the fighter whose `status` text rec
 
 ## Battle lifecycle
 
-| Step     | Who                     | Call                                       | Effect                                                                                       |
-| -------- | ----------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| 1        | Operator                | `openBattle(fighterA, fighterB, closesAt)` | New battle id (1, 2, 3, …); betting opens; the current fee rate is locked into the battle    |
-| 2        | Anyone                  | `placeBet(battleId, fighter)` with ETH     | Adds to the caller's stake on fighter 0 or 1 until `closesAt`                                |
-| 3        | Backend's ENS agent key | ENS `setText`                              | The loser's `status` becomes `dead`                                                          |
-| 4        | Anyone                  | `settleBattle(battleId)`                   | After `closesAt`, reads both fighters' `status`; exactly one `dead` → the other fighter wins |
-| 5        | Each bettor             | `claim(battleId)`                          | Pays winnings or a refund, once per bettor per battle                                        |
-| Before 4 | Operator                | `cancelBattle(battleId)`                   | Everyone can claim a full refund                                                             |
+| Step     | Who                     | Call                                       | Effect                                                                                           |
+| -------- | ----------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| 1        | Operator                | `openBattle(fighterA, fighterB, closesAt)` | New battle id (1, 2, 3, …); betting opens; the current fee rate is locked into the battle        |
+| 2        | Anyone                  | `placeBet(battleId, fighter)` with ETH     | Adds to the caller's stake on fighter 0 or 1 until `closesAt`                                    |
+| 2a       | Operator                | `closeBetting(battleId)`                   | Ends betting now instead of at `closesAt`; the game closes betting when the fight video is ready |
+| 3        | Backend's ENS agent key | ENS `setText`                              | The loser's `status` becomes `dead`                                                              |
+| 4        | Anyone                  | `settleBattle(battleId)`                   | After `closesAt`, reads both fighters' `status`; exactly one `dead` → the other fighter wins     |
+| 5        | Each bettor             | `claim(battleId)`                          | Pays winnings or a refund, once per bettor per battle                                            |
+| Before 4 | Operator                | `cancelBattle(battleId)`                   | Everyone can claim a full refund                                                                 |
 
 Opening reverts with `FighterAlreadyDead` if either fighter already reads `dead`,
 `FighterInOpenBattle` if either is in another unsettled battle, or `EnsLookupFailed` if ENS
@@ -50,7 +51,7 @@ Example: Alice 0.03 and Bob 0.01 on Jason, Carol 0.04 on Freddy, Jason wins. The
 | Role                         | Can                                                                                                  |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Admin (`DEFAULT_ADMIN_ROLE`) | `setFeeBps` (at most 1000 = 10%), `setTreasury`, `setMinBet`, `withdrawFees`, grant and revoke roles |
-| Operator (`OPERATOR_ROLE`)   | `openBattle`, `cancelBattle`                                                                         |
+| Operator (`OPERATOR_ROLE`)   | `openBattle`, `closeBetting`, `cancelBattle`                                                         |
 
 - Fees accrue in `accruedFees` until the admin calls `withdrawFees()`, which sends them to
   `treasury`.
@@ -78,7 +79,7 @@ Example: Alice 0.03 and Bob 0.01 on Jason, Carol 0.04 on Freddy, Jason wins. The
 - Views: `getBattle(battleId)`, `stakesOf(battleId, bettor)`, `claimable(battleId, bettor)`,
   `openBattleOf(fighterNode)`,
   `fighterNode(fighter)`, `nextBattleId`, `accruedFees`, `feeBps`, `minBet`, `treasury`.
-- Events: `BattleOpened`, `BetPlaced`, `BattleSettled`, `BattleCancelled`, `Claimed`,
+- Events: `BattleOpened`, `BetPlaced`, `BattleSettled`, `BattleCancelled`, `BettingClosedEarly`, `Claimed`,
   `FeesWithdrawn`, `FeeBpsSet`, `TreasurySet`, `MinBetSet`.
 
 ## Setup and commands
