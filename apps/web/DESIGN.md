@@ -185,8 +185,9 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Waiting: the living roster and TYPE THE NUMBER · OK. OK books that fighter; the model picks the opponent.
+  - Waiting: the living roster and TYPE THE NUMBER · OK. OK books that fighter; the other fighter is drawn at random.
     The same screen, titled PICK THE NEXT FIGHTER, is the `pick` phase. A failed booking shows the server's reason.
+  - Vote and countdown: WHO WALKS OUT for the booked pair. Press A or B. The counts stay on screen until betting opens.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
