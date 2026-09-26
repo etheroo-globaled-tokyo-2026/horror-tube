@@ -32,7 +32,7 @@
 
 **Files:** Create `packages/betting/package.json`, `tsconfig.json`, `tsconfig.build.json`; modify root `package.json`, `Dockerfile`
 
-- [ ] `package.json`:
+- [x] `package.json`:
 
 ```json
 {
@@ -61,16 +61,16 @@
 }
 ```
 
-- [ ] `tsconfig.json` and `tsconfig.build.json`: copy `packages/world-id`'s; the build config excludes `tests` and `src/cli`.
-- [ ] Root `package.json`: `betting:gas-owner`, `betting:deploy`, `betting:pool`, `betting:e2e` → `pnpm --filter @horror-tube/betting run <name>`.
-- [ ] `Dockerfile`: copy `packages/betting/package.json` before install; `RUN pnpm --filter @horror-tube/betting build` before the server build; in the runtime stage copy `packages/betting/{package.json,dist,node_modules}` like `packages/fight`.
-- [ ] `pnpm install`. Commit: `feat: add the betting package`.
+- [x] `tsconfig.json` and `tsconfig.build.json`: copy `packages/world-id`'s; the build config excludes `tests` and `src/cli`.
+- [x] Root `package.json`: `betting:gas-owner`, `betting:deploy`, `betting:pool`, `betting:e2e` → `pnpm --filter @horror-tube/betting run <name>`.
+- [x] `Dockerfile`: copy `packages/betting/package.json` before install; `RUN pnpm --filter @horror-tube/betting build` before the server build; in the runtime stage copy `packages/betting/{package.json,dist,node_modules}` like `packages/fight`.
+- [x] `pnpm install`. Commit: `feat: add the betting package`.
 
 ### Task 2: IDs, objects, payout
 
 **Files:** Create `src/env.ts`, `src/ids.ts`, `src/objects.ts`, `src/payout.ts`, `src/index.ts`, `tests/ids.test.ts`, `tests/payout.test.ts`
 
-- [ ] Failing tests. `tests/ids.test.ts` (vector from the Move test `pool_address_matches_the_typescript_sdk`; Move test builds use package address `0x0`):
+- [x] Failing tests. `tests/ids.test.ts` (vector from the Move test `pool_address_matches_the_typescript_sdk`; Move test builds use package address `0x0`):
 
 ```ts
 import assert from "node:assert/strict";
@@ -116,8 +116,8 @@ describe("payout", () => {
 });
 ```
 
-- [ ] Run `pnpm --filter @horror-tube/betting exec tsx --test tests/*.test.ts` → FAIL.
-- [ ] `src/env.ts`:
+- [x] Run `pnpm --filter @horror-tube/betting exec tsx --test tests/*.test.ts` → FAIL.
+- [x] `src/env.ts`:
 
 ```ts
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -163,7 +163,7 @@ export function createClient(config: Pick<BettingConfig, "network" | "grpcUrl">)
 }
 ```
 
-- [ ] `src/ids.ts`:
+- [x] `src/ids.ts`:
 
 ```ts
 import { bcs } from "@mysten/sui/bcs";
@@ -175,7 +175,7 @@ export function poolId(ids: Pick<ContractIds, "packageId" | "houseId">, battleId
 }
 ```
 
-- [ ] `src/objects.ts`:
+- [x] `src/objects.ts`:
 
 ```ts
 import { bcs } from "@mysten/sui/bcs";
@@ -257,7 +257,7 @@ export async function listTickets(
 }
 ```
 
-- [ ] `src/payout.ts`:
+- [x] `src/payout.ts`:
 
 ```ts
 import { PoolStatus, type Pool, type Ticket } from "./objects.js";
@@ -288,20 +288,20 @@ export function odds(totals: [bigint, bigint], feeBps: bigint, side: 0 | 1): num
 }
 ```
 
-- [ ] `src/index.ts`: `export * from` each of `env`, `ids`, `objects`, `payout`, `transactions`, `execute`, `operator` (`.js`).
-- [ ] Tests → PASS; `typecheck` clean. Commit: `feat: derive pool IDs and parse betting objects`.
+- [x] `src/index.ts`: `export * from` each of `env`, `ids`, `objects`, `payout`, `transactions`, `execute`, `operator` (`.js`).
+- [x] Tests → PASS; `typecheck` clean. Commit: `feat: derive pool IDs and parse betting objects`.
 
 ### Task 3: Transactions, execute, operator
 
 **Files:** Create `src/transactions.ts`, `src/execute.ts`, `src/operator.ts`, `tests/operator.test.ts`
 
-- [ ] `src/transactions.ts`: one builder per call, each `new Transaction()` + one `moveCall` with `typeArguments: [ids.coinType]`:
+- [x] `src/transactions.ts`: one builder per call, each `new Transaction()` + one `moveCall` with `typeArguments: [ids.coinType]`:
   - `betTx(ids, pool, side: 0 | 1, amount)` → `bet(house, pool, u64 side, tx.coin({ type: ids.coinType, balance: amount, useGasCoin: false }), tx.object.clock())`
   - `claimTx(ids, tickets: Ticket[])` → one `claim(pool, ticket)` per ticket
   - `openPoolTx(ids, cap, battleId: string, closesAtMs)` → `open_pool(house, cap, tx.pure.string(battleId), u64, clock)`
   - `closeBettingTx(ids, cap, pool)`, `settleTx(ids, cap, pool, side)`, `cancelTx(ids, cap, pool)`
   - `target(ids, name)` = `${ids.packageId}::betting::${name}`
-- [ ] `src/execute.ts`:
+- [x] `src/execute.ts`:
 
 ```ts
 import type { SuiClientTypes } from "@mysten/sui/client";
@@ -338,7 +338,7 @@ export function publishedPackageId(result: Executed): string {
 }
 ```
 
-- [ ] `src/operator.ts`: `createOperator(chain: OperatorChain, ids, cap)` where `OperatorChain = { readPool(id): Promise<Pool | null>; run(tx: Transaction): Promise<void> }`, so the unit test passes a fake. `createChain(client, signer)` returns the real one (`getPool` + `execute`). Operations run through one promise queue:
+- [x] `src/operator.ts`: `createOperator(chain: OperatorChain, ids, cap)` where `OperatorChain = { readPool(id): Promise<Pool | null>; run(tx: Transaction): Promise<void> }`, so the unit test passes a fake. `createChain(client, signer)` returns the real one (`getPool` + `execute`). Operations run through one promise queue:
 
 ```ts
 export function createOperator(chain: OperatorChain, ids: ContractIds, cap: string) {
@@ -389,14 +389,14 @@ export function createOperator(chain: OperatorChain, ids: ContractIds, cap: stri
 }
 ```
 
-- [ ] `tests/operator.test.ts`: a fake chain holding one `Pool` in memory whose `run` applies the call's effect and counts runs. Cases: `openPool` twice runs once; `settle` on a settled pool for the same side runs nothing, for the other side throws; `cancel` on a settled pool throws; a failed `run` rejects that call and the next call still runs.
-- [ ] Tests, `typecheck`, `pnpm lint` pass. Commit: `feat: betting transactions and operator`.
+- [x] `tests/operator.test.ts`: a fake chain holding one `Pool` in memory whose `run` applies the call's effect and counts runs. Cases: `openPool` twice runs once; `settle` on a settled pool for the same side runs nothing, for the other side throws; `cancel` on a settled pool throws; a failed `run` rejects that call and the next call still runs.
+- [x] Tests, `typecheck`, `pnpm lint` pass (for `packages/betting`; the repo-wide run fails on files outside it). Commit: `feat: betting transactions and operator`.
 
 ### Task 4: CLIs
 
 **Files:** Create `src/cli/shinami.ts`, `gas-owner.ts`, `deploy.ts`, `pool.ts`; modify `.env.example`
 
-- [ ] `.env.example`, append (comment above each, file style):
+- [x] `.env.example`, append (comment above each, file style):
 
 ```
 # Sui network for betting: testnet
@@ -424,7 +424,7 @@ SUI_E2E_OPERATOR_CAP_ID=
 
 Change the `BET_FEE_BPS` comment to `Fee in basis points, taken from the losing side (200 = 2%). Read by pnpm betting:deploy`, and the `BETTING_PACKAGE_ID` comment to `Printed by pnpm betting:deploy`.
 
-- [ ] `src/cli/shinami.ts`: the e2e's gasless wallet, the same calls as `apps/server/src/shinami-port.ts`:
+- [x] `src/cli/shinami.ts`: the e2e's gasless wallet, the same calls as `apps/server/src/shinami-port.ts`:
 
 ```ts
 import { createHmac } from "node:crypto";
@@ -454,8 +454,8 @@ export async function gaslessWallet(client: SuiGrpcClient, walletId: string) {
 }
 ```
 
-- [ ] `src/cli/gas-owner.ts`: `gaslessWallet(client, "horror-tube-gas-owner")`; three times run a tx with one `0x2::clock::timestamp_ms(tx.object.clock())` call; for each digest read `client.core.getTransaction({ digest, include: { transaction: true } })` and print `transaction.transaction.gasData.owner`. Print `SUI_BET_SPONSOR=<owner>` only when all three match; otherwise exit 1 naming the three owners.
-- [ ] `src/cli/deploy.ts`:
+- [x] `src/cli/gas-owner.ts`: `gaslessWallet(client, "horror-tube-gas-owner")`; three times run a tx with one `0x2::clock::timestamp_ms(tx.object.clock())` call; for each digest read `client.core.getTransaction({ digest, include: { transaction: true } })` and print `transaction.transaction.gasData.owner`. Print `SUI_BET_SPONSOR=<owner>` only when all three match; otherwise exit 1 naming the three owners.
+- [x] `src/cli/deploy.ts`:
 
 ```ts
 import { execFileSync } from "node:child_process";
@@ -523,8 +523,8 @@ SUI_OPERATOR_CAP_ID=${operatorCap}
 SUI_E2E_OPERATOR_CAP_ID=${e2eCap}`);
 ```
 
-- [ ] `src/cli/pool.ts` (`pnpm betting:pool <battleId>`): print the pool with bigints as decimal strings, or `No pool for battle <id>`.
-- [ ] Commit: `feat: betting gas-owner, deploy and pool CLIs`.
+- [x] `src/cli/pool.ts` (`pnpm betting:pool <battleId>`): print the pool with bigints as decimal strings, or `No pool for battle <id>`.
+- [x] Commit: `feat: betting gas-owner, deploy and pool CLIs`.
 
 ### Task 5: Deploy (after the operator's setup in the spec)
 
@@ -536,7 +536,7 @@ SUI_E2E_OPERATOR_CAP_ID=${e2eCap}`);
 
 **Files:** Create `src/cli/e2e.ts`
 
-- [ ] `src/cli/e2e.ts`:
+- [x] `src/cli/e2e.ts`:
 
 ```ts
 import assert from "node:assert/strict";
@@ -595,4 +595,4 @@ console.log(`e2e passed: fee ${settled.fee}, paid out ${owed}.`);
 ```
 
 - [ ] `pnpm betting:e2e` ends with `e2e passed`. Paste its output and the published IDs in the PR body.
-- [ ] Commit: `test: testnet e2e for gasless betting`.
+- [x] Commit: `test: testnet e2e for gasless betting`. Committed before running; the run above is still open.
