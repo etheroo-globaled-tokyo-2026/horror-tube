@@ -37,25 +37,30 @@ Chain: **Sui testnet** (Sui is a sponsor: "DeFi & Payments", $5k). Money: **USDC
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
 - Bets and claims: `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`.
-  No popup. Send one transaction at a time (two at once fight over the gas coin).
+  No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
+  coin).
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
   Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
 - Gas: the burner needs a little SUI. After World ID verifies, the server sends testnet SUI and the first USDC coin, one
-  time per nullifier. Later: our backend sponsors gas (Sui sponsored transactions), so users hold only USDC.
+  time per nullifier. Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
+  co-signs), so users hold only USDC.
 - The game only calls one function that returns the signer and the client. Only that function changes later.
 
 **Deposits (the coin box):**
 
-- Coin slot: the Wallet Standard (`@mysten/wallet-standard`, `getWallets()`), or `@mysten/dapp-kit-core` (no React).
-  The extension signs one transfer: `coinWithBalance({ type: USDC, balance })` to the in-game address. Use Slush.
+- Coin slot: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Clicking the slot opens
+  `<mysten-dapp-kit-connect-modal>` (`modal.show()`), then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
+  `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one transfer: `coinWithBalance({ type: USDC, balance })` to the in-game address. Use Slush.
   Phantom dropped Sui on 2026-09-24.
 - PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
   but we did not confirm that Slush mobile opens it. Plain address first.
-- The meter: poll the USDC balance every few seconds. Websocket subscriptions are gone. The public node allows 100
+- The meter: `client.core.getBalance` for the USDC type. After our own transaction, `waitForTransaction` first, then
+  read. For deposits from outside: poll every few seconds now, gRPC streaming later. Websocket subscriptions are gone. The public node allows 100
   requests per 30 seconds, so keep a spare RPC URL for the demo.
 - Coin return: the in-game wallet sends USDC back with `tx.coin` + `transferObjects`.
 
-**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. OK for testnet.
+**Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. The Sui skills say
+never keep keys in the browser. We break that rule on purpose, for testnet only. Privy fixes it.
 
 **Later: a real login wallet.** It must keep World ID as the only login, with no popups:
 
