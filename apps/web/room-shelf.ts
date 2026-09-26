@@ -119,10 +119,6 @@ export function drawTape(ch: Character): void {
 }
 export function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
-  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
-    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
-    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
-  }
   return S.chars[T.held] ?? null;
 }
 
