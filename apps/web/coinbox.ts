@@ -29,7 +29,7 @@ export type CoinBox = {
   group: THREE.Group;
   address: string;
   credit: () => number;
-  partAt: (ray: THREE.Raycaster) => CoinBoxPart | null;
+  partAt: (hit: THREE.Intersection) => CoinBoxPart;
   view: (at: CoinBoxView) => [eye: THREE.Vector3, target: THREE.Vector3];
   insert: (usdc: number) => void;
   open: () => void;
@@ -574,9 +574,7 @@ export function createCoinBox(
     group,
     address: wallet.address,
     credit: () => credit,
-    partAt: (ray) => {
-      const hit = ray.intersectObject(group, true)[0];
-      if (hit === undefined) return null;
+    partAt: (hit) => {
       if (hit.object.parent === handle) return "slot";
       if (hit.object === staple || hit.object.parent === lock || hit.object.parent === drawer)
         return "lock";
