@@ -1,10 +1,11 @@
 /** Same-origin RoundState client (docs/game-loop.md). No second host. */
 
-import type { RoundState } from "../server/src/types.ts";
+import type { RoundState, VideoStyle } from "../server/src/types.ts";
 
 import { WALLET_SESSION_KEY, type SessionStore } from "./wallet.ts";
 
 export type ServerRoundState = RoundState;
+export type { VideoStyle };
 
 export type RoundListener = (state: ServerRoundState) => void;
 

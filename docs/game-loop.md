@@ -123,6 +123,7 @@ type RoundState = {
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;
+  videoStyle: "rotoscope" | "film" | null; // how the TV draws the video; null exactly when videoUrl is null
   frameUrl: string | null; // last-frame CDN URL; seeds the next image-to-video bout
   error: string | null; // video failed, bets refunded
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
