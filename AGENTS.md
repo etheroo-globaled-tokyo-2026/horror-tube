@@ -161,7 +161,8 @@ pnpm workspace; Turborepo runs the tasks defined in `turbo.json`.
 - `packages/fight-media` — Spaces upload for fight clips
 - `packages/world-id` — IDKit env and verification helpers
 - `packages/roster` — Fandom → character sheet propose/register
-- `packages/contracts` — `BattleBetting` (Foundry)
+- `packages/betting` — Sui Move `horror_tube::betting` (parimutuel pools) plus its TS client and deploy/e2e CLIs
+- `packages/test-usdc` — testnet test USDC coin with a public faucet, and mint/send/accounts CLIs
 
 ### Toolchain
 
@@ -170,7 +171,7 @@ pnpm workspace; Turborepo runs the tasks defined in `turbo.json`.
 - Monorepo tech is turborepo
 - Web room is **Vite** + TypeScript (no React)
 - Lint is **oxlint** (`pnpm lint`); format is **oxfmt** (`pnpm format`)
-- Root scripts: `dev`, `test`, `typecheck`, `lint`, `format`, `ens:*`, `dashboard`, `contracts:*`
+- Root scripts: `dev`, `test`, `typecheck`, `lint`, `format`, `ens:*`, `dashboard`, `betting:*`, `test-usdc:*`
 
 ### Git
 
