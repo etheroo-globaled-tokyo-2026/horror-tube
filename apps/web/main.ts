@@ -1,14 +1,5 @@
 import * as THREE from "three";
-import {
-  $,
-  DUR,
-  S,
-  countdown,
-  hooks,
-  pick,
-  usd,
-  type Phase,
-} from "./game.ts";
+import { $, DUR, S, countdown, hooks, pick, usd, type Phase } from "./game.ts";
 import {
   COINS,
   type CoinBox,
@@ -25,7 +16,6 @@ import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
 import {
   armSlot,
-  burnLight,
   drawPaper,
   enterRoom,
   nextGateStep,
@@ -40,13 +30,6 @@ import {
 import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, vidMode } from "./room-tv.ts";
 import { keyById, led, remote } from "./room-remote.ts";
 import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
-
-// Build order: shell → waiver paper → TV → remote → shelf.
-import "./room-shell.ts";
-import "./room-waiver.ts";
-import "./room-tv.ts";
-import "./room-remote.ts";
-import "./room-shelf.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
   ["d", "slot"],

@@ -115,14 +115,12 @@ export function drawPaper(now: number): void {
   paperTex.needsUpdate = true;
 }
 
-
-
-/** Set by main after hintText / walkTo / mountCoinBox exist. */
-export const waiverHooks: {
+type WaiverHooks = {
   hintText: () => void;
   walkTo: (n: number) => void;
   mountCoinBox: () => Promise<void>;
-} = {
+};
+export const waiverHooks: WaiverHooks = {
   hintText: () => {
     throw new Error("waiverHooks.hintText not set");
   },
@@ -280,4 +278,3 @@ export function retry(): void {
     step("read");
   });
 }
-
