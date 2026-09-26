@@ -193,8 +193,9 @@ def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
         page_html = data["parse"]["text"]
         escaped_anchor = re.escape(anchor)
         start = re.search(
-            rf'<h(?P<level>[1-6])\b[^>]*>.*?\bid=(?P<quote>["\']){escaped_anchor}'
-            rf'(?P=quote).*?</h(?P=level)\s*>',
+            rf'<h(?P<level>[1-6])\b[^>]*>(?:(?!</?h[1-6]\b).)*?'
+            rf'\bid=(?P<quote>["\']){escaped_anchor}(?P=quote)'
+            rf'(?:(?!</?h[1-6]\b).)*?</h(?P=level)\s*>',
             page_html,
             flags=re.IGNORECASE | re.DOTALL,
         )
