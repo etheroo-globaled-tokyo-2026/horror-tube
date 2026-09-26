@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port ${PORT:-8123} --strictPort",
+    "build": "vite build",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },

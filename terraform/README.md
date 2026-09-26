@@ -1,6 +1,6 @@
 # Horror Tube — DigitalOcean Terraform
 
-Provisions a Spaces bucket with CDN (character icons) and a Managed PostgreSQL cluster (battle state) with a database firewall.
+Provisions a Spaces bucket with CDN (character icons), a Managed PostgreSQL cluster (battle state) with a database firewall, and an App Platform service that serves the Vite client and the game Node process on one origin.
 
 ## Auth (token never on disk, never pasted into shell history)
 
@@ -76,19 +76,96 @@ Every uploaded icon object must use ACL **`public-read`** so the CDN URL is publ
 
 ## Required tfvars (no defaults)
 
-Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, or bucket name:
+Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every value. There are **no** Terraform defaults for region, database size, bucket name, app name, GitHub repo, instance size, game port, or game-loop timings:
 
 | Variable | Operator value for this project |
 | --- | --- |
 | `region` | `sgp1` (Singapore — closest DigitalOcean region to Tokyo with Spaces + Managed Postgres; confirm via API before changing) |
 | `db_size` | `db-s-1vcpu-2gb` (from `GET /v2/databases/options`; do not substitute another size) |
 | `spaces_bucket_name` | globally unique name |
+| `app_name` | `horror-tube` |
+| `github_repo` | `etheroo-globaled-tokyo-2026/horror-tube` |
+| `instance_size_slug` | `apps-s-1vcpu-1gb` (from [App Platform pricing — Current Plans](https://docs.digitalocean.com/products/app-platform/details/pricing/); Node 22 + ffmpeg) |
+| `game_port` | `8080` |
+| `quorum_votes` / timings | see `docs/game-loop.md` (prod quorum 2, countdown 15, bet min 10, video timeout 300, settle 8) |
 
-The Managed Postgres firewall is hardcoded public in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`, covering all IPv4) because hackathon developers are not on one IP. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
+The Managed Postgres firewall keeps the hardcoded public IPv4 rules in `database.tf` (`0.0.0.0/1` and `128.0.0.0/1`) so hackathon laptops can reach Postgres, and adds a rule of type `app` whose value is the App Platform app id so the game service is a trusted source. DigitalOcean rejects literal `0.0.0.0/0`. It is not a tfvars setting.
 
 There is no Tokyo DO region. Pick the geographically closest region where **both** Spaces and Managed Postgres size `db-s-1vcpu-2gb` appear in the API (`/v2/regions` with storage, `/v2/databases/options` pg regions + layouts). That is normally `sgp1`.
 
 `db-s-1vcpu-2gb` was verified under `options.pg.layouts` for `num_nodes: 1`.
+
+## App Platform (game node + Vite)
+
+`digitalocean_app.game` is one service built from the repo-root `Dockerfile`. It listens on `game_port` (`GAME_PORT` / `http_port`), health-checks `GET /health`, and serves the Vite build from `STATIC_DIR` inside the image.
+
+Push to `main` redeploys (`github.deploy_on_push = true`). The DigitalOcean team must already have the GitHub repository connected in the control panel, or apply fails when App Platform cannot clone the repo.
+
+After apply, the public room URL is output `app_live_url` (health at `{app_live_url}/health`). This stack documents the resource; it does not claim apply has been run.
+
+### App runtime secrets (TF_VAR from `.env`, never in tfvars)
+
+Apply must pass the App Platform runtime env as Terraform variables (sensitive, no defaults, never committed). Source them from the repo `.env` for that one command:
+
+| App env | Terraform variable | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | `TF_VAR_database_url` | App uses output `database_private_uri`; a laptop uses `database_uri` |
+| `SPACES_ACCESS_KEY_ID` | `TF_VAR_spaces_access_key_id` | from `.env` |
+| `SPACES_SECRET` | `TF_VAR_spaces_secret` | from `.env` |
+| `SPACES_BUCKET` | `TF_VAR_spaces_bucket` | from `.env` |
+| `SPACES_CDN_HOST` | `TF_VAR_spaces_cdn_host` | from `.env` |
+| `SPACES_ENDPOINT` | `TF_VAR_spaces_endpoint` | from `.env` |
+| `TOGETHER_API_KEY` | `TF_VAR_together_api_key` | from `.env` |
+| `TOGETHER_API_URL` | `TF_VAR_together_api_url` | from `.env` |
+| `TOGETHER_IMAGE_MODEL` | `TF_VAR_together_image_model` | from `.env` |
+| `WORLD_ID_APP_ID` | `TF_VAR_world_id_app_id` | from `.env` |
+| `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
+| `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
+
+Example apply that wires `.env` into `TF_VAR_*` (plus the Spaces provider key rename):
+
+```bash
+(
+  set -euo pipefail
+  root=$(git rev-parse --show-toplevel)
+  set -a
+  # shellcheck disable=SC1091
+  source "$root/.env"
+  set +a
+  : "${DATABASE_URL:?DATABASE_URL is required. See .env.example.}"
+  : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required. See .env.example.}"
+  : "${SPACES_SECRET:?SPACES_SECRET is required. See .env.example.}"
+  : "${SPACES_BUCKET:?SPACES_BUCKET is required. See .env.example.}"
+  : "${SPACES_CDN_HOST:?SPACES_CDN_HOST is required. See .env.example.}"
+  : "${SPACES_ENDPOINT:?SPACES_ENDPOINT is required. See .env.example.}"
+  : "${TOGETHER_API_KEY:?TOGETHER_API_KEY is required. See .env.example.}"
+  : "${TOGETHER_API_URL:?TOGETHER_API_URL is required. See .env.example.}"
+  : "${TOGETHER_IMAGE_MODEL:?TOGETHER_IMAGE_MODEL is required. See .env.example.}"
+  : "${WORLD_ID_APP_ID:?WORLD_ID_APP_ID is required. See .env.example.}"
+  : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
+  : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
+  TF_VAR_do_token="$(op read 'op://Personal/DigitalOcean IRC/api_key')"
+  export TF_VAR_do_token
+  export TF_VAR_database_url="$DATABASE_URL"
+  export TF_VAR_spaces_access_key_id="$SPACES_ACCESS_KEY_ID"
+  export TF_VAR_spaces_secret="$SPACES_SECRET"
+  export TF_VAR_spaces_bucket="$SPACES_BUCKET"
+  export TF_VAR_spaces_cdn_host="$SPACES_CDN_HOST"
+  export TF_VAR_spaces_endpoint="$SPACES_ENDPOINT"
+  export TF_VAR_together_api_key="$TOGETHER_API_KEY"
+  export TF_VAR_together_api_url="$TOGETHER_API_URL"
+  export TF_VAR_together_image_model="$TOGETHER_IMAGE_MODEL"
+  export TF_VAR_world_id_app_id="$WORLD_ID_APP_ID"
+  export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
+  export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
+  export SPACES_ACCESS_KEY_ID
+  export SPACES_SECRET_ACCESS_KEY="$SPACES_SECRET"
+  cd "$root/terraform"
+  terraform apply
+)
+```
+
+Do not put those secret values in `terraform.tfvars` or `terraform.tfvars.example`.
 
 ## Spaces icons: public read + CDN
 

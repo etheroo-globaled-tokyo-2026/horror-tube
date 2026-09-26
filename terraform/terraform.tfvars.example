@@ -1,7 +1,25 @@
 # Copy to terraform.tfvars (gitignored). Never commit terraform.tfvars.
 # DigitalOcean API token is NOT set here — pass TF_VAR_do_token (or DIGITALOCEAN_TOKEN)
 # for that one terraform command only. See README.md.
+#
+# App runtime secrets (DATABASE_URL, SPACES_*, TOGETHER_*, WORLD_ID_*) are also NOT
+# set here. Pass them as TF_VAR_* for that one apply, sourced from the repo .env.
+# See README.md.
 
 region             = "sgp1"
 spaces_bucket_name = "horror-tube-icons-REPLACE_ME"
 db_size            = "db-s-1vcpu-2gb"
+
+app_name           = "horror-tube"
+github_repo        = "etheroo-globaled-tokyo-2026/horror-tube"
+# From https://docs.digitalocean.com/products/app-platform/details/pricing/ (Current Plans).
+# 1 GiB shared CPU — enough for Node 22 plus ffmpeg last-frame extract.
+instance_size_slug = "apps-s-1vcpu-1gb"
+game_port          = 8080
+
+# Game-loop timings (docs/game-loop.md). Prod values shown; use quorum_votes = 1 on a laptop server.
+quorum_votes           = 2
+vote_countdown_seconds = 15
+bet_min_seconds        = 10
+video_timeout_seconds  = 300
+settle_seconds         = 8
