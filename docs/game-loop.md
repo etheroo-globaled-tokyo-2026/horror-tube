@@ -12,10 +12,11 @@ The winner stays on and fights the next challenger ("winner stays on", or king o
                                           │               │
                                           ▼               │
                   BET (story + video are made now)        │
-                  closes when video is ready AND 10s done │
+                  video plays once ready; closes 5s after │
+                  a room reports playback start           │
                                           │               │
                                           ▼               │
-                  FIGHT (video plays) ──▶ SETTLE ─────────┘
+                  FIGHT (rest of video) ──▶ SETTLE ───────┘
                                              │
                                   1 alive ──▶ OVER
 ```
@@ -57,7 +58,23 @@ fills the challenger slot from rotation after settle.
   CDN video URL, duration, and last-frame URL. A prior `frameUrl` on the round is
   passed as `priorFrameUrl` (image-to-video); the first bout is text-to-video.
   Missing FAL, narration, or Spaces env fails closed and names the variable.
-- Betting closes when the video is ready, outcome is set, and never earlier than 10s.
+- A ready video is not a closed book. Once `videoUrl` is set the room plays it
+  while betting is still open. The first room whose `<video>` fires `playing`
+  sends `POST /playback-start`; the server stores `video_started_at` and
+  `betting_closes_at = video_started_at + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS`
+  on the `battle_results` row, then on `RoundState` (`videoStartedAt`,
+  `bettingClosesAt`). If that write fails, nothing is stored and betting stays open.
+- No playback report means no deadline: betting stays open and the server does
+  not invent a start time.
+- A bet (`POST /tx` with a `betting::bet` call) or a vote received at or after
+  `betting_closes_at` is rejected with that timestamp, even before the phase
+  flips. `/tx` bets must also target the live pool during `bet`.
+- At `betting_closes_at` the operator calls `closeBetting` on the Sui pool. Only
+  after it succeeds does the round set the betting-closed signal and enter
+  `fight`. A failed close stays on `RoundState.error`, keeps betting-closed
+  unset, and retries every 2s.
+- The Sui pool's `closes_at_ms` from `openPool` is only an upper bound the chain
+  requires, not a guess of when the video starts.
 - Winners share the pool in proportion to their bets.
 - If either side has no stake at settle, stakes are refunded (Sui ticket claim path).
 
@@ -70,9 +87,10 @@ fills the challenger slot from rotation after settle.
 
 - After betting is closed **and** the fight video duration has elapsed, apply the
   queued ENS writes (winner `injuries` first, then loser `status=dead`). Betting
-  closes when the bet phase ends (video ready and `BET_MIN_SECONDS` passed).
-  Playback finished means that fight duration elapsed; the server has no separate
-  playback callback. The room also shows the in-memory `chars` update (loser dead,
+  closed means `closeBetting` succeeded at `betting_closes_at`. Playback finished
+  means the video duration elapsed since `video_started_at`; the server has no
+  playback-end callback. `betting_closes_at` does not stand in for playback
+  finished. The room also shows the in-memory `chars` update (loser dead,
   winner damage). With `SKIP_BATTLE_SETTLEMENT=1`, skip the Sui pool
   `settle` call and leave that step pending; with `0`, call `operator.settle`
   after the ENS writes. Then start the next bout from the stored rotation opponent
@@ -95,14 +113,14 @@ fills the challenger slot from rotation after settle.
 
 Read from `.env`. Add each variable to `.env.example` with an empty value.
 
-| Variable                 | Dev | Prod |
-| ------------------------ | --- | ---- |
-| `QUORUM_VOTES`           | 1   | 2    |
-| `VOTE_COUNTDOWN_SECONDS` | 15  | 15   |
-| `BET_MIN_SECONDS`        | 10  | 10   |
-| `VIDEO_TIMEOUT_SECONDS`  | 300 | 300  |
-| `SETTLE_SECONDS`         | 8   | 8    |
-| `SKIP_BATTLE_SETTLEMENT` | 1   | 1    |
+| Variable                                  | Dev | Prod |
+| ----------------------------------------- | --- | ---- |
+| `QUORUM_VOTES`                            | 1   | 2    |
+| `VOTE_COUNTDOWN_SECONDS`                  | 15  | 15   |
+| `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` | 5   | 5    |
+| `VIDEO_TIMEOUT_SECONDS`                   | 300 | 300  |
+| `SETTLE_SECONDS`                          | 8   | 8    |
+| `SKIP_BATTLE_SETTLEMENT`                  | 1   | 1    |
 
 The fight lasts as long as the video. It needs no variable.
 
@@ -127,7 +145,11 @@ type RoundState = {
   fighters: [number, number] | null;
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
+  battleId: string | null; // Sui pool key while a bout is open
+  poolId: string | null;
   videoUrl: string | null;
+  videoStartedAt: number | null; // ms; first room's playback-start report
+  bettingClosesAt: number | null; // ms; bets and votes at or after it are rejected
   frameUrl: string | null; // last-frame CDN URL; seeds the next image-to-video bout
   error: string | null; // video failed, bets refunded
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
@@ -144,6 +166,7 @@ pays out. Stakes are not defined here (no stake columns).
 **Actions from the client:**
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). Stage 2+ has no vote.
+- `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
 - `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight.
 
 ## Client

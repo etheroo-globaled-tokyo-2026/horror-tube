@@ -14,7 +14,7 @@ const NULLIFIER = "12345678901234567890";
 const config = {
   quorumVotes: 2,
   voteCountdownSeconds: 15,
-  betMinSeconds: 10,
+  bettingCloseAfterVideoStartSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
 };
@@ -162,6 +162,21 @@ describe("POST /vote session", () => {
     const body = (await res.json()) as { ok: boolean; error: string };
     assert.equal(body.ok, false);
     assert.match(body.error, /WALLET_SECRET_PEPPER/u);
+  });
+
+  it("POST /playback-start needs a session and is refused outside the bet phase", async () => {
+    const base = await listen(testLoop(), PEPPER);
+    const post = (headers: Record<string, string>) =>
+      fetch(`${base}/playback-start`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ battleId: "battle-1" }),
+      });
+    assert.equal((await post({})).status, 401);
+    const res = await post({ authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}` });
+    assert.equal(res.status, 409);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    assert.match(body.error, /only accepted in the bet phase\. Current phase: vote/u);
   });
 
   it("does not accept a client-supplied proof body in place of the session", async () => {

@@ -47,18 +47,19 @@ function storedVoteSession(store: SessionStore): string {
   return session;
 }
 
-export async function postVote(
-  picks: number[],
-  store: SessionStore = localStorage,
+async function postWithSession(
+  path: "/vote" | "/playback-start",
+  payload: { picks: number[] } | { battleId: string },
+  store: SessionStore,
 ): Promise<ServerRoundState> {
   const session = storedVoteSession(store);
-  const res = await fetch(apiUrl("/vote"), {
+  const res = await fetch(apiUrl(path), {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${session}`,
     },
-    body: JSON.stringify({ picks }),
+    body: JSON.stringify(payload),
   });
   const body = (await res.json()) as {
     ok?: boolean;
@@ -67,11 +68,26 @@ export async function postVote(
   };
   if (!res.ok || body.ok === false) {
     throw new Error(
-      body.error ?? `POST /vote failed: HTTP ${String(res.status)}`,
+      body.error ?? `POST ${path} failed: HTTP ${String(res.status)}`,
     );
   }
   if (body.state === undefined) {
-    throw new Error("POST /vote response missing state.");
+    throw new Error(`POST ${path} response missing state.`);
   }
   return body.state;
+}
+
+export function postVote(
+  picks: number[],
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
+  return postWithSession("/vote", { picks }, store);
+}
+
+/** Tell the server this room's fight video started playing; it stores betting_closes_at. */
+export function postPlaybackStart(
+  battleId: string,
+  store: SessionStore = localStorage,
+): Promise<ServerRoundState> {
+  return postWithSession("/playback-start", { battleId }, store);
 }

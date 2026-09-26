@@ -116,6 +116,7 @@ export type GameState = {
   voters: number;
   quorum: number;
   videoUrl: string | null;
+  bettingClosesAt: number | null;
   frameUrl: string | null;
   error: string | null;
 };
@@ -155,6 +156,7 @@ export const S: GameState = {
   voters: 0,
   quorum: 1,
   videoUrl: null,
+  bettingClosesAt: null,
   frameUrl: null,
   error: null,
 };
@@ -234,6 +236,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.pool = [...state.pool] as [number, number];
   S.winner = state.winner === null ? -1 : state.winner;
   S.videoUrl = state.videoUrl;
+  S.bettingClosesAt = state.bettingClosesAt;
   S.frameUrl = state.frameUrl;
   S.error = state.error;
   // #114: a new bout must accept a fresh hold; do not keep the prior round's bet.

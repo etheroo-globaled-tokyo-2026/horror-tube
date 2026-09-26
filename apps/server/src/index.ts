@@ -63,7 +63,7 @@ const game = new GameLoop({
   skipSettlement,
 });
 
-const wallet = createWalletHandlerFromEnv(process.env);
+const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
 const feeBps = await readHouseFeeBps(battleBetting.config);
 console.log(`betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)}`);
