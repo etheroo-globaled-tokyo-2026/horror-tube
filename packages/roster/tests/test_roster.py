@@ -420,6 +420,50 @@ class ProposeTests(unittest.TestCase):
         self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
         self.assertEqual(lore.powers, "He transforms and controls minds.")
 
+    def test_anchor_section_keeps_text_under_a_subheading(self):
+        sections = {
+            "parse": {
+                "title": "Count Dracula",
+                "pageid": 917,
+                "properties": {},
+                "categories": [],
+                "sections": [
+                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
+                    {
+                        "line": "Powers and Abilities",
+                        "index": "",
+                        "anchor": "Powers_and_Abilities",
+                    },
+                ],
+            }
+        }
+        body = {
+            "parse": {
+                "text": (
+                    '<h2><span id="Appearance">Appearance</span></h2>'
+                    "<h3>Costume</h3>"
+                    "<p>A pale count in formal black clothes.</p>"
+                    '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
+                    "<p>He transforms and controls minds.</p>"
+                )
+            }
+        }
+
+        def fake(_host, params):
+            if str(params.get("prop", "")).startswith("sections"):
+                return sections
+            return body
+
+        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+            lore = fetch_page_lore(
+                resolve_page(
+                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
+                    wiki=None,
+                )
+            )
+        self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
+        self.assertEqual(lore.powers, "He transforms and controls minds.")
+
     def test_missing_look_section_fails(self):
         parse = {
             "parse": {
