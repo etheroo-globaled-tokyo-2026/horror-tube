@@ -198,28 +198,6 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
   };
 }
 
-export function failingWalletHandler(message: string): WalletHandler {
-  return {
-    matches(method: string, urlPath: string): boolean {
-      return ROUTES.has(urlPath) && (method === "POST" || method === "OPTIONS");
-    },
-    handle(
-      _req: IncomingMessage,
-      res: ServerResponse,
-      method: string,
-      urlPath: string,
-    ): Promise<void> {
-      if (method === "OPTIONS") {
-        preflight(res);
-        return Promise.resolve();
-      }
-      console.error(`POST ${urlPath} failed: ${message}`);
-      sendJson(res, 500, { error: message });
-      return Promise.resolve();
-    },
-  };
-}
-
 export function createWalletHandlerFromEnv(
   env: NodeJS.ProcessEnv,
   fetchImpl: typeof fetch = fetch,

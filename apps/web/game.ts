@@ -138,7 +138,6 @@ export const S: GameState = {
 };
 const col = (ch: Character): string => C[ch.hue];
 export const living = (): Character[] => S.chars.filter((c) => c.alive);
-const deadEns = (ch: Character): string => (ch.alive ? ch.ens : ch.ens.replace(".", ".deadpool."));
 const place = (round: number): Place => PLACES[round % PLACES.length];
 export const log = (text: string, cls = ""): void => {
   S.log.unshift({ round: S.round, text, cls });
@@ -198,7 +197,7 @@ export function applyRoundState(state: ServerRoundState): void {
     const l = S.chars[f[1 - state.winner] ?? -1];
     if (w && l) {
       log(`${w.short} KILLS ${l.short}`, `t-${w.hue}`);
-      log(`${deadEns(l)} · status=dead`, "t-house");
+      log(`${l.ens} · status=dead`, "t-house");
       log(`${w.ens} · damage=${w.damage}`, "t-house");
       S.last = { fighters: f, winner: state.winner, round: state.round };
       S.focus = w.id;
