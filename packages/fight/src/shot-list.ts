@@ -33,7 +33,22 @@ export function parseTimeRange(timeRange: string): {
   return { start_s, end_s };
 }
 
-/** Each narrated shot's time span, with both fighters found by their card name. */
+/** What the rotoscope searches each fighter's video for, keyed by card subname. */
+// Measured with SAM 3.1 on fal clips; a fighter's name alone mostly scores 0.
+export const SEARCH_PHRASES: ReadonlyMap<string, string> = new Map([
+  ["chucky", "doll with red hair"],
+  ["count", "man with a cape"],
+  ["frankenstein", "man with green skin"],
+  ["freddy", "man in a striped sweater"],
+  ["godzilla", "giant reptile monster"],
+  ["imhotep", "man wrapped in bandages"],
+  ["jason", "man in a hockey mask"],
+  ["leatherface", "man in an apron"],
+  ["pinhead", "man in a black leather coat"],
+  ["wolf", "werewolf"],
+]);
+
+/** Each narrated shot's time span, with both fighters and the phrase each is found by. */
 export function buildShotList(shots: readonly Shot[], input: FightInput): RotoscopeShotList {
   const cast = [
     { id: "A" as const, ...found(input.fighterA) },
@@ -48,9 +63,14 @@ export function buildShotList(shots: readonly Shot[], input: FightInput): Rotosc
   };
 }
 
-// The segmenter finds horror characters by their names, so the name is also the search phrase.
 function found(card: LivingCard): { name: string; find: string } {
+  const find = SEARCH_PHRASES.get(card.subname);
+  if (find === undefined) {
+    throw new FightError(
+      `no rotoscope search phrase for fighter ${JSON.stringify(card.subname)}. Add one to SEARCH_PHRASES in packages/fight/src/shot-list.ts.`,
+    );
+  }
   const display = card.display_name?.trim();
   const name = display === undefined || display === "" ? card.subname : display;
-  return { name, find: name };
+  return { name, find };
 }
