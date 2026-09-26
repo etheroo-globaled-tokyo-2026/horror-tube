@@ -77,6 +77,12 @@ variable "vite_sepolia_rpc_url" {
   sensitive   = true
 }
 
+variable "database_ca_cert" {
+  description = "DATABASE_CA_CERT for the app: DigitalOcean Managed Postgres project CA PEM (or API base64 of that PEM). Set via TF_VAR_database_ca_cert from .env. Required; no default. Not a private key; never commit the live value."
+  type        = string
+  sensitive   = true
+}
+
 variable "spaces_access_key_id" {
   description = "SPACES_ACCESS_KEY_ID for the app. Set via TF_VAR_spaces_access_key_id from .env. Required; no default. Never commit."
   type        = string
