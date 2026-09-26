@@ -6,13 +6,16 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import {
   $,
+  DUR,
   S,
   char,
+  countdown,
   face,
   usd,
   film,
   hooks,
   living,
+  mmss,
   newSeason,
   odds,
   pick,
@@ -1241,6 +1244,10 @@ function drawTape(ch: Character): void {
 }
 function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
+  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
+    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
+    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
+  }
   return S.chars[T.held] ?? null;
 }
 
@@ -1419,7 +1426,15 @@ function updateShelf(shown: Character | null): void {
   shelf.visible = S.phase !== "gate" || W8.step === "done";
   for (const slot of slots) {
     const ch = S.chars[slot.id];
-    slot.mesh.visible = shelf.visible && !!ch && shown !== ch;
+    slot.mesh.visible =
+      shelf.visible &&
+      !!ch &&
+      shown !== ch &&
+      !(
+        (S.phase === "vote" || S.phase === "countdown") &&
+        S.champion !== null &&
+        ch.id === S.champion
+      );
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);
@@ -1455,10 +1470,10 @@ function updateTape(now: number): void {
 }
 
 const video = document.createElement("video");
-video.src = "assets/demo-fight.mp4";
 video.playsInline = true;
 video.preload = "auto";
 video.muted = true;
+let lastVideoUrl: string | null = null;
 const small = document.createElement("canvas");
 small.width = 160;
 small.height = 120;
@@ -1466,6 +1481,19 @@ const sg = ctx2d(small, { willReadFrequently: true });
 const RAMP = [COL.soot, COL.rustDeep, COL.rust, COL.bone].map(rgb);
 let vidMode: "" | "live" | "rec" = "";
 function syncVideo(): void {
+  const url = S.videoUrl;
+  if (!url) {
+    if (vidMode) {
+      video.pause();
+      vidMode = "";
+    }
+    lastVideoUrl = null;
+    return;
+  }
+  if (url !== lastVideoUrl) {
+    video.src = url;
+    lastVideoUrl = url;
+  }
   const mode = S.phase === "fight" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
@@ -1587,8 +1615,25 @@ function drawGuide(now: number): void {
   g.textAlign = "right";
   g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
   S.chars.forEach((ch, i) => {
-    const x = i < 5 ? 12 : W / 2 + 6,
-      y = top + 34 + (i % 5) * 42,
+    if (
+      (S.phase === "vote" || S.phase === "countdown") &&
+      S.champion !== null &&
+      ch.id === S.champion
+    ) {
+      return;
+    }
+    const visibleIndex = S.chars
+      .filter(
+        (c) =>
+          !(
+            (S.phase === "vote" || S.phase === "countdown") &&
+            S.champion !== null &&
+            c.id === S.champion
+          ),
+      )
+      .indexOf(ch);
+    const x = visibleIndex < 5 ? 12 : W / 2 + 6,
+      y = top + 34 + (visibleIndex % 5) * 42,
       mine = S.picks.includes(ch.id);
     if (mine) {
       g.fillStyle = COL.bone;
@@ -1635,58 +1680,6 @@ const say = (text: string, ms = 3600): void => {
 };
 
 let tvNoise = 0;
-function drawCaseFile(ch: Character): void {
-  const g = tvCtx,
-    W = TW,
-    x = 232,
-    seen = ch.fights > 0;
-  g.fillStyle = COL.rust;
-  g.font = "700 18px Silkscreen";
-  g.textAlign = "left";
-  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
-  g.imageSmoothingEnabled = false;
-  g.drawImage(tinted(ch), 32, 64, 176, 176);
-  if (!ch.alive) {
-    g.save();
-    g.translate(120, 152);
-    g.rotate(-0.2);
-    g.strokeStyle = g.fillStyle = COL.blood;
-    g.lineWidth = 4;
-    g.textAlign = "center";
-    g.strokeRect(-92, -24, 184, 40);
-    g.font = "700 24px Silkscreen";
-    g.fillText("DECEASED", 0, 6);
-    g.restore();
-  }
-  g.textAlign = "left";
-  g.fillStyle = COL.bone;
-  g.font = "30px DotGothic16";
-  let y = wrap(g, ch.name, x, 92, W - x - 32, 34);
-  g.fillStyle = COL.sulfur;
-  g.font = "700 16px Silkscreen";
-  g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
-  g.fillStyle = COL.rust;
-  g.font = "700 14px Silkscreen";
-  g.fillText("CASE FILE", x, y + 34);
-  g.fillStyle = COL.bone;
-  g.font = "20px DotGothic16";
-  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
-  g.fillStyle = COL.rust;
-  g.font = "700 14px Silkscreen";
-  g.fillText("INJURIES", 32, y);
-  g.fillStyle = COL.bone;
-  g.font = "20px DotGothic16";
-  wrap(g, ch.injuries || "None.", 32, y + 26, W - 64, 26);
-  const [footer, color] = !ch.alive
-    ? ["THIS ROOM IS EMPTY", COL.rust]
-    : S.picks.includes(ch.id)
-      ? ["YOU ALREADY ASKED FOR THEM", COL.rust]
-      : ["PRESS OK TO REQUEST", COL.sulfur];
-  g.textAlign = "center";
-  g.fillStyle = color;
-  g.font = "700 22px Silkscreen";
-  g.fillText(footer, W / 2, 456);
-}
 function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -1811,39 +1804,57 @@ function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (S.phase === "vote" && !S.cast && (T.buf || (T.reveal >= 0 && now < T.revealUntil))) {
+  } else if (
+    (S.phase === "vote" || S.phase === "countdown") &&
+    !S.cast &&
+    (T.buf || (T.reveal >= 0 && now < T.revealUntil))
+  ) {
     fill(COL.soot);
     noise = 0.14;
     if (T.reveal >= 0 && now < T.revealUntil) {
       const ch = char(T.reveal);
       text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
-      text(S.picks.length === 2 ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
+      text(
+        S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.",
+        330,
+        26,
+      );
     } else {
-      const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
-      if (ch) drawCaseFile(ch);
+      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+      const n = +T.buf,
+        ch = T.buf.length === 2 ? S.chars[n - 1] : null;
+      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+      else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
+      else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
+      else if (S.champion !== null && ch.id === S.champion)
+        text("THE CHAMPION STAYS ON", 280, 28, COL.rust);
+      else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
       else {
-        text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-        if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-        else text("NO SUCH RESIDENT", 280, 28, COL.rust);
+        g.font = "24px DotGothic16";
+        g.fillStyle = COL.bone;
+        wrap(g, `“${ch.brief}”`, W / 2, 250, W - 100, 30);
+        text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
       }
     }
   } else {
     const filmCanvas = film();
-    if (S.phase === "vote") drawGuide(now);
+    if (S.phase === "vote" || S.phase === "countdown") drawGuide(now);
     else if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "story") {
+    if (S.phase === "countdown") {
       fill(COL.soot);
-      text("TONIGHT'S EPISODE IS BEING WRITTEN", 90, 20, COL.rust);
-      g.textAlign = "left";
-      g.font = "28px DotGothic16";
-      g.fillStyle = COL.bone;
-      const y = wrap(g, S.story, 60, 170, W - 120, 36);
-      g.fillText("WINNER: ████████", 60, y + 10);
-      g.fillText("DAMAGE: ██", 60, y + 46);
-      g.textAlign = "center";
+      text("VOTING CLOSES", 120, 36, COL.sulfur);
+      text(mmss(S.t), 220, 64, COL.blood);
+      text(
+        `${String(S.voters)} / ${String(S.quorum)} humans in`,
+        300,
+        26,
+        COL.bone,
+        "DotGothic16",
+        400,
+      );
     } else if (S.phase === "bet") {
       fill(COL.bone);
       text("WHO WALKS OUT?", 80, 44, COL.soot);
@@ -1985,7 +1996,9 @@ function hintText(): void {
               ? "WARMING UP"
               : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
-        ? `PICK TWO · NUMBER ${b("OK")}`
+        ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
+        : S.phase === "countdown" && !S.cast
+          ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
         : S.phase === "bet" && !S.bet && S.credit > 0
           ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
           : S.claim
@@ -2008,7 +2021,7 @@ function press(id: string): void {
   setTimeout(() => led.material.color.set(COL.bloodDeep), 120);
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
-    if (S.phase === "vote" && !S.cast) {
+    if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
       T.reveal = -1;
       T.held = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
@@ -2024,15 +2037,21 @@ function press(id: string): void {
   hintText();
 }
 function ok(): void {
-  if (S.phase === "vote" && !S.cast && T.buf.length === 2) {
+  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast && T.buf.length === 2) {
     const ch = S.chars[Number(T.buf) - 1];
-    if (!ch || !ch.alive || S.picks.includes(ch.id)) return sfx.deny();
+    if (
+      !ch ||
+      !ch.alive ||
+      S.picks.includes(ch.id) ||
+      (S.champion !== null && ch.id === S.champion)
+    )
+      return sfx.deny();
     pick(ch.id);
     sfx.pick();
     T.buf = "";
     T.reveal = ch.id;
     T.revealUntil = performance.now() + 3200;
-    if (S.picks.length === 2) $("#h-cast").click();
+    if (S.picks.length >= S.slots) $("#h-cast").click();
   } else if (S.claim) {
     $("#h-claim").click();
     sfx.coins(14);
@@ -2265,6 +2284,7 @@ const WALK: WalkStep[] = [
 ];
 function walkTo(n: number): void {
   walk = n < WALK.length ? n : -1;
+  countdown.hold = walk >= 0;
   hintText();
 }
 function zoom(at: CoinBoxView | null, pick = false): void {
@@ -2522,8 +2542,9 @@ renderer.setAnimationLoop(() => {
   ambience(tvNoise, flick, lightsOut);
   const ms = performance.now();
   if (S.phase === "bet" && ms >= nextBeat) {
-    sfx.beat(0.75);
-    nextBeat = ms + 740;
+    const k = Math.max(0, Math.min(1, 1 - S.t / DUR.bet));
+    sfx.beat(0.5 + 0.5 * k);
+    nextBeat = ms + 1000 - 520 * k;
   }
   if (S.phase === "fight" && !vidMode && S.frame !== lastFrame && S.frame % 12 === 9) sfx.hit();
   lastFrame = S.frame;
@@ -2536,7 +2557,7 @@ renderer.setAnimationLoop(() => {
 
 const PHASE_SOUND = new Map<Phase, () => void>([
   ["vote", sfx.bell],
-  ["story", () => sfx.type(4)],
+  ["countdown", sfx.static],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
@@ -2554,8 +2575,8 @@ hooks.render = () => {
     const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && !S.cast && S.phase === "story")
-      say("You did not choose. Someone else did.", 4200);
+    if (was === "vote" && S.phase === "countdown")
+      say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();
