@@ -39,7 +39,7 @@ Checked in under `packages/roster/roster/schemas/`:
 | `look`     | Non-empty string                                                              |
 | `brief`    | Non-empty string                                                              |
 | `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default) |
-| `status`   | Must be present. Allowed: `""` or `dead` only. Anything else is rejected      |
+| `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
 | `icon`     | `""` or an `https://` URL. Missing key is an error                            |
 
 **Forbidden keys:** `strength`, `intelligence`, `luck`, `role`.
@@ -104,7 +104,7 @@ If a label is already registered on chain, the command fails unless
 are the source of prior `status` / `injuries` (not only a local file).
 
 - `skip`: leave chain unchanged and report the label
-- `restore`: clear `status` to `""` and write `injuries` from the **input file**
+- `restore`: set `status` to `alive` and write `injuries` from the **input file**
   (the file must include `injuries` explicitly)
 
 ### plan-remove (plan only)
