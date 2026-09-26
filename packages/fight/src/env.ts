@@ -85,6 +85,63 @@ function parsePositiveInt(name: string, raw: string): number {
   return n;
 }
 
+/** A switch that must be set to exactly "0" or "1", so a typo can't quietly turn a step off. */
+function requiredSwitch(
+  name: string,
+  env: Record<string, string | undefined>,
+): boolean {
+  const value = requiredEnv(name, env);
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  throw new FightError(
+    `${name} must be "0" or "1". Got: ${JSON.stringify(env[name])}. Set it in .env. See .env.example.`,
+  );
+}
+
+export type RotoscopeConfig = {
+  /** Base URL of `rotoscope serve`, without a trailing slash. */
+  url: string;
+  /** How long one rotoscope request may take, from ROTOSCOPE_TIMEOUT_MS. */
+  timeoutMs: number;
+};
+
+/** What happens to fal's video before upload. */
+export type VideoEffectsConfig = {
+  /** DEMON_SOUND=1: the sound goes through FAITH's possessed-demon voice chain. */
+  demonSound: boolean;
+  /** ROTOSCOPE=1: the rotoscope service redraws the video. Null when ROTOSCOPE=0. */
+  rotoscope: RotoscopeConfig | null;
+};
+
+export function loadVideoEffectsConfig(
+  env: Record<string, string | undefined>,
+): VideoEffectsConfig {
+  const demonSound = requiredSwitch("DEMON_SOUND", env);
+  if (!requiredSwitch("ROTOSCOPE", env)) {
+    return { demonSound, rotoscope: null };
+  }
+  const url = requiredEnv("ROTOSCOPE_URL", env);
+  if (!URL.canParse(url) || !/^https?:$/u.test(new URL(url).protocol)) {
+    throw new FightError(
+      `ROTOSCOPE_URL must be an http or https URL. Got: ${JSON.stringify(url)}. Set it in .env. See .env.example.`,
+    );
+  }
+  return {
+    demonSound,
+    rotoscope: {
+      url: url.replace(/\/+$/u, ""),
+      timeoutMs: parsePositiveInt(
+        "ROTOSCOPE_TIMEOUT_MS",
+        requiredEnv("ROTOSCOPE_TIMEOUT_MS", env),
+      ),
+    },
+  };
+}
+
 export function loadNarrationConfig(
   env: Record<string, string | undefined>,
 ): NarrationConfig {
