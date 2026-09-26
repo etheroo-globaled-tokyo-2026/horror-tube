@@ -21,7 +21,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `assets/scare/`   | The POWER scare face and sounds, generated once with fal (`flux-pro/v1.1`, `elevenlabs/sound-effects/v2`).  |
 | `ht.css`          | Tokens, the cursors, and the wallet modal theme.                                                            |
 
-Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
+Run `pnpm dev` at the repo root and open `http://127.0.0.1:8123/`. Vite listens on `127.0.0.1` only.
 
 ## Characters (ENS)
 
