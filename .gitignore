@@ -147,7 +147,7 @@ vite.config.ts.timestamp-*
 .turbo
 
 # ENS commit-reveal local state (contains secret)
-scripts/.ens-commit-state/
+packages/ens/scripts/.ens-commit-state/
 
 # Terraform
 **/.terraform/
@@ -155,3 +155,23 @@ scripts/.ens-commit-state/
 *.tfstate.*
 *.tfvars
 !terraform/terraform.tfvars.example
+
+.serena
+.claude/.headroom*
+# Python
+.venv/
+__pycache__/
+
+# Cursor MCP config (contains API secrets)
+.cursor/mcp.json
+.new-mcp
+
+# Foundry
+packages/contracts/out/
+packages/contracts/cache/
+packages/contracts/broadcast/*/31337/
+packages/contracts/broadcast/**/dry-run/
+packages/contracts/broadcast/E2eBattleBetting.s.sol/
+
+# git worktrees
+.worktrees

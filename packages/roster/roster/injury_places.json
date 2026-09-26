@@ -1,0 +1,248 @@
+{
+  "godzilla": [
+    "Dorsal plates torn off",
+    "atomic breath silenced"
+  ],
+  "frankenstein": [
+    "Neck bolts ripped out",
+    "stitching on one arm torn open"
+  ],
+  "kong": [
+    "One arm broken",
+    "can no longer climb or crush"
+  ],
+  "dracula": [
+    "Fangs shattered",
+    "hypnosis fails"
+  ],
+  "count": [
+    "Fangs shattered",
+    "hypnosis fails"
+  ],
+  "wolfman": [
+    "Clawed hand severed",
+    "full moon change stalls halfway"
+  ],
+  "wolf": [
+    "Clawed hand severed",
+    "full moon change stalls halfway"
+  ],
+  "gillman": [
+    "Gills irreparably damaged",
+    "cannot return to water"
+  ],
+  "mummy": [
+    "Bandaged sword-arm unravelled",
+    "scroll magic burned out"
+  ],
+  "orlok": [
+    "Long claws broken",
+    "plague-rat swarm scattered"
+  ],
+  "invisible": [
+    "Bandages burned away",
+    "invisibility flickers into visibility"
+  ],
+  "hyde": [
+    "Cane arm crushed",
+    "cannot hold the Hyde form"
+  ],
+  "phantom": [
+    "Mask destroyed",
+    "singing voice ruined"
+  ],
+  "blob": [
+    "Mass flash-frozen and shattered into inert chunks"
+  ],
+  "bride": [
+    "Bridal wrappings torn off",
+    "reanimation charge spent"
+  ],
+  "fiend": [
+    "Spinal \"body\" severed from the brain mass"
+  ],
+  "golem": [
+    "Clay chest cracked",
+    "animating mark erased"
+  ],
+  "ygor": [
+    "Twisted neck finally broken",
+    "loses control of the Monster"
+  ],
+  "cesare": [
+    "Exhaustion collapse",
+    "hypnotic control permanently broken"
+  ],
+  "roman": [
+    "Bubble helmet cracked",
+    "antenna ripped off"
+  ],
+  "fly": [
+    "Fly head crushed",
+    "hybrid limbs locked mid-swap"
+  ],
+  "quasimodo": [
+    "Bell-ringing arm crushed",
+    "cannot climb the towers"
+  ],
+  "ash": [
+    "Chainsaw stump wrecked",
+    "boomstick smashed so the silhouette loses both iconic tools"
+  ],
+  "ripley": [
+    "Power Loader arm crushed",
+    "flamethrower fuel burned out so she fights exposed and tool-less"
+  ],
+  "buffy": [
+    "Stake-hand shattered",
+    "Slayer strength burned out so she cannot finish a kill blow"
+  ],
+  "blade": [
+    "Back-sword snapped",
+    "sword arm ruined so the Daywalker loses his main edge"
+  ],
+  "hellboy": [
+    "Right Hand of Doom cracked",
+    "horns filed raw so the demonic silhouette reads broken"
+  ],
+  "laurie": [
+    "Knife-hand cut open",
+    "fortified-house arsenal emptied so she cannot finish Myers"
+  ],
+  "sidney": [
+    "Gun hand shattered",
+    "jacket torn open so the survivor silhouette loses cover and firepower"
+  ],
+  "alice": [
+    "Tactical armor shredded",
+    "dominant sword arm ruined so Umbrella tech cannot save the next exchange"
+  ],
+  "leon": [
+    "Vest ripped open",
+    "shooting arm broken so the agent cannot clear a corridor"
+  ],
+  "jill": [
+    "Holster arm crushed",
+    "blue silhouette bloodied so lockpicking and rear-guard speed fail"
+  ],
+  "chris": [
+    "Machete sheath torn away",
+    "punching arm ruined so the BSAA bruiser cannot finish a melee"
+  ],
+  "claire": [
+    "Jacket shredded",
+    "knife-hand crushed so the Redfield silhouette loses speed and steel"
+  ],
+  "nancy": [
+    "Dream-trap tools broken",
+    "glove-stab arm ruined so she cannot wake the fight space"
+  ],
+  "selene": [
+    "Duster shredded",
+    "pistol hand silver-burned so the Death Dealer silhouette loses cover and fire"
+  ],
+  "helsing": [
+    "Holy-relic kit smashed",
+    "stake hand broken so the doctor cannot finish a vampire rite"
+  ],
+  "gale": [
+    "Suit jacket torn",
+    "gun hand bruised shut so the on-camera crusader cannot finish an unmasking"
+  ],
+  "sienna": [
+    "Enchanted sword broken",
+    "Valkyrie armor split so the clown fight loses its holy edge"
+  ],
+  "grace": [
+    "Wedding dress shredded",
+    "improvised gun hand ruined so the hide-and-seek silhouette collapses"
+  ],
+  "frank": [
+    "Camera smashed",
+    "improvised-weapon arm broken so the scoop dies mid-fight"
+  ],
+  "heather": [
+    "Vest pockets emptied",
+    "boot-leg cut so flashlight and ammo cannot reach the next monster"
+  ],
+  "jason": [
+    "Hockey mask shattered",
+    "machete arm severed so the silhouette reads as exposed and slowed"
+  ],
+  "freddy": [
+    "Claw glove fingers broken off",
+    "dream-control burned out so he cannot rewrite the fight space"
+  ],
+  "leatherface": [
+    "Skin mask torn away",
+    "chainsaw seized so he fights bare-faced and tool-less"
+  ],
+  "chucky": [
+    "Doll body dismembered",
+    "soul-transfer blocked so he cannot jump hosts"
+  ],
+  "art": [
+    "Bag of weapons emptied",
+    "regenerative healing burned out so the clown stays broken"
+  ],
+  "pinhead": [
+    "Pins torn from the skull",
+    "Lament Configuration sealed so cenobite summons fail"
+  ],
+  "candyman": [
+    "Hook hand severed",
+    "bee hive burned out so summoning and swarm fail"
+  ],
+  "norman": [
+    "Mother dress shredded",
+    "knife hand shattered so the Mother persona cannot finish a kill"
+  ],
+  "jigsaw": [
+    "Trap schematics ruined",
+    "Billy puppet crushed so remote games cannot start"
+  ],
+  "pamela": [
+    "Decapitation wound reopened",
+    "sweater ripped so the mother voice and surprise kills fail"
+  ],
+  "tiffany": [
+    "Nail-file hand destroyed",
+    "bridal-doll body burned so soul transfer stalls"
+  ],
+  "crowley": [
+    "Hatchet arm sawed off",
+    "overnight resurrection blocked so the swamp stay-dead sticks"
+  ],
+  "creeper": [
+    "Wings shredded",
+    "stolen eyes torn out so flight and chosen-organ feeding fail"
+  ],
+  "spaulding": [
+    "Clown face paint melted",
+    "knife hand ruined so the lure act collapses"
+  ],
+  "harry": [
+    "Pickaxe lost",
+    "miner strength broken so the Valentine myth cannot finish a lift-kill"
+  ],
+  "billy": [
+    "Phone line cut",
+    "attic vantage collapsed so the unseen caller advantage ends"
+  ],
+  "fisherman": [
+    "Hook arm hooked through",
+    "slicker hood torn so the Fisherman silhouette is gone"
+  ],
+  "angela": [
+    "Disguise voice/identity broken",
+    "killing tool hand crushed so the quiet-camper act fails"
+  ],
+  "michael": [
+    "Mask cracked open",
+    "knife hand ruined so the Shape loses stealth silhouette"
+  ],
+  "imhotep": [
+    "Bandaged sword-arm unravelled",
+    "scroll magic burned out"
+  ]
+}
