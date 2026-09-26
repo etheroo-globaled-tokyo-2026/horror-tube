@@ -75,28 +75,3 @@ export async function postVote(
   }
   return body.state;
 }
-
-export async function postBet(
-  side: 0 | 1,
-  amount: number,
-): Promise<ServerRoundState> {
-  const res = await fetch(apiUrl("/bet"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ side, amount }),
-  });
-  const body = (await res.json()) as {
-    ok?: boolean;
-    error?: string;
-    state?: ServerRoundState;
-  };
-  if (!res.ok || body.ok === false) {
-    throw new Error(
-      body.error ?? `POST /bet failed: HTTP ${String(res.status)}`,
-    );
-  }
-  if (body.state === undefined) {
-    throw new Error("POST /bet response missing state.");
-  }
-  return body.state;
-}

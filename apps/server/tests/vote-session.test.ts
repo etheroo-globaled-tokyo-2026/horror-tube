@@ -50,9 +50,6 @@ function testLoop(): GameLoop {
       poolIdFor() {
         throw new Error("vote tests must not derive a pool id.");
       },
-      async minBet() {
-        throw new Error("vote tests must not read minBet.");
-      },
       async openBattle() {
         throw new Error("vote tests must not open a battle.");
       },

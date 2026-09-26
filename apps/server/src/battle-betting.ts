@@ -11,8 +11,6 @@ import {
 import { randomUUID } from "node:crypto";
 
 export type BattleBettingPorts = {
-  /** Current house minimum bet in USDC base units (from SUI_MIN_BET). */
-  minBet: () => Promise<bigint>;
   /**
    * Operator: open a Sui pool for a fresh battle id.
    * Returns the battle id string used as the pool key (not a Sepolia uint256).
@@ -23,7 +21,7 @@ export type BattleBettingPorts = {
     closesAtUnix: bigint,
   ) => Promise<string>;
   /** Operator: cancel an open pool so stakes refund. */
-  cancelBattle: (battleId: string) => Promise<string>;
+  cancelBattle: (battleId: string) => Promise<void>;
   /** Operator: end betting early. */
   closeBetting: (battleId: string) => Promise<void>;
   /** Operator: settle with the winning side (0 or 1). */
@@ -36,16 +34,6 @@ export type BattleBettingPorts = {
   config: BettingConfig;
 };
 
-function readMinBet(env: NodeJS.ProcessEnv): bigint {
-  const fromEnv = requiredEnv("SUI_MIN_BET", env);
-  if (!/^[0-9]+$/u.test(fromEnv)) {
-    throw new Error(
-      `SUI_MIN_BET must be a whole number. Got ${JSON.stringify(fromEnv)}.`,
-    );
-  }
-  return BigInt(fromEnv);
-}
-
 /**
  * Sui betting operator for open / cancel / close / settle.
  * Players place bets through POST /tx (Shinami), not through this port.
@@ -57,7 +45,6 @@ export function createBattleBettingPorts(
   const config = readBettingConfig(env);
   const operatorKey = readKeypair("SUI_OPERATOR_PRIVATE_KEY", env);
   const operatorCap = requiredEnv("SUI_OPERATOR_CAP_ID", env);
-  const minBetValue = readMinBet(env);
   const client = createClient(config);
   const operator: Operator = createOperator(
     createChain(client, operatorKey),
@@ -68,9 +55,6 @@ export function createBattleBettingPorts(
   return {
     config,
     poolIdFor: (battleId) => operator.poolId(battleId),
-    async minBet() {
-      return minBetValue;
-    },
     async openBattle(_fighterA, _fighterB, closesAtUnix) {
       const battleId = randomUUID();
       const closesAtMs = closesAtUnix * 1000n;
@@ -79,7 +63,6 @@ export function createBattleBettingPorts(
     },
     async cancelBattle(battleId) {
       await operator.cancel(battleId);
-      return battleId;
     },
     async closeBetting(battleId) {
       await operator.closeBetting(battleId);

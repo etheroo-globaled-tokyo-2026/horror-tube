@@ -413,9 +413,9 @@ export class GameLoop {
     this.emit();
     if (battleId !== null) {
       try {
-        const digest = await this.battleBetting.cancelBattle(battleId);
+        await this.battleBetting.cancelBattle(battleId);
         console.log(
-          `Sui betting cancelBattle battleId=${battleId} digest=${digest} (video failed)`,
+          `Sui betting cancelBattle battleId=${battleId} (video failed)`,
         );
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause);
