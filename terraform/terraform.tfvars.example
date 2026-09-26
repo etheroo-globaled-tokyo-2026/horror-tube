@@ -4,7 +4,7 @@
 #
 # App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*) and BUILD_TIME Vite env
 # (ENS_LABEL, VITE_SEPOLIA_RPC_URL) are also NOT set here. Pass them as TF_VAR_*
-# for that one apply, sourced from the repo .env. DATABASE_URL for the app is
+# for that one apply, sourced from the repo .env (including DATABASE_CA_CERT). DATABASE_URL for the app is
 # wired from the Managed Postgres public uri in Terraform (no VPC). See README.md.
 
 region                         = "sgp1"

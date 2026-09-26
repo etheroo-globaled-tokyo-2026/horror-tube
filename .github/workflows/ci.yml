@@ -86,19 +86,66 @@ jobs:
           --build-arg "ENS_LABEL=${ENS_LABEL}"
           --build-arg "VITE_SEPOLIA_RPC_URL=${VITE_SEPOLIA_RPC_URL}"
           -t horror-tube:ci .
-      - name: Run container and check health + ffmpeg + index
+      - name: Run Postgres with TLS and check health + ffmpeg + index
         run: |
           set -euo pipefail
-          cid="$(docker run -d -e "GAME_PORT=${GAME_PORT}" -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
-          cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
+          cert_dir="$(mktemp -d)"
+          net="horror-tube-ci-$$"
+          docker network create "$net"
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "${cert_dir}/ca.key" -out "${cert_dir}/ca.crt" \
+            -days 1 -subj "/CN=horror-tube-ci-ca"
+          openssl req -newkey rsa:2048 -nodes \
+            -keyout "${cert_dir}/server.key" -out "${cert_dir}/server.csr" \
+            -subj "/CN=ht-pg" \
+            -addext "subjectAltName=DNS:ht-pg,DNS:localhost"
+          openssl x509 -req -in "${cert_dir}/server.csr" \
+            -CA "${cert_dir}/ca.crt" -CAkey "${cert_dir}/ca.key" -CAcreateserial \
+            -out "${cert_dir}/server.crt" -days 1 \
+            -copy_extensions copy
+          chmod 644 "${cert_dir}/server.key" "${cert_dir}/server.crt" "${cert_dir}/ca.crt"
+          pg_cid="$(docker run -d --name ht-pg --network "$net" \
+            -e POSTGRES_PASSWORD=ci \
+            -e POSTGRES_USER=ci \
+            -e POSTGRES_DB=ci \
+            -v "${cert_dir}:/certs:ro" \
+            postgres:16-alpine \
+            -c ssl=on \
+            -c ssl_cert_file=/certs/server.crt \
+            -c ssl_key_file=/certs/server.key)"
           for i in $(seq 1 30); do
-            if curl -fsS "http://127.0.0.1:${GAME_PORT}/health" | grep -q '"ok":true'; then
+            if docker exec "$pg_cid" pg_isready -U ci -d ci >/dev/null 2>&1; then
               break
             fi
             if [ "$i" -eq 30 ]; then
-              echo "health check failed after 30 attempts" >&2
+              echo "postgres not ready" >&2
+              docker logs "$pg_cid" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          DATABASE_URL="postgres://ci:ci@ht-pg:5432/ci"
+          DATABASE_CA_CERT="$(base64 -w0 < "${cert_dir}/ca.crt" 2>/dev/null || base64 < "${cert_dir}/ca.crt" | tr -d '\n')"
+          cid="$(docker run -d --network "$net" \
+            -e "GAME_PORT=${GAME_PORT}" \
+            -e "DATABASE_URL=${DATABASE_URL}" \
+            -e "DATABASE_CA_CERT=${DATABASE_CA_CERT}" \
+            -p "${GAME_PORT}:${GAME_PORT}" \
+            horror-tube:ci)"
+          cleanup() {
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+            docker rm -f "$pg_cid" >/dev/null 2>&1 || true
+            docker network rm "$net" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:${GAME_PORT}/health" | grep -q '"ok":true'; then
+              break
+            fi
+            if [ "$i" -eq 45 ]; then
+              echo "health check failed after 45 attempts" >&2
               docker logs "$cid" >&2
+              docker logs "$pg_cid" >&2
               exit 1
             fi
             sleep 1
