@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   $,
+  CAPS,
   DEMO,
   S,
   char,
@@ -16,7 +17,7 @@ import {
   replaying,
   type Character,
 } from "./game.ts";
-import { css, ctx2d, rgb } from "./sprites.ts";
+import { css, ctx2d, portrait, rgb } from "./sprites.ts";
 import { type CoinBox, type CoinBoxPart, createCoinBox } from "./coinbox.ts";
 import { getGameWallet } from "./wallet.ts";
 
@@ -38,30 +39,10 @@ const COL = {
   sulfur: V("sulfur"),
   bone: V("bone"),
 };
-const HINTS = [
-  "Hasn't slept in days.",
-  "Somebody still leaves the porch light on for them.",
-  "Asked us not to call again.",
-  "Keeps something under the pillow.",
-  "Laughs at the wrong moments.",
-  "Was a nice kid once.",
-  "Doesn't talk. Doesn't stop.",
-  "Writes letters nobody answers.",
-  "Knows your name.",
-  "Still owes us.",
-  "Hums when nervous.",
-  "Has been here the longest.",
-  "Came in last week.",
-  "Won't look at the camera.",
-  "Asked about you.",
-  "Sleeps with the light on.",
-];
 const STAKES = [1, 3, 5];
 const num = (n: number): string => String(n).padStart(2, "0");
-const hint = (ch: Character): string => HINTS[(ch.id * 7 + 3) % HINTS.length];
+const known = (ch: Character): string[] => ch.bio.slice(0, 1 + ch.fights);
 const T = {
-  page: 0,
-  pageAt: 0,
   buf: "",
   reveal: -1,
   revealUntil: 0,
@@ -71,6 +52,8 @@ const T = {
   say: "",
   sayUntil: 0,
   phase: "",
+  held: -1,
+  hover: -1,
 };
 
 const canvas = $("#view");
@@ -85,6 +68,13 @@ scene.add(camera);
 function size() {
   renderer.setSize(Math.round(innerWidth / 1.6), Math.round(innerHeight / 1.6), false);
   camera.aspect = innerWidth / innerHeight;
+  const wide = 16 / 9;
+  camera.fov =
+    camera.aspect >= wide
+      ? 50
+      : THREE.MathUtils.radToDeg(
+          2 * Math.atan((Math.tan(THREE.MathUtils.degToRad(25)) * wide) / camera.aspect),
+        );
   camera.updateProjectionMatrix();
 }
 addEventListener("resize", size);
@@ -217,6 +207,7 @@ paperCanvas.height = PH;
 const pg = ctx2d(paperCanvas);
 const paperTex = new THREE.CanvasTexture(paperCanvas);
 paperTex.colorSpace = THREE.SRGBColorSpace;
+paperTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 const paper = new THREE.Mesh(
   new THREE.PlaneGeometry(0.3, 0.4),
   lambert({ map: paperTex, transparent: true, alphaTest: 0.5 }),
@@ -251,10 +242,12 @@ function drawPaper(now: number): void {
   g.font = "700 38px Silkscreen";
   g.fillText("HORROR TUBE", 28, 62);
   g.fillStyle = COL.rustDeep;
-  g.font = "700 16px Silkscreen";
-  g.fillText("READ BEFORE YOU WATCH", 28, 90);
+  g.font = "700 20px Silkscreen";
+  g.fillText("READ BEFORE YOU WATCH", 28, 92);
   g.fillStyle = COL.soot;
-  g.font = "24px DotGothic16";
+  g.font = "27px DotGothic16";
+  g.strokeStyle = COL.soot;
+  g.lineWidth = 1.5;
   [
     "I am 18 or older.",
     "I am one person,",
@@ -262,14 +255,17 @@ function drawPaper(now: number): void {
     "I will watch people die,",
     "and I will bet on it.",
     "I watch at my own risk.",
-  ].forEach((l, i) => g.fillText(l, 28, 140 + i * 34));
+  ].forEach((l, i) => {
+    g.fillText(l, 28, 138 + i * 38);
+    g.strokeText(l, 28, 138 + i * 38);
+  });
   g.fillStyle = COL.soot;
   g.fillRect(28, 402, PW - 56, 3);
   g.font = "700 26px Silkscreen";
   g.fillText("X", 30, 394);
   g.fillStyle = COL.rustDeep;
-  g.font = "700 14px Silkscreen";
-  g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 428);
+  g.font = "700 15px Silkscreen";
+  g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 430);
   if (W8.ink > 0) {
     g.strokeStyle = COL.soot;
     g.lineWidth = 3;
@@ -355,7 +351,7 @@ const label = (
     g.fillText(text, w / 2, h / 2 + 2);
   });
 const remote = new THREE.Group();
-remote.position.set(0.3, -0.1, -0.62);
+remote.position.set(0.31, -0.17, -0.62);
 remote.rotation.set(-0.3, -0.22, -0.1);
 remote.scale.setScalar(0.82);
 camera.add(remote);
@@ -422,6 +418,246 @@ pad.forEach((row, ri) =>
     );
   }),
 );
+
+const VW = 320,
+  VH = 544;
+const tapeCanvas = document.createElement("canvas");
+tapeCanvas.width = VW;
+tapeCanvas.height = VH;
+const tapeTex = new THREE.CanvasTexture(tapeCanvas);
+tapeTex.colorSpace = THREE.SRGBColorSpace;
+tapeTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const plastic = lambert({ map: metalTex(COL.soot) });
+const tape = box(0.2, 0.34, 0.04, [
+  plastic,
+  plastic,
+  plastic,
+  plastic,
+  basic({ map: tapeTex }),
+  plastic,
+]);
+tape.rotation.set(-0.12, 0.26, 0.06);
+camera.add(tape);
+const TAPE = { key: "", id: -1, at: 0, up: 0 };
+function drawTape(ch: Character): void {
+  const g = ctx2d(tapeCanvas),
+    hue = V(ch.hue),
+    seen = ch.fights > 0;
+  g.textBaseline = "alphabetic";
+  g.fillStyle = COL.soot;
+  g.fillRect(0, 0, VW, VH);
+  g.strokeStyle = hue;
+  g.lineWidth = 8;
+  g.strokeRect(4, 4, VW - 8, VH - 8);
+  g.fillStyle = hue;
+  g.fillRect(0, 0, VW, 44);
+  g.fillStyle = COL.soot;
+  g.textAlign = "left";
+  g.font = "700 20px Silkscreen";
+  g.fillText("HORROR TUBE", 16, 30);
+  g.textAlign = "right";
+  g.fillText(num(ch.id + 1), VW - 16, 30);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(avatar(ch), VW / 2 - 70, 56, 140, 140);
+  g.textAlign = "center";
+  g.fillStyle = COL.bone;
+  g.font = "28px DotGothic16";
+  g.fillText(ch.name, VW / 2, 232);
+  g.fillStyle = COL.sulfur;
+  g.font = "700 16px Silkscreen";
+  g.fillText(
+    seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??",
+    VW / 2,
+    262,
+  );
+  CAPS[ch.kind].forEach((cap, i) => {
+    const y = 280 + i * 28,
+      gone = i >= 3 - ch.lost;
+    g.fillStyle = gone ? COL.grime : COL.bone;
+    g.fillRect(24, y, VW - 48, 22);
+    g.fillStyle = COL.soot;
+    g.fillText(cap.toUpperCase(), VW / 2, y + 17);
+    if (gone) g.fillRect(34, y + 10, VW - 68, 2);
+  });
+  g.textAlign = "left";
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("CASE FILE", 24, 390);
+  g.font = "20px DotGothic16";
+  ch.bio.forEach((line, i) => {
+    const y = 418 + i * 28;
+    if (i < 1 + ch.fights) {
+      g.fillStyle = COL.bone;
+      g.fillText(line, 24, y);
+    } else {
+      g.fillStyle = COL.grime;
+      g.fillRect(24, y - 16, 150 + ((i * 53) % 90), 18);
+    }
+  });
+  g.textAlign = "center";
+  g.fillStyle = COL.grime;
+  g.font = "700 12px Silkscreen";
+  g.fillText("BE KIND · REWIND", VW / 2, VH - 18);
+  if (!ch.alive) {
+    g.save();
+    g.translate(VW / 2, 150);
+    g.rotate(-0.2);
+    g.strokeStyle = g.fillStyle = COL.blood;
+    g.lineWidth = 4;
+    g.strokeRect(-110, -28, 220, 48);
+    g.font = "700 28px Silkscreen";
+    g.fillText("DECEASED", 0, 8);
+    g.restore();
+  }
+  tapeTex.needsUpdate = true;
+}
+function tapeResident(): Character | null {
+  if (S.phase === "gate") return null;
+  if (S.phase === "vote" && !S.cast) {
+    if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
+    if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
+  }
+  return S.chars[T.held] ?? null;
+}
+
+const SHELF = { x: 0.88, z: -1.14, w: 0.8, h: 1.66, d: 0.28, rows: [1.3, 0.97] };
+const wood = lambert({ map: metalTex(COL.rustDeep) });
+const shelf = new THREE.Group();
+shelf.position.set(SHELF.x, 0, SHELF.z);
+shelf.rotation.y = -0.38;
+scene.add(shelf);
+const plank = (w: number, h: number, d: number, x: number, y: number, z: number): void => {
+  const m = box(w, h, d, wood);
+  m.position.set(x, y, z);
+  shelf.add(m);
+};
+for (const side of [-1, 1])
+  plank(0.03, SHELF.h, SHELF.d, (side * (SHELF.w - 0.03)) / 2, SHELF.h / 2, 0);
+plank(SHELF.w, 0.02, SHELF.d, 0, SHELF.h, 0);
+plank(SHELF.w, SHELF.h, 0.01, 0, SHELF.h / 2, -SHELF.d / 2);
+for (const y of [0.05, 0.5, ...SHELF.rows]) plank(SHELF.w - 0.06, 0.02, SHELF.d, 0, y - 0.01, 0);
+const SPINE = { w: 0.11, h: 0.3, d: 0.2 };
+const FILLER = 0.05;
+const fillerTex = [COL.soot, COL.char, COL.grime].map((bg, i) =>
+  tex(12, 56, (g) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, 12, 56);
+    g.fillStyle = COL.bone;
+    g.fillRect(2, 8 + i * 6, 8, 20 - i * 4);
+    g.fillStyle = COL.grime;
+    g.fillRect(3, 12 + i * 6, 6, 1);
+  }),
+);
+type Slot = {
+  mesh: THREE.Mesh;
+  id: number;
+  home: THREE.Vector3;
+  out: number;
+  key: string;
+  canvas: HTMLCanvasElement;
+  tex: THREE.CanvasTexture;
+};
+const slots: Slot[] = [];
+SHELF.rows.forEach((y, row) => {
+  let x = -(SHELF.w - 0.06) / 2 + 0.006;
+  const place = (w: number, map: THREE.Texture): THREE.Mesh => {
+    const m = box(w, SPINE.h, SPINE.d, [
+      plastic,
+      plastic,
+      plastic,
+      plastic,
+      basic({ map }),
+      plastic,
+    ]);
+    m.position.set(x + w / 2, y + SPINE.h / 2, SPINE.d / 2 - SHELF.d / 2 + 0.02);
+    shelf.add(m);
+    x += w + 0.002;
+    return m;
+  };
+  for (let i = 0; i < 5; i++) {
+    if (i === 2) place(FILLER, fillerTex[(row + 1) % 3]);
+    const canvas = document.createElement("canvas");
+    canvas.width = 48;
+    canvas.height = 132;
+    const t = new THREE.CanvasTexture(canvas);
+    t.magFilter = t.minFilter = THREE.NearestFilter;
+    t.colorSpace = THREE.SRGBColorSpace;
+    const mesh = place(SPINE.w, t);
+    slots.push({
+      mesh,
+      id: row * 5 + i,
+      home: mesh.position.clone(),
+      out: 0,
+      key: "",
+      canvas,
+      tex: t,
+    });
+  }
+  place(FILLER, fillerTex[row % 3]);
+  place(FILLER, fillerTex[(row + 2) % 3]);
+});
+function drawSpine(slot: Slot, ch: Character): void {
+  const g = ctx2d(slot.canvas);
+  g.fillStyle = V(ch.hue);
+  g.fillRect(0, 0, 48, 132);
+  g.fillStyle = COL.soot;
+  g.fillRect(3, 3, 42, 64);
+  g.fillStyle = COL.bone;
+  g.font = "700 16px Silkscreen";
+  g.textAlign = "center";
+  g.textBaseline = "alphabetic";
+  g.fillText(num(ch.id + 1), 24, 18);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(avatar(ch), 4, 22, 40, 40);
+  g.fillStyle = COL.bone;
+  g.fillRect(6, 71, 36, 58);
+  g.save();
+  g.translate(24, 100);
+  g.rotate(-Math.PI / 2);
+  g.fillStyle = COL.soot;
+  let size = 16;
+  do g.font = `700 ${size--}px Silkscreen`;
+  while (g.measureText(ch.short).width > 54 && size > 8);
+  g.textBaseline = "middle";
+  g.fillText(ch.short, 0, 1);
+  g.restore();
+  slot.tex.needsUpdate = true;
+}
+function updateShelf(shown: Character | null): void {
+  shelf.visible = S.phase !== "gate";
+  for (const slot of slots) {
+    const ch = S.chars[slot.id];
+    slot.mesh.visible = shelf.visible && !!ch && ch.alive && shown !== ch;
+    if (!ch) continue;
+    const key = ch.id + ch.hue;
+    if (slot.key !== key) drawSpine(slot, ch);
+    slot.key = key;
+    const out = T.hover === slot.id ? 1 : 0;
+    slot.out = LOW ? out : slot.out + (out - slot.out) * 0.25;
+    slot.mesh.position.set(
+      slot.home.x,
+      slot.home.y + slot.out * 0.01,
+      slot.home.z + slot.out * 0.08,
+    );
+  }
+}
+function updateTape(now: number): void {
+  const ch = tapeResident();
+  updateShelf(ch);
+  if (ch) {
+    const key = [ch.id, ch.alive, ch.fights, ch.kills, ch.damage, ch.lost].join();
+    if (ch.id !== TAPE.id) TAPE.at = now;
+    if (key !== TAPE.key) drawTape(ch);
+    TAPE.key = key;
+    TAPE.id = ch.id;
+  }
+  const up = ch ? 1 : 0;
+  TAPE.up = LOW ? up : TAPE.up + (up - TAPE.up) * 0.12;
+  const flip = LOW ? 1 : Math.min(1, (now - TAPE.at) / 380);
+  tape.visible = TAPE.up > 0.01;
+  tape.position.set(-0.34, -0.48 + TAPE.up * 0.48, -0.62);
+  tape.rotation.y = 0.26 + Math.PI * (1 - flip) * (1 - flip);
+}
 
 const video = document.createElement("video");
 video.src = DEMO.video;
@@ -500,13 +736,22 @@ function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
     g.drawImage(small, 0, y + 10, w, h - y - 10, dx, dy + (y + 10) * sy, dw, (h - y - 10) * sy);
   } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
 }
-const guidePage = (now: number): number => (T.page + Math.floor((now - T.pageAt) / 5000)) % 2;
+const avatars = new Map<string, HTMLCanvasElement>();
+const avatar = (ch: Character): HTMLCanvasElement => {
+  const key = ch.id + (ch.alive ? "" : "x");
+  let cv = avatars.get(key);
+  if (!cv) {
+    cv = document.createElement("canvas");
+    portrait(cv, ch.kind, V(ch.hue), { dead: !ch.alive });
+    avatars.set(key, cv);
+  }
+  return cv;
+};
 function drawGuide(now: number): void {
   const g = tvCtx,
     W = TW,
     H = TH,
-    top = 236,
-    page = guidePage(now);
+    top = 236;
   g.fillStyle = COL.soot;
   g.fillRect(0, 0, W, H);
   const filmCanvas = film();
@@ -543,34 +788,33 @@ function drawGuide(now: number): void {
   g.font = "700 18px Silkscreen";
   g.fillText(S.cast ? "GOOD NIGHT." : "TONIGHT'S RESIDENTS", 16, top + 23);
   g.textAlign = "right";
-  g.fillText(S.cast ? "YOUR PICKS ARE IN" : `TYPE A NUMBER · ${page + 1}/2`, W - 16, top + 23);
-  for (let i = 0; i < 16; i++) {
-    const ch = S.chars[page * 16 + i];
-    if (!ch) continue;
-    const x = i < 8 ? 12 : W / 2 + 6,
-      y = top + 32 + (i % 8) * 26,
+  g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
+  S.chars.forEach((ch, i) => {
+    const x = i < 5 ? 12 : W / 2 + 6,
+      y = top + 34 + (i % 5) * 42,
       mine = S.picks.includes(ch.id);
     if (mine) {
       g.fillStyle = COL.bone;
-      g.fillRect(x - 6, y + 2, W / 2 - 12, 24);
+      g.fillRect(x - 6, y, W / 2 - 12, 40);
     }
+    g.imageSmoothingEnabled = false;
+    g.drawImage(avatar(ch), x, y + 2, 36, 36);
     g.textAlign = "left";
     g.font = "700 20px Silkscreen";
     g.fillStyle = !ch.alive ? COL.grime : mine ? COL.soot : COL.sulfur;
-    g.fillText(num(ch.id + 1), x, y + 22);
+    g.fillText(num(ch.id + 1), x + 44, y + 28);
     g.font = "22px DotGothic16";
     g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    g.fillText(ch.name, x + 44, y + 22);
+    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28);
     if (!ch.alive) {
       g.fillStyle = COL.rust;
-      g.fillRect(x + 42, y + 14, g.measureText(ch.name).width + 4, 2);
+      g.fillRect(x + 86, y + 20, g.measureText(ch.name).width + 4, 2);
     }
     if (mine) {
-      g.textAlign = "right";
-      g.font = "700 16px Silkscreen";
-      g.fillText("✓ PICKED", x + W / 2 - 22, y + 21);
+      g.font = "700 12px Silkscreen";
+      g.fillText("✓ PICKED", x + 88, y + 37);
     }
-  }
+  });
 }
 
 const wrap = (g: G, text: string, x: number, y0: number, maxW: number, lh: number): number => {
@@ -710,7 +954,7 @@ function drawTV(): void {
       else {
         g.font = "30px DotGothic16";
         g.fillStyle = COL.bone;
-        wrap(g, `“${hint(ch)}”`, W / 2, 262, W - 100, 38);
+        wrap(g, `“${known(ch).at(-1)}”`, W / 2, 262, W - 100, 38);
         text("PRESS OK TO REQUEST", 420, 26, COL.sulfur);
       }
     }
@@ -830,15 +1074,17 @@ function drawTV(): void {
 function hintText(): void {
   const h = $("#hint");
   const b = (s: string): string => `<b>${s}</b>`;
-  h.innerHTML =
-    S.phase === "gate"
+  const hovered = S.chars[T.hover];
+  h.innerHTML = hovered
+    ? `${b(num(hovered.id + 1))} ${hovered.name}. Click to pull the tape.`
+    : S.phase === "gate"
       ? W8.step === "read"
         ? `Read the waiver. Press ${b("ENTER")} or click the line to sign with World ID.`
         : W8.step === "scan"
           ? `Scan the code on the TV with ${b("World App")}. Orb only.`
           : ""
       : S.phase === "vote" && !S.cast
-        ? `Type a resident number ${b("0–9")}, then ${b("OK")}. You pick two. ${b("VOL ±")} flips the guide.`
+        ? `Pull a tape off the shelf to read it. Type its number, then ${b("OK")}. You pick two.`
         : S.phase === "bet" && !S.bet && S.credit > 0
           ? `${b("VOL ±")} changes your stake. ${b("Hold A or B")} to bet.`
           : S.claim
@@ -864,16 +1110,13 @@ function press(id: string): void {
       T.reveal = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
     }
-  } else if (id === "clr") T.buf = "";
-  else if (id === "ok") ok();
+  } else if (id === "clr") {
+    T.buf = "";
+    T.held = -1;
+  } else if (id === "ok") ok();
   else if (id === "+" || id === "-") {
     if (S.phase === "bet" && !S.bet)
       T.stake = Math.max(0, Math.min(2, T.stake + (id === "+" ? 1 : -1)));
-    else if (S.phase === "vote") {
-      T.page = (guidePage(performance.now()) + 1) % 2;
-      T.pageAt = performance.now();
-      T.buf = "";
-    }
   }
   hintText();
 }
@@ -934,6 +1177,15 @@ const hitAt = (e: MouseEvent): string | null => {
   const id: string | undefined = h?.object.userData.keyId;
   return id ?? null;
 };
+const onShelf = (e: MouseEvent): THREE.Object3D | null => {
+  if (S.phase === "gate") return null;
+  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
+  if (tape.visible) targets.push(tape);
+  return ray.intersectObjects(targets, false)[0]?.object ?? null;
+};
+const slotOf = (o: THREE.Object3D | null): Slot | undefined => slots.find((s) => s.mesh === o);
 const onPaper = (e: MouseEvent): boolean => {
   if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
@@ -1026,14 +1278,33 @@ $("#forget").addEventListener("click", () => {
   location.reload();
 });
 const look = new THREE.Vector2();
+let pointer: MouseEvent | null = null;
+function updateHover(): void {
+  const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
+  if (hover === T.hover) return;
+  T.hover = hover;
+  hintText();
+}
 addEventListener("pointermove", (e) => {
+  pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null);
+  canvas.classList.toggle(
+    "hot",
+    !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null || !!onShelf(e),
+  );
 });
 canvas.addEventListener("pointerdown", (e) => {
   if (onPaper(e)) return sign();
   const part = coinPartAt(e);
   if (part !== null) return coinBox?.use(part);
+  const hit = onShelf(e);
+  if (hit) {
+    T.buf = "";
+    T.reveal = -1;
+    T.held = slotOf(hit)?.id ?? -1;
+    T.hover = -1;
+    return hintText();
+  }
   const id = hitAt(e);
   if (!id) return;
   if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
@@ -1085,18 +1356,23 @@ addEventListener("keyup", (e) => {
 
 const clock = new THREE.Clock();
 let lastPaint = 0;
+let gaze = 0;
 renderer.setAnimationLoop(() => {
   const t = clock.getElapsedTime();
   const waiver = S.phase === "gate" && W8.step !== "done";
   const dark = waiver && W8.step === "dark";
   if (waiver) {
     camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
-    camera.lookAt(look.x * 0.06, 0.78 - look.y * 0.04, -0.98);
+    const up = W8.step === "scan" ? 1 : 0;
+    gaze = LOW ? up : gaze + (up - gaze) * 0.06;
+    camera.lookAt(look.x * 0.06, 0.78 + gaze * 0.36 - look.y * 0.04, -0.98 - gaze * 0.42);
   } else {
     camera.position.set(0.1 + Math.sin(t * 0.6) * 0.008, 1.2 + Math.sin(t * 1.0) * 0.006, 0.28);
     camera.lookAt(0.16 + look.x * 0.12, 1.02 - look.y * 0.06, -1.4);
   }
   remote.visible = !waiver;
+  updateTape(performance.now());
+  updateHover();
   if (coinBox !== null) coinBox.group.visible = !waiver;
   $("#demo-room").hidden = S.phase === "gate";
   $("#demo-gate").hidden = S.phase !== "gate" || dark;
@@ -1143,6 +1419,7 @@ hooks.render = () => {
 };
 void document.fonts.ready.then(() => {
   paperDrawn = false;
+  TAPE.key = "";
   drawTV();
 });
 if (store((s) => s.getItem("ht.verified")) === "1") enterRoom();
