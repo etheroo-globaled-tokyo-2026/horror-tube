@@ -799,6 +799,37 @@ export function drawTV(): void {
         });
       }
     }
+  } else if (S.phase === "vote" || S.phase === "countdown") {
+    fill(COL.soot);
+    text("WHO WALKS OUT?", 56, 28, COL.sulfur);
+    if (S.fighters === null) {
+      text("THE PAIR IS MISSING", 220, 28, COL.blood);
+    } else {
+      const pair = S.fighters.map(char);
+      pair.forEach((ch, i) => {
+        const x = i ? W * 0.74 : W * 0.26;
+        const mine = S.votedFor === ch.id;
+        g.fillStyle = mine ? COL.sulfur : COL.char;
+        g.fillRect(x - 130, 110, 260, 180);
+        g.fillStyle = mine ? COL.soot : COL.bone;
+        g.font = "700 40px Silkscreen";
+        g.textAlign = "center";
+        g.fillText(i ? "B" : "A", x, 168);
+        g.font = "700 26px Silkscreen";
+        g.fillText(ch.short, x, 214);
+        g.font = "24px DotGothic16";
+        g.fillText(String(S.votes[i] ?? 0), x, 258);
+      });
+      text(
+        S.phase === "countdown"
+          ? `${String(S.voters)} / ${String(S.quorum)} · CLOSES IN ${mmss(S.t)}`
+          : `${String(S.voters)} / ${String(S.quorum)}`,
+        340,
+        22,
+        COL.rust,
+      );
+      text(S.votedFor === null ? "PRESS A OR B" : "YOUR PICK IS IN", 390, 26, COL.sulfur);
+    }
   } else {
     const filmCanvas = film();
     if (vidMode && video.readyState >= 2) videoFrame();

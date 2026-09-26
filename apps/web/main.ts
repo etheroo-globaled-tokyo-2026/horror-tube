@@ -9,6 +9,7 @@ import {
   setWallet,
   startBout,
   usd,
+  voteSide,
   type Phase,
 } from "./game.ts";
 import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
@@ -197,6 +198,13 @@ const pressKey = (id: string, z: number): void => {
   const k = keyById.get(id);
   if (k) k.position.z = z;
 };
+function sideKey(side: 0 | 1): void {
+  if (S.phase === "vote" || S.phase === "countdown") {
+    voteSide(side);
+    return;
+  }
+  holdStart(side);
+}
 function holdStart(side: number): void {
   if (S.phase !== "bet" || S.bet || S.pending !== null || holdTimer) return;
   if (S.poolId === null) {
@@ -463,7 +471,7 @@ canvas.addEventListener("pointerdown", (e) => {
     T.hover = -1;
     return hintText();
   }
-  if (pick.id === "A" || pick.id === "B") holdStart(pick.id === "B" ? 1 : 0);
+  if (pick.id === "A" || pick.id === "B") sideKey(pick.id === "B" ? 1 : 0);
   else press(pick.id);
 });
 addEventListener("pointerup", holdEnd);
@@ -524,7 +532,7 @@ addEventListener(
     else if (k === "-" || k === "arrowdown") id = "-";
     else if ((k === "a" || k === "b") && !e.repeat) {
       e.stopPropagation();
-      return holdStart(k === "b" ? 1 : 0);
+      return sideKey(k === "b" ? 1 : 0);
     }
     if (!id) return;
     e.stopPropagation();
