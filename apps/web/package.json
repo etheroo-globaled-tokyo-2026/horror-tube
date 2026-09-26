@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@horror-tube/ens": "workspace:*",
     "@mysten/dapp-kit-core": "^1.6.32",
     "@mysten/sui": "^2.33.0",
     "qrcode": "^1.5.4",

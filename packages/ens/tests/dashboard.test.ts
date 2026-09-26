@@ -4,20 +4,22 @@ import { encodeFunctionData, type Hex } from "viem";
 
 import { userRegistryAbi } from "../scripts/abis.js";
 import {
-  MAX_LOG_CHUNK_BLOCKS,
-  MAX_RECENT_LOG_CHUNKS,
-  MIN_LOG_BLOCK,
   DASHBOARD_PORT,
-  characterSheetFromTexts,
-  decodeRegisterLabel,
   ensAppUrl,
   parseDashboardPort,
   parseListenerPids,
-  recentLogScanChunks,
   renderDashboardHtml,
   sepoliaAddressUrl,
-  type CharacterSheet,
 } from "../scripts/dashboard.js";
+import {
+  MAX_LOG_CHUNK_BLOCKS,
+  MAX_RECENT_LOG_CHUNKS,
+  MIN_LOG_BLOCK,
+  characterSheetFromTexts,
+  decodeRegisterLabel,
+  recentLogScanChunks,
+  type CharacterSheet,
+} from "../scripts/roster.js";
 
 describe("dashboard register calldata (unit, no network)", () => {
   it("decoding a register calldata returns the label", () => {

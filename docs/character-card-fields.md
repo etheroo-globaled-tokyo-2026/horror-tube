@@ -68,7 +68,14 @@ injuries:
 - <second injury>
 ```
 
-Omit `status` when the name is already known living. Never send dropped RPG keys. `icon` is for the dashboard (and optional reference if a path accepts a URL); it is not a substitute for `look`.
+Omit `status` when the name is already known living. Never send dropped RPG keys. `icon` is the face in the dashboard and the web game. It is not a substitute for `look`.
+
+## What the web game shows
+
+- The name on the tape is `display_name`.
+- Case file: `brief`, then current `injuries` (`None.` when the list is empty). Not `look`: that is for the video model.
+- `injury_places` is on the sheet for the fight writer. The tape does not draw that list.
+- `status` = `dead`: black-and-white face, crossed-off name. The character cannot get votes. `""` counts as alive. Any other value stops the game with an error.
 
 ## Permission split
 
