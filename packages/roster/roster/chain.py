@@ -10,9 +10,9 @@ from typing import Any, Mapping, Sequence
 
 from roster.validate import Character, RosterValidationError
 
-ROOT = Path(__file__).resolve().parents[1]
-TSX = ROOT / "node_modules" / ".bin" / "tsx"
-CHAIN_SCRIPT = ROOT / "scripts" / "character-subnames.ts"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+TSX = REPO_ROOT / "packages" / "ens" / "node_modules" / ".bin" / "tsx"
+CHAIN_SCRIPT = REPO_ROOT / "packages" / "ens" / "scripts" / "character-subnames.ts"
 
 
 def _require_tsx() -> Path:
@@ -31,7 +31,7 @@ def run_chain(args: Sequence[str]) -> None:
     cmd = [str(tsx), str(CHAIN_SCRIPT), *args]
     print(f"chain: {' '.join(cmd)}", flush=True)
     try:
-        completed = subprocess.run(cmd, cwd=str(ROOT), check=False)
+        completed = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
     except OSError as exc:
         raise RosterValidationError(
             f"Failed to run chain script {CHAIN_SCRIPT}: {exc}"

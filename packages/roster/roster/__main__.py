@@ -14,7 +14,12 @@ from dotenv import load_dotenv
 
 from roster.chain import apply_register_plan, snapshot_existing, unregister_labels
 from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
-from roster.icons import IconGenerationError, required_env, write_face_icons
+from roster.icons import (
+    IconGenerationError,
+    required_env,
+    spaces_store_from_env,
+    write_face_icons,
+)
 from roster.plan import (
     ON_EXISTING_VALUES,
     build_import_plan,
@@ -81,19 +86,29 @@ def cmd_icons(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     input_path = Path(_require_flag(args.input, name="--input"))
     out_dir = Path(_require_flag(args.out_dir, name="--out-dir"))
+    out_path = Path(_require_flag(args.out, name="--out"))
     _refuse_fixture_input(input_path, command="icons")
     characters = load_characters(input_path)
     require_no_duplicate_labels(characters, source=str(input_path))
-    written = write_face_icons(
+    cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    spaces = spaces_store_from_env(os.environ)
+    written, updated = write_face_icons(
         characters,
         out_dir,
         api_key=required_env("TOGETHER_API_KEY", os.environ),
         model=required_env("TOGETHER_IMAGE_MODEL", os.environ),
         api_url=required_env("TOGETHER_API_URL", os.environ),
+        spaces=spaces,
+        cdn_host=cdn_host,
+        override=bool(args.override),
     )
+    _write_json(out_path, sheets_payload(updated))
     print(f"Wrote {len(written)} face icon(s) to {out_dir}")
     for path in written:
         print(path)
+    print(f"Wrote character JSON with icon URLs: {out_path}")
+    for character in updated:
+        print(f"  {character['label']}: {character['icon']}")
     return 0
 
 
@@ -280,9 +295,10 @@ def build_parser() -> argparse.ArgumentParser:
     icons_p = sub.add_parser(
         "icons",
         help=(
-            "Generate 100x100 face icons from each character look via the Together "
-            "model in TOGETHER_IMAGE_MODEL. Writes <label>.png. Does not upload "
-            "to the CDN or set the icon URL. Refuses fixture JSON."
+            "Generate 100x100 face icons from each character look via Together, "
+            "upload to Spaces with ACL public-read, and write character JSON with "
+            "the CDN icon URL. Skips when <label>.png already exists on Spaces "
+            "unless --override. Refuses fixture JSON."
         ),
     )
     icons_p.add_argument(
@@ -293,7 +309,24 @@ def build_parser() -> argparse.ArgumentParser:
     icons_p.add_argument(
         "--out-dir",
         required=True,
-        help="Directory to write <label>.png files. Created if missing.",
+        help=(
+            "Directory to write local <label>.png files when an image is generated. "
+            "Created if missing. Skipped characters are not rewritten here."
+        ),
+    )
+    icons_p.add_argument(
+        "--out",
+        required=True,
+        help="Path to write updated character JSON with icon CDN URLs filled.",
+    )
+    icons_p.add_argument(
+        "--override",
+        action="store_true",
+        help=(
+            "When <label>.png already exists on Spaces, generate a new image and "
+            "upload under <label>-<unix-seconds>.png instead of skipping. "
+            "Does not overwrite the canonical object in place."
+        ),
     )
     icons_p.set_defaults(func=cmd_icons)
 
