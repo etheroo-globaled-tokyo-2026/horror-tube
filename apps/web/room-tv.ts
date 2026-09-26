@@ -3,8 +3,8 @@ import QRCode from "qrcode";
 import {
   S,
   applyRoundState,
-  replaying,
   char,
+  replaying,
   usd,
   film,
   living,
@@ -14,7 +14,6 @@ import {
   type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
-import { playReplayVideo } from "./replay-video.ts";
 import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { BARS, COL, RAMP } from "./room-palette.ts";
@@ -34,7 +33,7 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
-import { fitFont, lines, LOW, T, W8, wrap } from "./room-state.ts";
+import { boutNumber, fitFont, lines, LOW, reelById, T, VCR, W8, wrap } from "./room-state.ts";
 import { roomNumber, typedRoomId } from "./typed-fighter.ts";
 import { collapse, drawPower, powerStage } from "./room-power.ts";
 
@@ -423,11 +422,8 @@ export const small = document.createElement("canvas");
 small.width = 160;
 small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
-export let vidMode: "" | "live" | "rec" = "";
+export let vidMode: "" | "live" | "rec" | "last" = "";
 let reportedBattleId: string | null = null;
-let replayVideoUrl: string | null = null;
-let replayFetchInFlight = false;
-let replayFetchFailed = false;
 // WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
@@ -444,22 +440,28 @@ video.addEventListener("playing", () => {
       );
     });
 });
+video.addEventListener("ended", () => {
+  if (vidMode === "rec") VCR.loaded = "";
+});
+video.addEventListener("error", () => {
+  const detail = video.error?.message || `media error ${String(video.error?.code)}`;
+  console.error(`Video ${String(lastVideoUrl)} failed: ${detail}`);
+  note(
+    `${vidMode === "live" ? "THE BROADCAST" : "THE TAPE"} WOULD NOT PLAY. ${String(lastVideoUrl)}: ${detail}`,
+    "bad",
+  );
+  if (vidMode === "rec") VCR.loaded = "";
+});
 
-function clearReplayFetchState(): void {
-  replayVideoUrl = null;
-  replayFetchInFlight = false;
-  replayFetchFailed = false;
-}
-
-function applyVideoSrc(url: string, mode: "live" | "rec"): void {
+function applyVideoSrc(url: string, mode: "live" | "rec" | "last"): void {
+  if (url === lastVideoUrl && mode === vidMode) return;
   if (url !== lastVideoUrl) {
     video.src = url;
     lastVideoUrl = url;
   }
-  if (mode === vidMode) return;
   vidMode = mode;
   video.currentTime = 0;
-  video.loop = mode === "rec";
+  video.loop = mode === "last";
   video.muted = false;
   video.play().catch(() => {
     video.muted = true;
@@ -475,29 +477,9 @@ function pauseVideo(): void {
   lastVideoUrl = null;
 }
 
-function requestReplayVideo(): void {
-  if (replayFetchInFlight || replayFetchFailed || replayVideoUrl !== null) return;
-  replayFetchInFlight = true;
-  void playReplayVideo({
-    get currentSrc() {
-      return lastVideoUrl;
-    },
-    setSrc(url) {
-      if (!replaying()) return;
-      replayVideoUrl = url;
-      applyVideoSrc(url, "rec");
-    },
-    note,
-  }).finally(() => {
-    replayFetchInFlight = false;
-    if (replayVideoUrl === null) replayFetchFailed = true;
-  });
-}
-
 export function syncVideo(): void {
-  const live = S.phase === "fight" || S.phase === "bet";
-  if (live) {
-    clearReplayFetchState();
+  if (S.phase === "fight" || S.phase === "bet") {
+    VCR.loaded = "";
     const url = S.videoUrl;
     if (!url) {
       pauseVideo();
@@ -506,15 +488,17 @@ export function syncVideo(): void {
     applyVideoSrc(url, "live");
     return;
   }
-  if (replaying()) {
-    if (replayVideoUrl !== null) {
-      applyVideoSrc(replayVideoUrl, "rec");
-      return;
-    }
-    requestReplayVideo();
+  const tape = reelById(VCR.loaded);
+  if (tape !== undefined) {
+    applyVideoSrc(tape.videoUrl, "rec");
     return;
   }
-  clearReplayFetchState();
+  VCR.loaded = "";
+  const last = VCR.tapes.at(-1);
+  if (replaying() && last !== undefined) {
+    applyVideoSrc(last.videoUrl, "last");
+    return;
+  }
   pauseVideo();
 }
 export function crop(
@@ -661,7 +645,7 @@ function drawResidentCard(ch: Character): void {
   g.restore();
 }
 function drawReplayPane(now: number): boolean {
-  if (vidMode !== "rec" || video.readyState < 2) return false;
+  if (vidMode !== "last" || video.readyState < 2) return false;
   videoFrame(0, 0, TW, PANE);
   const g = tvCtx;
   g.fillStyle = COL.soot;
@@ -971,6 +955,24 @@ export function drawTV(): void {
       text(T.buf, 170, 110);
       text("NO SUCH RESIDENT", 280, 28, COL.rust);
     }
+  } else if (vidMode === "rec") {
+    fill(COL.soot);
+    noise = 0.1;
+    if (video.readyState >= 2) videoFrame();
+    const tape = reelById(VCR.loaded);
+    g.fillStyle = COL.bone;
+    g.beginPath();
+    g.moveTo(32, 22);
+    g.lineTo(50, 33);
+    g.lineTo(32, 44);
+    g.fill();
+    g.textAlign = "left";
+    g.font = "700 26px Silkscreen";
+    g.fillText("PLAY", 60, 44);
+    if (tape) g.fillText(`BOUT ${boutNumber(tape)}`, 32, H - 32);
+    g.textAlign = "right";
+    g.fillText(mmss(Math.floor(video.currentTime)), W - 32, H - 32);
+    g.textAlign = "center";
   } else if (S.phase === "waiting" || S.phase === "pick") {
     noise = S.startError === null ? 0.08 : 0.2;
     drawRoomChoice(now);
