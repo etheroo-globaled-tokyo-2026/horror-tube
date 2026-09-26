@@ -34,4 +34,6 @@ if (label === undefined || label.trim() === "") {
 
 Later commands read `.env`. They do not call 1Password again for variables already written there.
 
+`DO_KEY` in the repo-root `.env` is the DigitalOcean API token. Pass it as `TF_VAR_do_token` for Terraform and as the bearer token for DigitalOcean API calls. Do not call `op read` for this token. If `DO_KEY` is missing or blank, stop and name `DO_KEY`. See `.env.example`.
+
 Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `packages/ens/scripts/pin/` and `packages/ens/scripts/abis.ts` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
