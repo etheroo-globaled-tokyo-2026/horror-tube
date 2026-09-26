@@ -5,6 +5,7 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 
 | Command        | Chain?  | Role                                                                 |
 | -------------- | ------- | -------------------------------------------------------------------- |
+| `sections`     | no      | Print Fandom `api.php` section headings as JSON                      |
 | `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
 | `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
 | `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
@@ -23,6 +24,7 @@ via `python-dotenv` when present. `propose` does not require ENS env vars.
 `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
+Spaces uploads use those two Spaces keys only and ignore `AWS_PROFILE`.
 `icons-chain` requires both the ENS write vars and the Together/Spaces vars.
 
 ## Schemas
@@ -82,6 +84,27 @@ python3 -m roster propose \
   --source 'https://villains.fandom.com/wiki/Pinhead_(Hellraiser)' \
   --out /tmp/pinhead.json
 ```
+
+When one article has the body and another has the fight kit, pass both pages
+with `--n 1`. The look page must have a look heading and the brief page a brief
+heading (the same headings `propose --source` accepts). Both titles must produce
+the same label. A disambiguation URL fails. `cast.json` entries with
+`look_source` / `brief_source` use the same path.
+
+```bash
+python3 -m roster sections \
+  --source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)'
+
+python3 -m roster propose \
+  --n 1 \
+  --look-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)' \
+  --brief-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)' \
+  --out /tmp/frankenstein.json
+```
+
+`sections` prints headings only. Use it instead of an inline script. The roster
+interpreter is Python 3.9, and a backslash inside an f-string expression is a
+SyntaxError there.
 
 ### import (plan only)
 
