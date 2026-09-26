@@ -253,16 +253,19 @@ async function handleRequest(
         try {
           body = JSON.parse(raw) as { picks?: unknown };
         } catch {
-          sendBadRequest(res, "vote body must be JSON.");
+          sendJson(res, 400, { ok: false, error: "vote body must be JSON." });
           return;
         }
         if (!Array.isArray(body.picks)) {
-          sendBadRequest(res, "vote.picks must be an array of character ids.");
+          sendJson(res, 400, {
+            ok: false,
+            error: "vote.picks must be an array of character ids.",
+          });
           return;
         }
         const picks = body.picks.map((p) => Number(p));
         if (picks.some((p) => !Number.isInteger(p))) {
-          sendBadRequest(res, "vote.picks must be integers.");
+          sendJson(res, 400, { ok: false, error: "vote.picks must be integers." });
           return;
         }
         try {
@@ -299,6 +302,24 @@ async function handleRequest(
         }
         try {
           opts.game.bet(side, amount);
+          const payload = JSON.stringify({
+            ok: true,
+            state: opts.game.getState(),
+          });
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": Buffer.byteLength(payload),
+          });
+          res.end(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+      if (method === "POST" && path === "/retry-settle") {
+        try {
+          await opts.game.retrySettle();
           const payload = JSON.stringify({
             ok: true,
             state: opts.game.getState(),

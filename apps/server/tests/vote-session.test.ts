@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 import type { AddressInfo } from "node:net";
 
+import { MemoryBattleQueueStore } from "@horror-tube/fight/battle-queue";
+
 import { GameLoop } from "../src/game/loop.js";
 import { issueSession } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
@@ -24,6 +26,19 @@ function testLoop(): GameLoop {
     randomInt: (max) => {
       throw new Error(`randomInt unused in vote tests. max=${String(max)}`);
     },
+    battleQueueStore: new MemoryBattleQueueStore(),
+    chainWritePorts: {
+      async writeWinnerInjuries() {
+        throw new Error("vote tests must not write injuries.");
+      },
+      async writeLoserStatusDead() {
+        throw new Error("vote tests must not write status.");
+      },
+      async settleBattle() {
+        throw new Error("vote tests must not settle a battle.");
+      },
+    },
+    skipSettlement: true,
   });
 }
 

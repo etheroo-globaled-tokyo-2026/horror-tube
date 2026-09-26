@@ -63,8 +63,18 @@ fills the challenger slot from rotation after settle.
 
 ### Settle
 
-- After the fight video ends, `GameLoop` settle updates in-memory `chars` (loser dead, winner damage) and opens the next bout. That is what the room shows today.
-- Planned (not sent yet; issue 111): after betting-closed **and** playback-finished, apply ENS writes (winner `injuries` first, then loser `status=dead`), then `BattleBetting` settlement, then start the next bout from the stored rotation opponent. If either gate is missing, stop and name it. Do not use a timer fallback for those gates.
+- After betting is closed **and** the fight video duration has elapsed, apply the
+  queued ENS writes (winner `injuries` first, then loser `status=dead`). Betting
+  closes when the bet phase ends (video ready and `BET_MIN_SECONDS` passed).
+  Playback finished means that fight duration elapsed; the server has no separate
+  playback callback. The room also shows the in-memory `chars` update (loser dead,
+  winner damage). With `SKIP_BATTLE_SETTLEMENT=1`, skip the BattleBetting
+  `settleBattle` call and leave that step pending; with `0`, call `settleBattle`
+  after the ENS writes. Then start the next bout from the stored rotation opponent
+  (or `fightInputFromRotation`). If either signal is missing, stop and name it.
+  Do not invent those signals from the settle countdown. A failed ENS write stays
+  on the round error and does not start the next bout. `POST /retry-settle`
+  runs the pending ENS steps again.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
@@ -86,6 +96,7 @@ Read from `.env`. Add each variable to `.env.example` with an empty value.
 | `BET_MIN_SECONDS`        | 10  | 10   |
 | `VIDEO_TIMEOUT_SECONDS`  | 300 | 300  |
 | `SETTLE_SECONDS`         | 8   | 8    |
+| `SKIP_BATTLE_SETTLEMENT` | 1   | 1    |
 
 The fight lasts as long as the video. It needs no variable.
 
@@ -118,10 +129,10 @@ type RoundState = {
 
 Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
-`chars[].alive` is the server's holding copy for the current season: settle updates it in memory so the next bout can
-run. ENS text writes and BattleBetting settle are not sent from the loop yet (issue 111; `battle_results` is the
-planned queue). Do not treat the holding copy as what pays out. After an ENS write exists, ENS is the authority. Stakes
-are not defined here (no stake columns).
+`chars[].alive` is the server's holding copy for the current season. Settle updates it when the fight duration
+elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue. With
+`SKIP_BATTLE_SETTLEMENT=1` the BattleBetting `settleBattle` call is skipped. Do not treat the holding copy as what
+pays out. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
 
@@ -135,5 +146,5 @@ The web client does not run a self-contained sim of the loop. `connectToServerRo
 ## Out of scope
 
 - How the server is hosted.
-- ENS updates and the Sui contract. They connect later at the `SETTLE` step (issue 111).
+- The Sui betting contract. `POST /bet` still only grows the in-memory pool.
 - Season end beyond today's `OVER` screen and reset.

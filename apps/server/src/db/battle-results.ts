@@ -3,11 +3,11 @@ import type {
   BattleQueueStore,
   Shot,
 } from "@horror-tube/fight/battle-queue";
-import type { Pool, PoolClient, QueryResultRow } from "pg";
+import type { Client, Pool, PoolClient, QueryResultRow } from "pg";
 
 import { readDatabaseUrl } from "./database-url.js";
 
-type PgQueryable = Pool | PoolClient;
+type PgQueryable = Pool | PoolClient | Client;
 
 type BattleResultRow = QueryResultRow & {
   id: string;

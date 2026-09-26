@@ -3,7 +3,7 @@ import pg from "pg";
 import { readDatabaseCaCert } from "./database-ca.js";
 import { readDatabaseUrl } from "./database-url.js";
 
-const { Client } = pg;
+const { Client, Pool } = pg;
 
 /**
  * Drop libpq sslmode from the URI so node-pg does not replace our `ssl` object
@@ -29,16 +29,35 @@ export function connectionStringForVerifiedTls(databaseUrl: string): string {
  * Postgres client that verifies TLS with the DigitalOcean project CA.
  * Rejects missing DATABASE_URL / DATABASE_CA_CERT. Never disables verification.
  */
+function verifiedTlsConfig(env: NodeJS.ProcessEnv): {
+  connectionString: string;
+  ssl: { ca: string; rejectUnauthorized: true };
+} {
+  return {
+    connectionString: connectionStringForVerifiedTls(readDatabaseUrl(env)),
+    ssl: {
+      ca: readDatabaseCaCert(env),
+      rejectUnauthorized: true,
+    },
+  };
+}
+
 export function createPgClient(
   env: NodeJS.ProcessEnv = process.env,
 ): pg.Client {
-  const connectionString = connectionStringForVerifiedTls(readDatabaseUrl(env));
-  const ca = readDatabaseCaCert(env);
-  return new Client({
-    connectionString,
-    ssl: {
-      ca,
-      rejectUnauthorized: true,
-    },
+  return new Client(verifiedTlsConfig(env));
+}
+
+/**
+ * Long-lived pool for the game process. An idle connection drop is logged
+ * on the pool; a single Client with no listener would take the process down.
+ */
+export function createPgPool(
+  env: NodeJS.ProcessEnv = process.env,
+): pg.Pool {
+  const pool = new Pool(verifiedTlsConfig(env));
+  pool.on("error", (err: Error) => {
+    console.error(`Postgres pool error: ${err.message}`);
   });
+  return pool;
 }

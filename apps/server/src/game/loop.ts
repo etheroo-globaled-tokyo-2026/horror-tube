@@ -1,4 +1,14 @@
 import {
+  createQueuedRecord,
+  markBettingClosed,
+  markPlaybackFinished,
+  settleQueuedBattle,
+  type BattleQueueInsert,
+  type BattleQueueRecord,
+  type BattleQueueStore,
+  type ChainWritePorts,
+} from "@horror-tube/fight/battle-queue";
+import {
   nextRotationPair,
   type RandomInt,
 } from "@horror-tube/fight/rotation";
@@ -29,6 +39,9 @@ export type GameLoopOptions = {
    * Defaults to a non-crypto sequential counter so production must pass cryptoRandomInt.
    */
   randomInt?: RandomInt;
+  battleQueueStore: BattleQueueStore;
+  chainWritePorts: ChainWritePorts;
+  skipSettlement: boolean;
 };
 
 type Listener = (state: RoundState) => void;
@@ -47,6 +60,9 @@ export class GameLoop {
   private readonly now: () => number;
   private readonly verifyWorldId: WorldIdVerifier;
   private readonly randomInt: RandomInt;
+  private readonly battleQueueStore: BattleQueueStore;
+  private readonly chainWritePorts: ChainWritePorts;
+  private readonly skipSettlement: boolean;
   private readonly listeners = new Set<Listener>();
 
   private chars: CharRuntime[];
@@ -68,6 +84,13 @@ export class GameLoop {
   private videoDurationMs: number | null = null;
   private outcome: { winner: 0 | 1; damage: number } | null = null;
   private settleDamage = 0;
+  private queuedAgentResultId: string | null = null;
+  private settleInFlight = false;
+  /** Set when the bet phase ends, before the fight clock starts. */
+  private bettingClosedGate = false;
+  /** Set when the fight's video duration has elapsed. */
+  private playbackFinishedGate = false;
+  private holdingCopyApplied = false;
 
   constructor(options: GameLoopOptions) {
     if (options.ensLabels.length < 2) {
@@ -86,6 +109,9 @@ export class GameLoop {
           `GameLoop randomInt was not provided. Pass cryptoRandomInt (or a test double) for winner-stays pairing. maxExclusive=${String(maxExclusive)}.`,
         );
       });
+    this.battleQueueStore = options.battleQueueStore;
+    this.chainWritePorts = options.chainWritePorts;
+    this.skipSettlement = options.skipSettlement;
     this.chars = options.ensLabels.map((ensLabel, id) => ({
       id,
       ensLabel,
@@ -135,7 +161,10 @@ export class GameLoop {
   /**
    * Advance timers. Call on an interval from the HTTP process.
    */
-  tick(now: number = this.now()): void {
+  async tick(now: number = this.now()): Promise<void> {
+    if (this.settleInFlight) {
+      return;
+    }
     if (this.phase === "countdown" && this.endsAt !== null && now >= this.endsAt) {
       this.closeVoting(now);
       return;
@@ -145,7 +174,19 @@ export class GameLoop {
       return;
     }
     if (this.phase === "fight" && this.endsAt !== null && now >= this.endsAt) {
-      this.enterSettle(now);
+      this.settleInFlight = true;
+      try {
+        await this.enterSettle(now);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        console.error(`ENS settle failed: ${message}`);
+        this.error = message;
+        this.endsAt = null;
+        this.emit();
+        throw cause;
+      } finally {
+        this.settleInFlight = false;
+      }
       return;
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
@@ -224,6 +265,17 @@ export class GameLoop {
     }
     this.pool[side] += amount;
     this.emit();
+  }
+
+  async attachAgentResult(insert: BattleQueueInsert): Promise<void> {
+    if (this.phase !== "bet") {
+      throw new Error(
+        `attachAgentResult is only allowed in the bet phase. Current phase: ${this.phase}.`,
+      );
+    }
+    const record = createQueuedRecord(insert);
+    await this.battleQueueStore.save(record);
+    this.queuedAgentResultId = record.id;
   }
 
   /**
@@ -311,6 +363,10 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.queuedAgentResultId = null;
+    this.bettingClosedGate = false;
+    this.playbackFinishedGate = false;
+    this.holdingCopyApplied = false;
     this.enterVote();
   }
 
@@ -360,6 +416,10 @@ export class GameLoop {
     this.videoDurationMs = null;
     this.error = null;
     this.pool = [0, 0];
+    this.queuedAgentResultId = null;
+    this.bettingClosedGate = false;
+    this.playbackFinishedGate = false;
+    this.holdingCopyApplied = false;
     this.phase = "bet";
     this.betOpenedAt = now;
     this.endsAt = null;
@@ -402,14 +462,44 @@ export class GameLoop {
     }
     this.winner = this.outcome.winner;
     this.settleDamage = this.outcome.damage;
+    this.bettingClosedGate = true;
     this.phase = "fight";
     this.endsAt = now + this.videoDurationMs;
     this.emit();
   }
 
-  private enterSettle(now: number): void {
+  /**
+   * Re-run ENS settle after a failure. Does not apply the holding copy twice.
+   */
+  async retrySettle(): Promise<void> {
+    if (this.error === null) {
+      throw new Error(
+        "retrySettle requires a failed settle. Current error is empty.",
+      );
+    }
+    if (this.phase !== "fight" && this.phase !== "settle") {
+      throw new Error(
+        `retrySettle is only allowed after a failed settle. Current phase: ${this.phase}.`,
+      );
+    }
+    this.error = null;
+    await this.enterSettle(this.now());
+  }
+
+  private async enterSettle(now: number): Promise<void> {
     if (this.fighters === null || this.winner === null) {
       throw new Error("enterSettle requires fighters and winner.");
+    }
+    if (!this.bettingClosedGate) {
+      throw new Error(
+        "enterSettle: betting-closed signal is missing. It is set when the bet phase ends. Do not infer it from a timer.",
+      );
+    }
+    this.playbackFinishedGate = true;
+    if (this.queuedAgentResultId === null) {
+      throw new Error(
+        "enterSettle requires an attached agent result. Call attachAgentResult during the bet phase. Refusing to settle from setOutcome alone.",
+      );
     }
     const winnerId = this.fighters[this.winner];
     const loserId = this.fighters[this.winner === 0 ? 1 : 0];
@@ -418,16 +508,70 @@ export class GameLoop {
     if (winnerChar === undefined || loserChar === undefined) {
       throw new Error("enterSettle: fighter ids missing from chars.");
     }
-    loserChar.alive = false;
-    winnerChar.kills += 1;
-    winnerChar.damage += this.settleDamage;
-    this.champion = winnerId;
+    const winnerLabel = this.ensLabels[winnerId];
+    const loserLabel = this.ensLabels[loserId];
+    if (winnerLabel === undefined || loserLabel === undefined) {
+      throw new Error("enterSettle: fighter ids missing from ensLabels.");
+    }
+    const queued = await this.battleQueueStore.get(this.queuedAgentResultId);
+    if (queued === null) {
+      throw new Error(
+        `enterSettle: battle queue record ${JSON.stringify(this.queuedAgentResultId)} is missing from the store.`,
+      );
+    }
+    if (
+      queued.winnerSubname !== winnerLabel ||
+      queued.loserSubname !== loserLabel
+    ) {
+      throw new Error(
+        `enterSettle: agent result winner=${JSON.stringify(queued.winnerSubname)} loser=${JSON.stringify(queued.loserSubname)} does not match bout winner=${JSON.stringify(winnerLabel)} loser=${JSON.stringify(loserLabel)}.`,
+      );
+    }
+    if (!this.holdingCopyApplied) {
+      loserChar.alive = false;
+      winnerChar.kills += 1;
+      winnerChar.damage += this.settleDamage;
+      this.champion = winnerId;
+      this.holdingCopyApplied = true;
+    }
     this.phase = "settle";
     this.endsAt = now + this.config.settleSeconds * 1000;
     this.emit();
+    await this.writeQueuedEns(queued);
+  }
+
+  private async writeQueuedEns(queued: BattleQueueRecord): Promise<void> {
+    const queueId = queued.id;
+    let record = markPlaybackFinished(markBettingClosed(queued));
+    await this.battleQueueStore.save(record);
+    try {
+      console.log(
+        `ENS settle start queueId=${record.id} battleId=${record.battleId} skipSettlement=${String(this.skipSettlement)}`,
+      );
+      record = await settleQueuedBattle(
+        record,
+        this.chainWritePorts,
+        this.battleQueueStore,
+        { skipSettlement: this.skipSettlement },
+      );
+      this.error = null;
+      console.log(
+        `ENS settle done queueId=${record.id} injuriesTx=${record.injuriesTxHash} statusTx=${record.statusTxHash} settlementTx=${record.settlementTxHash}`,
+      );
+      this.emit();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`ENS settle failed queueId=${queueId}: ${message}`);
+      this.error = message;
+      this.endsAt = null;
+      this.emit();
+    }
   }
 
   private afterSettle(): void {
+    if (this.error !== null) {
+      return;
+    }
     const alive = this.chars.filter((c) => c.alive);
     if (alive.length <= 1) {
       this.phase = "over";
@@ -441,6 +585,10 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.queuedAgentResultId = null;
+    this.bettingClosedGate = false;
+    this.playbackFinishedGate = false;
+    this.holdingCopyApplied = false;
     // Winner stays on: next challenger is random among living non-winners
     // (fightInputFromRotation / nextRotationPair). No challenger ballot.
     if (this.champion === null) {
@@ -484,6 +632,9 @@ export class GameLoop {
     this.fighters = [championId, challengerId];
     this.videoUrl = null;
     this.error = null;
+    this.bettingClosedGate = false;
+    this.playbackFinishedGate = false;
+    this.holdingCopyApplied = false;
     this.phase = "bet";
     this.betOpenedAt = now;
     this.endsAt = null;

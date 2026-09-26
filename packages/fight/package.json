@@ -27,7 +27,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@fal-ai/client": "^1.9.1",
-    "@google/genai": "^1.46.0"
+    "@google/genai": "^1.46.0",
+    "@horror-tube/fight-media": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

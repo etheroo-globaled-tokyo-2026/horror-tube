@@ -44,6 +44,9 @@ importers:
       valibot:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
+      viem:
+        specifier: ^2.56.8
+        version: 2.56.8(typescript@7.0.2)(zod@4.6.5)
     devDependencies:
       '@types/node':
         specifier: ^26.6.2
@@ -136,6 +139,9 @@ importers:
       '@google/genai':
         specifier: ^1.46.0
         version: 1.52.0
+      '@horror-tube/fight-media':
+        specifier: workspace:*
+        version: link:../fight-media
     devDependencies:
       '@types/node':
         specifier: ^26.6.2
