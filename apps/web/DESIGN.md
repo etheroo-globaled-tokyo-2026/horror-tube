@@ -170,7 +170,8 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
     injuries. Typing never lifts a tape, so the TV stays in view. The name shows again after OK.
   - Bet: A and B with the odds and your stake. Fight: the video (`RoundState.videoStyle`). A film gets a warm,
     low-res filter. A rotoscope is a 256×144 line drawing, so the TV reads it at those pixels and keeps its colours
-    (one per character, red or green blood). Settle: "WE INTERRUPT THIS PROGRAM", the loser, and OK to collect.
+    (one per character, red or green blood). It is letterboxed: the whole drawing shows, never cropped, with black
+    bars. Settle: "WE INTERRUPT THIS PROGRAM", the loser, and OK to collect.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
