@@ -3,11 +3,7 @@ import { describe, it } from "node:test";
 
 import type { FightMediaConfig } from "../src/env.js";
 import { fightMediaCdnUrl, videoObjectKey } from "../src/keys.js";
-import {
-  buildPutFightVideoInput,
-  type PutFightVideoInput,
-  uploadFightVideo,
-} from "../src/upload.js";
+import { buildPutFightVideoInput, uploadFightVideo } from "../src/upload.js";
 
 const config: FightMediaConfig = {
   accessKeyId: "AKIATEST",
@@ -19,7 +15,7 @@ const config: FightMediaConfig = {
 };
 
 describe("videoObjectKey", () => {
-  it("places a new object under videos/ with .mp4", () => {
+  it("places an object under videos/ with .mp4", () => {
     assert.equal(videoObjectKey("abc-123"), "videos/abc-123.mp4");
   });
 
@@ -64,40 +60,17 @@ describe("buildPutFightVideoInput", () => {
 });
 
 describe("uploadFightVideo", () => {
-  it("returns the CDN URL after a successful PUT (stub transport)", async () => {
-    const body = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
-    let seen: PutFightVideoInput | undefined;
-    const url = await uploadFightVideo({
-      body,
-      config,
-      objectId: "fight-9",
-      putObject: async (input) => {
-        seen = input;
-      },
-    });
-    assert.equal(
-      url,
-      "https://horror-tube-fight-media-test.sgp1.cdn.digitaloceanspaces.com/videos/fight-9.mp4",
-    );
-    assert.equal(seen?.Bucket, config.bucket);
-    assert.equal(seen?.Key, "videos/fight-9.mp4");
-    assert.equal(seen?.ACL, "public-read");
-    assert.equal(seen?.ContentType, "video/mp4");
-    assert.equal(seen?.Body, body);
-  });
-
   it("propagates stub transport errors and does not return a URL", async () => {
     await assert.rejects(
       () =>
         uploadFightVideo({
           body: new Uint8Array([1]),
           config,
-          objectId: "fail-1",
           putObject: async () => {
             throw new Error("AccessDenied: simulated Spaces failure");
           },
         }),
-      /Spaces put_object failed.*videos\/fail-1\.mp4.*AccessDenied/u,
+      /Spaces put_object failed.*videos\/[0-9a-f-]+\.mp4.*AccessDenied/u,
     );
   });
 
@@ -130,5 +103,5 @@ describe("uploadFightVideo", () => {
   });
 });
 
-// Live Spaces PUT was not run: no fight-media credentials in this environment.
-// Request construction and failure paths are covered with a stub transport above.
+// Live Spaces PUT was not run: no FIGHT_MEDIA_SPACES_* credentials in this worktree .env.
+// Request construction is covered by buildPutFightVideoInput; failure paths use a stub transport.

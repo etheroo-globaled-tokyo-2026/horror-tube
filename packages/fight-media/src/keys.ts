@@ -1,4 +1,4 @@
-/** Object key under videos/ for one fight mp4. Never reuses a prior key. */
+/** Object key under videos/ for one fight mp4. */
 export function videoObjectKey(id: string): string {
   const trimmed = id.trim();
   if (trimmed === "") {
