@@ -261,7 +261,6 @@ const opens = (betCalls: string[]): string[] => betCalls.filter((c) => c.startsW
 const configEnv = {
   QUORUM_VOTES: "2",
   VOTE_COUNTDOWN_SECONDS: "10",
-  VOTE_TIMEOUT_SECONDS: "15",
   BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: "5",
   VIDEO_TIMEOUT_SECONDS: "300",
   SETTLE_SECONDS: "8",
@@ -283,7 +282,6 @@ describe("game loop config", () => {
     const env = {
       QUORUM_VOTES: "2",
       VOTE_COUNTDOWN_SECONDS: "10",
-      VOTE_TIMEOUT_SECONDS: "15",
       VIDEO_TIMEOUT_SECONDS: "300",
       SETTLE_SECONDS: "8",
     };
