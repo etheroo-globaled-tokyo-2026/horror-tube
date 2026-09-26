@@ -1,4 +1,4 @@
-import { requiredEnv } from "../env.js";
+import { requiredEnv } from "@horror-tube/betting";
 
 export type GameLoopConfig = {
   quorumVotes: number;

@@ -16,7 +16,7 @@ import {
 } from "viem";
 import { sepolia } from "viem/chains";
 
-import { requiredEnv } from "./env.js";
+import { requiredEnv } from "@horror-tube/betting";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 const ZERO_BYTES32 =

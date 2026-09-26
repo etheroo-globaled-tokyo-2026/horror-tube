@@ -2,8 +2,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
+import { requiredEnv } from "@horror-tube/betting";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
-import { createBattleBettingPorts } from "./battle-betting.js";
+import { createBattleBettingPorts, readHouseFeeBps } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { createPgPool } from "./db/pg-client.js";
@@ -13,7 +14,6 @@ import {
   readGamePort,
   readSkipBattleSettlement,
   readStaticDir,
-  requiredEnv,
 } from "./env.js";
 import { createFightJobRunner } from "./fight-job.js";
 import {
@@ -65,19 +65,15 @@ const game = new GameLoop({
 
 const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
-const feeBpsRaw = requiredEnv("BET_FEE_BPS");
-if (!/^[0-9]+$/u.test(feeBpsRaw)) {
-  throw new Error(
-    `BET_FEE_BPS must be a whole number. Got ${JSON.stringify(feeBpsRaw)}.`,
-  );
-}
+const feeBps = await readHouseFeeBps(battleBetting.config);
+console.log(`betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)}`);
 
 const bettingPublic = {
   packageId: battleBetting.config.packageId,
   houseId: battleBetting.config.houseId,
   coinType: battleBetting.config.coinType,
   network: battleBetting.config.network,
-  feeBps: Number(feeBpsRaw),
+  feeBps,
 };
 
 const server = createGameServer({

@@ -4,7 +4,7 @@ import { normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import type { VerifyFetch } from "@horror-tube/world-id";
 import * as v from "valibot";
 
-import { requiredEnv } from "./env.js";
+import { requiredEnv } from "@horror-tube/betting";
 import { HttpError } from "./http-error.js";
 import { issueSession, readSession, walletSecret } from "./human-session.js";
 import { sendJson } from "./server.js";
