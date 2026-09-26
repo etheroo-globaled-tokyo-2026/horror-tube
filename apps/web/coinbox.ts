@@ -13,11 +13,11 @@ import { blotch, crack, drip, scratches, seeded } from "./sprites.ts";
 import {
   type GameWallet,
   SUI_TESTNET_GRPC,
+  depositUsdc,
   fromUsdcUnits,
   getUsdcBalance,
   sendUsdc,
   toUsdcUnits,
-  usdcDeposit,
 } from "./wallet.ts";
 
 export const PAYOUT_STORAGE_KEY = "horror-tube.payout-address";
@@ -737,28 +737,18 @@ export function createCoinBox(
     const { wallet, coinType } = linked();
     const payer = await connectBrowserWallet();
     if (payer === null) throw new Error("Deposit cancelled. No wallet was connected.");
-    const chain = dAppKit.getClient().core;
-    const [gas, usdc] = await Promise.all([
-      chain.getBalance({ owner: payer }),
-      chain.getBalance({ owner: payer, coinType }),
-    ]);
-    if (BigInt(gas.balance.balance) === 0n)
-      throw new Error(
-        "Your wallet has no testnet SUI to pay the gas. Get some at faucet.sui.io, then try again.",
-      );
-    const held = BigInt(usdc.balance.balance);
+    const { balance } = await dAppKit.getClient().core.getBalance({ owner: payer, coinType });
+    const held = BigInt(balance.balance);
     if (held < toUsdcUnits(dollars))
       throw new Error(
         `Your wallet holds ${fromUsdcUnits(held).toFixed(2)} USDC. The dial holds ${String(dollars)} USDC in tokens.`,
       );
     setStatus("INSERTING");
-    const result = await dAppKit.signAndExecuteTransaction({
-      transaction: usdcDeposit(coinType, wallet.address, toUsdcUnits(dollars)),
+    await depositUsdc(wallet, coinType, payer, toUsdcUnits(dollars), async (txBytes) => {
+      const signed = await dAppKit.signTransaction({ transaction: txBytes });
+      return signed.signature;
     });
-    if (result.$kind === "FailedTransaction")
-      throw new Error(result.FailedTransaction.status.error?.message ?? "Deposit failed");
     slot.length = 0;
-    await chain.waitForTransaction({ digest: result.Transaction.digest });
     rememberPayout(payer);
     say(`${String(dollars)} USDC deposited. Thank you.`);
   }

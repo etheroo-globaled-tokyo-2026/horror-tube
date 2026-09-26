@@ -12,6 +12,7 @@ export const API_PATHS = [
   "/auth/world-id",
   "/wallet",
   "/tx",
+  "/sponsor-deposit",
   "/world-id/request",
   "/world-id/verify",
 ] as const;

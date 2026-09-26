@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
+import { isValidSuiAddress, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import type { VerifyFetch } from "@horror-tube/world-id";
 import * as v from "valibot";
 
@@ -12,17 +12,23 @@ import {
   gaslessError,
   isWalletAlreadyExists,
   shinamiPort,
+  sponsorError,
   type ShinamiPort,
 } from "./shinami-port.js";
-import { assertSponsorableKind, betPoolIds } from "./tx-policy.js";
+import { assertDepositKind, assertSponsorableKind, betPoolIds } from "./tx-policy.js";
 import { verifyEnterRoomProof, worldIdHttpError } from "./world-id-handler.js";
 
 const BODY_LIMIT = 1_000_000;
 
-const ROUTES = new Set(["/auth/world-id", "/wallet", "/tx"]);
+const ROUTES = new Set(["/auth/world-id", "/wallet", "/tx", "/sponsor-deposit"]);
 
 const TxBody = v.object({
   txKind: v.pipe(v.string(), v.minLength(1)),
+});
+
+const DepositBody = v.object({
+  txKind: v.pipe(v.string(), v.minLength(1)),
+  sender: v.pipe(v.string(), v.check(isValidSuiAddress, "sender is not a Sui address.")),
 });
 
 export type WalletHandlerDeps = {
@@ -76,6 +82,24 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", (err: Error) => reject(err));
   });
+}
+
+function parseBody<TSchema extends v.GenericSchema>(
+  raw: string,
+  schema: TSchema,
+  invalid: string,
+): v.InferOutput<TSchema> {
+  let parsed;
+  try {
+    parsed = v.safeParse(schema, JSON.parse(raw));
+  } catch (err) {
+    throw new HttpError(
+      400,
+      `Request body is not JSON. Underlying: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (!parsed.success) throw new HttpError(400, invalid);
+  return parsed.output;
 }
 
 function redact(message: string, pepper: string, secret: string): string {
@@ -134,17 +158,7 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
       try {
         if (urlPath === "/auth/world-id") {
           const raw = await readBody(req);
-          let parsedProof;
-          try {
-            parsedProof = v.safeParse(v.record(v.string(), v.any()), JSON.parse(raw));
-          } catch (err) {
-            throw new HttpError(
-              400,
-              `Request body is not JSON. Underlying: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
-          if (!parsedProof.success)
-            throw new HttpError(400, "World ID proof must be a JSON object.");
+          parseBody(raw, v.record(v.string(), v.any()), "World ID proof must be a JSON object.");
           const nullifier = await deps.verifyProof(raw);
           sendJson(res, 200, { session: issueSession(nullifier, deps.pepper) });
           return;
@@ -157,28 +171,35 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
           sendJson(res, 200, { address: opened.address });
           return;
         }
-        const raw = await readBody(req);
-        let parsedTx;
-        try {
-          parsedTx = v.safeParse(TxBody, JSON.parse(raw));
-        } catch (err) {
-          throw new HttpError(
-            400,
-            `Request body is not JSON. Underlying: ${err instanceof Error ? err.message : String(err)}`,
+        if (urlPath === "/sponsor-deposit") {
+          const deposit = parseBody(
+            await readBody(req),
+            DepositBody,
+            "POST /sponsor-deposit requires txKind, the base64 transaction kind bytes, and sender, the paying Sui address.",
           );
+          const opened = await openWallet(deps, nullifier);
+          assertDepositKind(deposit.txKind, deposit.sender, opened.address, deps.usdcType);
+          let sponsored;
+          try {
+            sponsored = await deps.shinami.sponsorTransaction(deposit.txKind, deposit.sender);
+          } catch (err) {
+            throw sponsorError(err instanceof Error ? err : new Error(String(err)));
+          }
+          console.log(
+            `POST /sponsor-deposit ${sponsored.digest} from ${deposit.sender} to ${opened.address}`,
+          );
+          sendJson(res, 200, { txBytes: sponsored.txBytes, signature: sponsored.signature });
+          return;
         }
-        if (!parsedTx.success) {
-          throw new HttpError(400, "POST /tx requires txKind, the base64 transaction kind bytes.");
-        }
-        const opened = await openWallet(deps, nullifier);
-        assertSponsorableKind(
-          parsedTx.output.txKind,
-          opened.address,
-          deps.usdcType,
-          deps.bettingPackageId,
+        const tx = parseBody(
+          await readBody(req),
+          TxBody,
+          "POST /tx requires txKind, the base64 transaction kind bytes.",
         );
+        const opened = await openWallet(deps, nullifier);
+        assertSponsorableKind(tx.txKind, opened.address, deps.usdcType, deps.bettingPackageId);
         if (deps.bettingPackageId !== undefined) {
-          for (const poolId of betPoolIds(parsedTx.output.txKind, deps.bettingPackageId)) {
+          for (const poolId of betPoolIds(tx.txKind, deps.bettingPackageId)) {
             try {
               deps.assertBetAllowed(poolId);
             } catch (err) {
@@ -191,7 +212,7 @@ export function createWalletHandler(deps: WalletHandlerDeps): WalletHandler {
           digest = await deps.shinami.executeGaslessTransaction(
             nullifier,
             opened.sessionToken,
-            parsedTx.output.txKind,
+            tx.txKind,
           );
         } catch (err) {
           throw gaslessError(err instanceof Error ? err : new Error(String(err)));
