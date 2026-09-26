@@ -183,14 +183,16 @@ async function openEnsClients(env: NodeJS.ProcessEnv): Promise<EnsClients> {
   return { ensLabel, account, publicClient, walletClient, resolver: resolverRaw };
 }
 
-async function readInjuriesText(
+async function readTextRecord(
   clients: EnsClients,
   dnsName: Hex,
+  key: string,
+  labelForError: string,
 ): Promise<string> {
   const data = encodeFunctionData({
     abi: textResolverAbi,
     functionName: "text",
-    args: [ZERO_BYTES32, "injuries"],
+    args: [ZERO_BYTES32, key],
   });
   let encoded: Hex;
   try {
@@ -205,7 +207,7 @@ async function readInjuriesText(
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     throw new Error(
-      `PermissionedResolver.resolve(text injuries) failed: ${detail}`,
+      `PermissionedResolver.resolve(text ${key}) failed for ${labelForError}: ${detail}`,
       { cause },
     );
   }
@@ -214,10 +216,39 @@ async function readInjuriesText(
     return value;
   } catch (cause) {
     throw new Error(
-      `Failed to decode text(injuries) resolve result: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Failed to decode text(${key}) resolve result for ${labelForError}: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );
   }
+}
+
+async function readInjuriesText(
+  clients: EnsClients,
+  dnsName: Hex,
+): Promise<string> {
+  return readTextRecord(clients, dnsName, "injuries", "injuries");
+}
+
+export async function readRosterEnsStatuses(
+  ensLabels: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string[]> {
+  const clients = await openEnsClients(env);
+  const statuses: string[] = [];
+  for (const subname of ensLabels) {
+    const name = characterName(subname, clients.ensLabel);
+    const dnsName = dnsEncodeName(name);
+    try {
+      statuses.push(await readTextRecord(clients, dnsName, "status", name));
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(
+        `Failed to read ENS status for ${name}: ${detail}`,
+        { cause },
+      );
+    }
+  }
+  return statuses;
 }
 
 async function setText(

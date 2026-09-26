@@ -25,6 +25,9 @@ const baseConfig = {
 
 const labels = ["alpha", "bravo", "charlie", "delta"];
 
+const allAliveStatuses = (ensLabels: string[]): string[] =>
+  ensLabels.map(() => "alive");
+
 /** Pin challenger to the first living non-winner. */
 const pickFirst = () => 0;
 
@@ -170,6 +173,7 @@ describe("World ID vote gate", () => {
     const loop = new GameLoop({
       config: baseConfig,
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
@@ -179,6 +183,106 @@ describe("World ID vote gate", () => {
       () => loop.vote({ fake: true }, [0, 1]),
       /World ID verification is not available/u,
     );
+  });
+});
+
+describe("GameLoop ENS status", () => {
+  it("starts dead labels not alive and rejects votes for them", async () => {
+    const settle = unusedSettleDeps();
+    const loop = new GameLoop({
+      config: baseConfig,
+      ensLabels: labels,
+      ensStatuses: ["alive", "dead", "alive", "alive"],
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "dead-vote" }),
+    });
+    assert.equal(loop.getState().chars[1]?.alive, false);
+    await assert.rejects(
+      () => loop.vote({}, [1, 0]),
+      /Character 1 is dead and cannot receive votes/u,
+    );
+  });
+
+  it("treats empty status as alive", () => {
+    const settle = unusedSettleDeps();
+    const loop = new GameLoop({
+      config: baseConfig,
+      ensLabels: labels,
+      ensStatuses: ["", "alive", "alive", "alive"],
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      skipSettlement: true,
+    });
+    assert.equal(loop.getState().chars[0]?.alive, true);
+  });
+
+  it("throws naming the label and value for unknown status", () => {
+    const settle = unusedSettleDeps();
+    assert.throws(
+      () =>
+        new GameLoop({
+          config: baseConfig,
+          ensLabels: labels,
+          ensStatuses: ["alive", "ghost", "alive", "alive"],
+          randomInt: pickFirst,
+          battleQueueStore: settle.battleQueueStore,
+          chainWritePorts: settle.chainWritePorts,
+          skipSettlement: true,
+        }),
+      /bravo.*ghost|ghost.*bravo/u,
+    );
+  });
+
+  it("resetFromOver keeps characters that started dead on chain not alive", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const trio = ["alpha", "bravo", "charlie"];
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: trio,
+      ensStatuses: ["alive", "alive", "dead"],
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "reset-dead" }),
+    });
+    assert.equal(loop.getState().chars[2]?.alive, false);
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "reset-over" }));
+    loop.setOutcome(0, 0);
+    loop.setVideoReady(
+      "https://cdn.example/v.mp4",
+      1,
+      "https://cdn.example/frames/seed.jpg",
+    );
+    now += 1_000;
+    await loop.tick(now);
+    now += 1;
+    await loop.tick(now);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+    assert.equal(loop.getState().chars[1]?.alive, false);
+    assert.equal(loop.getState().chars[2]?.alive, false);
+    loop.resetFromOver();
+    assert.equal(loop.getState().phase, "vote");
+    assert.equal(loop.getState().chars[0]?.alive, true);
+    assert.equal(loop.getState().chars[1]?.alive, true);
+    assert.equal(loop.getState().chars[2]?.alive, false);
   });
 });
 
@@ -196,6 +300,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 3,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -286,6 +391,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -341,6 +447,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: store,
@@ -391,6 +498,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -429,6 +537,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -463,6 +572,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -484,6 +594,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
@@ -520,6 +631,7 @@ describe("GameLoop phases", () => {
     const loop = new GameLoop({
       config: baseConfig,
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
@@ -537,6 +649,7 @@ describe("GameLoop phases", () => {
         betMinSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle2.battleQueueStore,
@@ -572,6 +685,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
