@@ -60,25 +60,41 @@ export function validateNarrationTurn(
   for (const shot of turn.shots) {
     assertShot(shot);
   }
-  const shotText = formatShotList(turn.shots);
+  const shotText = matchText(formatShotList(turn.shots));
   if (!Array.isArray(turn.winner_injuries)) {
     throw new FightError("winner_injuries must be a JSON array of strings.");
   }
+  const listed = new Set<string>();
   for (const injury of turn.winner_injuries) {
-    if (injury.trim() === "") {
+    const phrase = matchText(injury);
+    if (phrase === "") {
       throw new FightError(
-        `winner_injuries items must be non-empty strings. Got: ${JSON.stringify(injury)}`,
+        `winner_injuries items must contain words. Got: ${JSON.stringify(injury)}`,
       );
     }
-    if (!shotText.includes(injury)) {
+    if (!shotText.includes(phrase)) {
       throw new FightError(
         `injury phrase missing from the shot list: ${JSON.stringify(injury)}`,
+      );
+    }
+    listed.add(phrase);
+  }
+  const winner =
+    turn.winner_subname === input.fighterA.subname ? input.fighterA : input.fighterB;
+  for (const carried of winner.injuries) {
+    if (!listed.has(matchText(carried))) {
+      throw new FightError(
+        `${winner.subname}'s carried injury is missing from winner_injuries: ${JSON.stringify(carried)}`,
       );
     }
   }
   if (turn.rationale.trim() === "") {
     throw new FightError("rationale must be a non-empty string.");
   }
+}
+
+function matchText(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 function assertShot(shot: Shot): void {
