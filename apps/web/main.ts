@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   $,
+  DUR,
   S,
   char,
   face,
@@ -14,10 +15,12 @@ import {
   pick,
   replaying,
   type Character,
+  type Phase,
 } from "./game.ts";
 import { css, ctx2d, rgb } from "./sprites.ts";
 import { type CoinBox, type CoinBoxPart, createCoinBox } from "./coinbox.ts";
 import { getGameWallet } from "./wallet.ts";
+import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
   ["d", "slot"],
@@ -808,6 +811,7 @@ const say = (text: string, ms = 3600): void => {
   T.sayUntil = performance.now() + ms;
 };
 
+let tvNoise = 0;
 function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -1035,6 +1039,7 @@ function drawTV(): void {
     }
   }
   g.putImageData(img, 0, 0);
+  tvNoise = noise;
   const v = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 0.85);
   v.addColorStop(0, "rgba(0,0,0,0)");
   v.addColorStop(1, "rgba(0,0,0,0.5)");
@@ -1069,6 +1074,7 @@ function hintText(): void {
 }
 
 function press(id: string): void {
+  sfx.key();
   const k = keyById.get(id);
   if (k) {
     k.position.z = 0.016;
@@ -1095,14 +1101,16 @@ function press(id: string): void {
 function ok(): void {
   if (S.phase === "vote" && !S.cast && T.buf.length === 2) {
     const ch = S.chars[Number(T.buf) - 1];
-    if (!ch || !ch.alive || S.picks.includes(ch.id)) return;
+    if (!ch || !ch.alive || S.picks.includes(ch.id)) return sfx.deny();
     pick(ch.id);
+    sfx.pick();
     T.buf = "";
     T.reveal = ch.id;
     T.revealUntil = performance.now() + 3200;
     if (S.picks.length === 2) $("#h-cast").click();
   } else if (S.claim) {
     $("#h-claim").click();
+    sfx.coins(14);
     say("Collected.");
   } else if (S.phase === "over") $("#h-reset").click();
 }
@@ -1114,15 +1122,19 @@ const pressKey = (id: string, z: number): void => {
 };
 function holdStart(side: number): void {
   if (S.phase !== "bet" || S.bet || holdTimer) return;
-  if (stake() > S.credit)
+  if (stake() > S.credit) {
+    sfx.deny();
     return say(S.credit <= 0 ? "No stake. Feed the coin box." : "Not enough for that stake.");
+  }
   T.hold = side;
   T.holdN = 0;
   pressKey(side ? "B" : "A", 0.016);
   holdTimer = window.setInterval(() => {
     T.holdN++;
+    sfx.tick(T.holdN);
     if (T.holdN >= 8) {
       holdEnd();
+      sfx.bet();
       S.side = side;
       S.amt = stake();
       $("#h-bet").click();
@@ -1173,13 +1185,24 @@ const store = <T>(fn: (s: Storage) => T): T | null => {
   }
 };
 function cut(fn: () => void): void {
+  sfx.static();
   $("#cut").hidden = false;
   fn();
   setTimeout(() => ($("#cut").hidden = true), LOW ? 0 : 160);
 }
+const STEP_SOUND = new Map<Step, () => void>([
+  ["ink", () => sfx.pen(0.7)],
+  ["scan", sfx.static],
+  ["signed", sfx.stamp],
+  ["off", sfx.tvOff],
+  ["burn", () => sfx.burn(2.4)],
+  ["dark", sfx.dark],
+  ["done", sfx.tvOn],
+]);
 function step(name: Step): void {
   W8.step = name;
   W8.at = performance.now();
+  STEP_SOUND.get(name)?.();
   hintText();
 }
 function sign(): void {
@@ -1254,6 +1277,7 @@ let pointer: MouseEvent | null = null;
 function updateHover(): void {
   const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
   if (hover === T.hover) return;
+  if (hover >= 0) sfx.slide();
   T.hover = hover;
   hintText();
 }
@@ -1279,6 +1303,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (part !== null) return coinBox?.use(part);
   const hit = onShelf(e);
   if (hit) {
+    sfx.tape();
     T.buf = "";
     T.reveal = -1;
     T.held = slotOf(hit)?.id ?? -1;
@@ -1307,6 +1332,7 @@ addEventListener(
     if (S.phase === "gate" || e.metaKey || e.ctrlKey || e.altKey) return;
     if (document.querySelector("dialog[open]") !== null) return;
     const k = e.key.toLowerCase();
+    if (k === "m") return muteKey();
     const coinKey = COIN_KEYS.get(k);
     if (coinKey !== undefined && coinBox !== null) {
       e.preventDefault();
@@ -1337,6 +1363,8 @@ addEventListener("keyup", (e) => {
 const clock = new THREE.Clock();
 let lastPaint = 0;
 let gaze = 0;
+let nextBeat = 0;
+let lastFrame = 0;
 renderer.setAnimationLoop(() => {
   const t = clock.getElapsedTime();
   const waiver = S.phase === "gate" && W8.step !== "done";
@@ -1377,6 +1405,15 @@ renderer.setAnimationLoop(() => {
         ? 2.4
         : 1.1;
   syncVideo();
+  ambience(tvNoise, flick, lightsOut);
+  const ms = performance.now();
+  if (S.phase === "bet" && ms >= nextBeat) {
+    const k = Math.max(0, Math.min(1, 1 - S.t / DUR.bet));
+    sfx.beat(0.5 + 0.5 * k);
+    nextBeat = ms + 1000 - 520 * k;
+  }
+  if (S.phase === "fight" && !vidMode && S.frame !== lastFrame && S.frame % 12 === 9) sfx.hit();
+  lastFrame = S.frame;
   if (t - lastPaint > 0.083) {
     lastPaint = t;
     drawTV();
@@ -1384,6 +1421,20 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+const PHASE_SOUND = new Map<Phase, () => void>([
+  ["vote", sfx.bell],
+  ["story", () => sfx.type(DUR.story)],
+  ["bet", sfx.static],
+  ["fight", sfx.fight],
+  ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
+  ["over", sfx.signoff],
+]);
+function muteKey(): void {
+  toggleMute();
+  $("#mute").textContent = isMuted() ? "SOUND OFF · M" : "SOUND ON · M";
+}
+$("#mute").addEventListener("click", muteKey);
+$("#mute").textContent = isMuted() ? "SOUND OFF · M" : "SOUND ON · M";
 hooks.render = () => {
   if (S.phase === "gate") return;
   if (T.phase !== S.phase) {
@@ -1394,6 +1445,7 @@ hooks.render = () => {
       say("You did not choose. Someone else did.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
+    PHASE_SOUND.get(S.phase)?.();
   }
   hintText();
 };

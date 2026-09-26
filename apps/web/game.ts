@@ -36,7 +36,7 @@ export const mmss = (s: number): string =>
 
 const HUES = ["blood", "cold", "rust"] as const;
 type Hue = (typeof HUES)[number];
-const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
+export const DUR = { vote: 15, story: 4, bet: 15, fight: 10, settle: 8 };
 const PLACES = ["CAMP", "FARM", "TOYSHOP", "MINE"] as const;
 type Place = (typeof PLACES)[number];
 const CHAPTERS = [
