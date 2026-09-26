@@ -95,15 +95,15 @@ betting, humans and house bots vote for who they think will win. The winner stay
 
 ### Settle
 
-- After betting is closed **and** the fight video duration has elapsed, apply the queued ENS writes (winner
-  `injuries` first, then loser `status=dead`). Betting closed means `closeBetting` succeeded at
+- After betting is closed **and** the fight video duration has elapsed, the room shows the in-memory `chars`
+  update (loser dead, winner damage) and the settle screen. Betting closed means `closeBetting` succeeded at
   `betting_closes_at`. Playback finished means the video duration elapsed since `video_started_at`; the server has
-  no playback-end callback. `betting_closes_at` does not stand in for playback finished. The room also shows the
-  in-memory `chars` update (loser dead, winner damage). After the ENS writes, call `operator.settle` on the Sui
-  pool. Then the pairing model picks the champion's next living challenger and the vote opens. If either signal
-  is missing, stop and name it. Do not invent those signals from the settle timer. A failed ENS write or pool
-  settle stays on the round error (with the battle ID, and the pool for a settle) and does not start the next bout.
-  `POST /retry-settle` runs the pending steps again.
+  no playback-end callback. `betting_closes_at` does not stand in for playback finished. The server starts the
+  queued ENS writes (winner `injuries`, then loser `status=dead`) and then `operator.settle` beside that screen.
+  If either signal is missing, stop and name it. Do not invent those signals from the settle timer. A failed ENS
+  write, or a pool settle that fails or has not finished, is logged and is not put on the round error. The settle
+  screen still ends on its timer and the next bout opens. `POST /retry-settle` reruns a settle that is still on
+  fight or settle with an error.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and OK starts a new season through
   `POST /start`. A failed video also ends at `over`; it does not start another season by itself.
