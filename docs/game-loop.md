@@ -24,10 +24,9 @@ betting, humans and house bots vote for who they think will win. The winner stay
 
 - **Waiting:** a fresh process holds no bout. No model call, no Sui pool, and no video until a verified human asks
   (`POST /start`), so a deploy or restart spends nothing.
-- **Opening bout:** the panel lists living fighters. A verified human books one (`POST /start` `{ fighter }`). The
-  pairing model then chooses only that fighter's opponent, from an enum of the other living labels. It cannot change
-  the booked fighter. Cards from ENS, including `injuries`, go into the prompt. A rejected answer is asked again, up
-  to `PAIRING_MAX_ATTEMPTS`, each attempt under `PAIRING_TIMEOUT_SECONDS`.
+- **Opening bout:** a verified human picks one living fighter (`POST /start` `{ fighter }`). The other fighter is a
+  random living character, drawn with the injected `randomInt` (production `cryptoRandomInt`). Dead characters are
+  never drawn.
 - **Next fighter:** after a bout, while more than one fighter is alive, the phase is `pick`. The panel lists the
   living fighters except the champion. A verified human picks the next one (`POST /next-fighter` `{ fighter }`). The
   model is not called. A dead fighter, the champion, or an unknown id is refused by name.
@@ -96,15 +95,15 @@ betting, humans and house bots vote for who they think will win. The winner stay
 
 ### Settle
 
-- After betting is closed **and** the fight video duration has elapsed, apply the queued ENS writes (winner
-  `injuries` first, then loser `status=dead`). Betting closed means `closeBetting` succeeded at
+- After betting is closed **and** the fight video duration has elapsed, the room shows the in-memory `chars`
+  update (loser dead, winner damage) and the settle screen. Betting closed means `closeBetting` succeeded at
   `betting_closes_at`. Playback finished means the video duration elapsed since `video_started_at`; the server has
-  no playback-end callback. `betting_closes_at` does not stand in for playback finished. The room also shows the
-  in-memory `chars` update (loser dead, winner damage). After the ENS writes, call `operator.settle` on the Sui
-  pool. Then the pairing model picks the champion's next living challenger and the vote opens. If either signal
-  is missing, stop and name it. Do not invent those signals from the settle timer. A failed ENS write or pool
-  settle stays on the round error (with the battle ID, and the pool for a settle) and does not start the next bout.
-  `POST /retry-settle` runs the pending steps again.
+  no playback-end callback. `betting_closes_at` does not stand in for playback finished. The server starts the
+  queued ENS writes (winner `injuries`, then loser `status=dead`) and then `operator.settle` beside that screen.
+  If either signal is missing, stop and name it. Do not invent those signals from the settle timer. A failed ENS
+  write, or a pool settle that fails or has not finished, is logged and is not put on the round error. The settle
+  screen still ends on its timer and the next bout opens. `POST /retry-settle` reruns a settle that is still on
+  fight or settle with an error.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and OK starts a new season through
   `POST /start`. A failed video also ends at `over`; it does not start another season by itself.
@@ -202,7 +201,7 @@ Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by lab
 
 **Actions from the client:**
 
-- `POST /start` with `Authorization: Bearer <waiver session>` and `{ fighter }`: books that living fighter for the opening bout, the model picks the opponent, and the vote opens. From `waiting` or `over`. `400` names a refused fighter. `409` with `code: "bout_open"` means a bout is open or already opening. `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
+- `POST /start` with `Authorization: Bearer <waiver session>` and `{ fighter }`: that living fighter is booked for the opening bout, a random living opponent is drawn, and the vote opens. From `waiting` or `over`. `400` names a refused fighter. `409` with `code: "bout_open"` means a bout is open or already opening. `500` with `code: "start_failed"` names why the start failed, and the game stays where it was.
 - `POST /next-fighter` with the same session and `{ fighter }`: only in `pick`. Sets the champion against that living fighter and opens the vote. `400` names a dead fighter, the champion, or an unknown id.
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ pick }`: `pick` is the character id of one of the two fighters. `400` names a refused vote; `500` means the vote row could not be stored.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.

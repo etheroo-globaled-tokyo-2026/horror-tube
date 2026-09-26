@@ -9,6 +9,7 @@ import {
   setWallet,
   startBout,
   usd,
+  voteSide,
   type Phase,
 } from "./game.ts";
 import { type CoinBoxPart, type CoinBoxView, createCoinBox, isCoin } from "./coinbox.ts";
@@ -18,9 +19,9 @@ import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, say, walkRef, type WalkStep } from "./room-state.ts";
+import { T, Z, W8, LOW, say, walkRef, type WalkStep } from "./room-state.ts";
 import { errorHint, esc } from "./hint.ts";
-import { roomNumber, typedFighterId } from "./typed-fighter.ts";
+import { roomNumber, typedFighterId, typedStake } from "./typed-fighter.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -37,7 +38,6 @@ import {
 } from "./room-waiver.ts";
 import { drawTV, mask, syncVideo, tv, tvGlow, tvNoise, video, vidMode } from "./room-tv.ts";
 import { powerOff, powerStage, tickPower } from "./room-power.ts";
-import { renderPlaceholders } from "./placeholders.ts";
 import { keyById, led, remote } from "./room-remote.ts";
 import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
 
@@ -132,7 +132,7 @@ function hintText(): void {
                 : S.pending === "claim"
                   ? "COLLECTING…"
                   : S.phase === "bet" && !S.bet && S.credit > 0
-                    ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+                    ? `${b("A")} OR ${b("B")} · TYPE THE AMOUNT`
                     : S.claim
                       ? b("COLLECT")
                       : S.credit <= 0
@@ -153,15 +153,12 @@ function press(id: string): void {
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
     T.held = -1;
-    T.buf = id;
+    if (S.phase === "bet" && !S.bet && S.pending === null) T.buf = (T.buf + id).slice(0, 6);
+    else T.buf = id;
   } else if (id === "clr") {
     T.buf = "";
     T.held = -1;
   } else if (id === "ok") ok();
-  else if (id === "+" || id === "-") {
-    if (S.phase === "bet" && !S.bet)
-      T.stake = Math.max(0, Math.min(2, T.stake + (id === "+" ? 1 : -1)));
-  }
   hintText();
 }
 function turnOff(): void {
@@ -180,6 +177,10 @@ function turnOff(): void {
   hintText();
 }
 function ok(): void {
+  if (S.phase === "bet") {
+    placeTypedBet();
+    return;
+  }
   const booked = typedFighterId(T.buf, S.selectable);
   if (booked !== null && (S.phase === "waiting" || S.phase === "over")) {
     T.buf = "";
@@ -197,18 +198,45 @@ function ok(): void {
   }
 }
 let holdTimer = 0;
-const stake = (): number => STAKES[T.stake] ?? 0;
 const pressKey = (id: string, z: number): void => {
   const k = keyById.get(id);
   if (k) k.position.z = z;
 };
-function holdStart(side: number): void {
-  if (S.phase !== "bet" || S.bet || S.pending !== null || holdTimer) return;
+function sideKey(side: 0 | 1): void {
+  if (S.phase === "vote" || S.phase === "countdown") {
+    voteSide(side);
+    return;
+  }
+  if (S.phase === "bet") {
+    chooseBetSide(side);
+    return;
+  }
+}
+function chooseBetSide(side: 0 | 1): void {
+  if (S.bet || S.pending !== null) return;
   if (S.poolId === null) {
     sfx.deny();
     return say("Opening the book.");
   }
-  if (stake() > S.credit) {
+  T.betSide = side;
+  hintText();
+}
+function placeTypedBet(): void {
+  if (S.bet || S.pending !== null) return;
+  if (S.poolId === null) {
+    sfx.deny();
+    return say("Opening the book.");
+  }
+  if (T.betSide !== 0 && T.betSide !== 1) {
+    sfx.deny();
+    return say("Press A or B.");
+  }
+  const amt = typedStake(T.buf);
+  if (amt === null) {
+    sfx.deny();
+    return say("Type the amount.");
+  }
+  if (amt > S.credit) {
     sfx.deny();
     return say(
       S.credit <= 0
@@ -216,21 +244,11 @@ function holdStart(side: number): void {
         : "Your balance is below that stake.",
     );
   }
-  T.hold = side;
-  T.holdN = 0;
-  pressKey(side ? "B" : "A", 0.016);
-  holdTimer = window.setInterval(() => {
-    T.holdN++;
-    sfx.tick(T.holdN);
-    if (T.holdN >= 8) {
-      holdEnd();
-      sfx.bet();
-      S.side = side;
-      S.amt = stake();
-      if (canBet(S)) $("#h-bet").click();
-      hintText();
-    }
-  }, 100);
+  S.side = T.betSide;
+  S.amt = amt;
+  if (!canBet(S)) return;
+  sfx.bet();
+  $("#h-bet").click();
 }
 function holdEnd(): void {
   clearInterval(holdTimer);
@@ -354,7 +372,11 @@ const WALK: WalkStep[] = [
     view: () => coinBox.view("meter"),
     remote: false,
   },
-  { say: "EXPECTING A SURVIVOR? HOLD A OR B TO BET.", view: () => null, remote: true },
+  {
+    say: "EXPECTING A SURVIVOR? PRESS A OR B, THEN TYPE THE AMOUNT.",
+    view: () => null,
+    remote: true,
+  },
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
@@ -482,7 +504,7 @@ canvas.addEventListener("pointerdown", (e) => {
     T.hover = -1;
     return hintText();
   }
-  if (pick.id === "A" || pick.id === "B") holdStart(pick.id === "B" ? 1 : 0);
+  if (pick.id === "A" || pick.id === "B") sideKey(pick.id === "B" ? 1 : 0);
   else press(pick.id);
 });
 addEventListener("pointerup", (e) => {
@@ -562,7 +584,7 @@ addEventListener(
     else if (k === "-" || k === "arrowdown") id = "-";
     else if ((k === "a" || k === "b") && !e.repeat) {
       e.stopPropagation();
-      return holdStart(k === "b" ? 1 : 0);
+      return sideKey(k === "b" ? 1 : 0);
     }
     if (!id) return;
     e.stopPropagation();
@@ -695,12 +717,11 @@ function muteKey(): void {
 $("#mute").addEventListener("click", muteKey);
 $("#mute").textContent = isMuted() ? "SOUND OFF · M" : "SOUND ON · M";
 hooks.render = () => {
-  renderPlaceholders();
   if (S.phase === "gate") return hintText();
   if (T.phase !== S.phase) {
     T.phase = S.phase;
     T.buf = "";
-    if (S.phase === "bet") T.stake = 1;
+    T.betSide = -1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();
   }

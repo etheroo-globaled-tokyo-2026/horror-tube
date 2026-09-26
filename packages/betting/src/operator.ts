@@ -12,6 +12,11 @@ export type OperatorChain = {
   run(tx: Transaction): Promise<string>;
 };
 
+export type SettleOutcome =
+  | { kind: "settled"; digest: string }
+  | { kind: "already settled" }
+  | { kind: "cancelled" };
+
 export function createChain(client: SuiGrpcClient, signer: Signer): OperatorChain {
   return {
     readPool: (id) => getPool(client, id),
@@ -50,14 +55,16 @@ export function createOperator(chain: OperatorChain, ids: ContractIds, cap: stri
           await chain.run(closeBettingTx(ids, cap, pool(battleId)));
       }),
     settle: (battleId: string, side: 0 | 1) =>
-      serial(async (): Promise<string | null> => {
+      serial(async (): Promise<SettleOutcome> => {
         const found = await current(battleId);
-        if (found.status === PoolStatus.settled && found.winningSide === BigInt(side)) return null;
+        if (found.status === PoolStatus.cancelled) return { kind: "cancelled" };
+        if (found.status === PoolStatus.settled && found.winningSide === BigInt(side))
+          return { kind: "already settled" };
         if (found.status !== PoolStatus.open)
           throw new Error(
             `Battle ${battleId}: pool status ${found.status}, cannot settle for side ${side}.`,
           );
-        return chain.run(settleTx(ids, cap, pool(battleId), side));
+        return { kind: "settled", digest: await chain.run(settleTx(ids, cap, pool(battleId), side)) };
       }),
     cancel: (battleId: string) =>
       serial(async () => {
