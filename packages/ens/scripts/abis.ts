@@ -54,4 +54,7 @@ export const permissionedResolverAbi = parseAbi([
   "function setText(bytes name, string key, string value)",
   "function resolve(bytes name, bytes data) view returns (bytes)",
   "function grantSetterRoles(bytes setter, address account) returns (bool)",
+  "function roles(uint256 resource, address account) view returns (uint256)",
+  "function hasRoles(uint256 resource, uint256 roleBitmap, address account) view returns (bool)",
+  "function hasRootRoles(uint256 roleBitmap, address account) view returns (bool)",
 ]);
