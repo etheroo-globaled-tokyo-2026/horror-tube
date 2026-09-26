@@ -278,8 +278,8 @@ resource "digitalocean_app" "game" {
       }
 
       env {
-        key   = "BET_MIN_SECONDS"
-        value = tostring(var.bet_min_seconds)
+        key   = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS"
+        value = tostring(var.betting_close_after_video_start_seconds)
         scope = "RUN_TIME"
         type  = "GENERAL"
       }

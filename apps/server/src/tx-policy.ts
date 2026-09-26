@@ -100,6 +100,38 @@ function checkFrameworkCoin(
   throw forbidden(`MoveCall ${call.package}::${call.module}::${call.function}`);
 }
 
+function objectId(input: TxInput): string | undefined {
+  if (input.$kind === "UnresolvedObject") return input.UnresolvedObject.objectId;
+  if (input.$kind === "Object" && input.Object.$kind === "SharedObject") {
+    return input.Object.SharedObject.objectId;
+  }
+  return undefined;
+}
+
+/** Pool object ids of every `betting::bet` call in a kind already checked by assertSponsorableKind. */
+export function betPoolIds(txKind: string, bettingPackageId: string): string[] {
+  const betting = normalizeSuiAddress(bettingPackageId);
+  const data = Transaction.fromKind(txKind).getData();
+  const pools: string[] = [];
+  for (const command of data.commands) {
+    const call = command.MoveCall;
+    if (
+      call === undefined ||
+      call === null ||
+      normalizeSuiAddress(call.package) !== betting ||
+      call.module !== "betting" ||
+      call.function !== "bet"
+    ) {
+      continue;
+    }
+    const arg = call.arguments[1];
+    const id = arg?.$kind === "Input" ? objectId(inputAt(data.inputs, arg.Input)) : undefined;
+    if (id === undefined) throw badKind("betting::bet pool argument was not an object input.");
+    pools.push(normalizeSuiAddress(id));
+  }
+  return pools;
+}
+
 export function assertSponsorableKind(
   txKind: string,
   coinBox: string,

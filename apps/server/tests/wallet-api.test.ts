@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import { after, describe, it } from "node:test";
 
-import { coinWithBalance, Transaction } from "@mysten/sui/transactions";
+import { coinWithBalance, Inputs, Transaction } from "@mysten/sui/transactions";
 import { toBase64 } from "@mysten/sui/utils";
 import * as v from "valibot";
 
@@ -10,7 +10,7 @@ import { HttpError } from "../src/http-error.js";
 import { issueSession, readSession, walletSecret } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import type { ShinamiPort } from "../src/shinami-port.js";
-import { assertSponsorableKind } from "../src/tx-policy.js";
+import { assertSponsorableKind, betPoolIds } from "../src/tx-policy.js";
 import { createWalletHandler, createWalletHandlerFromEnv } from "../src/wallet-handler.js";
 
 const PEPPER = "test-pepper";
@@ -20,6 +20,28 @@ const USDC =
 const COIN_BOX = `0x${"11".repeat(32)}`;
 const OTHER = `0x${"22".repeat(32)}`;
 const PACKAGE_ID = `0x${"33".repeat(32)}`;
+const HOUSE_ID = `0x${"55".repeat(32)}`;
+const POOL_ID = `0x${"66".repeat(32)}`;
+
+const shared = (objectId: string, mutable: boolean) =>
+  Inputs.SharedObjectRef({ objectId, initialSharedVersion: 1, mutable });
+
+/** Same call as betTx in @horror-tube/betting, with objects already resolved as the web's client does. */
+function betKind(sender: string): Promise<string> {
+  return kind(sender, (tx) => {
+    tx.moveCall({
+      target: `${PACKAGE_ID}::betting::bet`,
+      typeArguments: [USDC],
+      arguments: [
+        tx.object(shared(HOUSE_ID, false)),
+        tx.object(shared(POOL_ID, true)),
+        tx.pure.u64(0),
+        coinWithBalance({ type: USDC, balance: 30_000n, useGasCoin: false }),
+        tx.object(shared("0x6", false)),
+      ],
+    });
+  });
+}
 
 async function kind(sender: string | undefined, fill: (tx: Transaction) => void): Promise<string> {
   const tx = new Transaction();
@@ -104,6 +126,12 @@ describe("transaction allowlist", () => {
     assert.throws(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID), status(403));
   });
 
+  it("finds the pool of a betting::bet call", async () => {
+    const txKind = await betKind(COIN_BOX);
+    assert.doesNotThrow(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID));
+    assert.deepEqual(betPoolIds(txKind, PACKAGE_ID), [POOL_ID]);
+  });
+
   it("names BETTING_PACKAGE_ID when a package call has no configured package", async () => {
     const txKind = await kind(undefined, (tx) => {
       tx.moveCall({ target: `${PACKAGE_ID}::pool::bet`, arguments: [] });
@@ -165,7 +193,10 @@ describe("wallet HTTP", () => {
     return port;
   }
 
-  async function start(shinami: ShinamiPort): Promise<string> {
+  async function start(
+    shinami: ShinamiPort,
+    assertBetAllowed: (poolId: string) => void = () => {},
+  ): Promise<string> {
     const server = createGameServer({
       port: 0,
       host: "127.0.0.1",
@@ -175,6 +206,7 @@ describe("wallet HTTP", () => {
         bettingPackageId: PACKAGE_ID,
         verifyProof: () => Promise.resolve(NULLIFIER),
         shinami,
+        assertBetAllowed,
       }),
     });
     servers.push(server);
@@ -241,6 +273,27 @@ describe("wallet HTTP", () => {
     assert.equal(shinami.executed.length, 0);
   });
 
+  it("returns 409 with the game's reason and does not execute a refused bet", async () => {
+    const shinami = fakeShinami();
+    const asked: string[] = [];
+    const base = await start(shinami, (poolId) => {
+      asked.push(poolId);
+      throw new Error("bet rejected: betting closed at 2026-09-26T00:00:05.000Z (betting_closes_at)");
+    });
+    const res = await fetch(`${base}/tx`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ txKind: await betKind(`0x${"44".repeat(32)}`) }),
+    });
+    assert.equal(res.status, 409);
+    assert.match(v.parse(ErrorJson, await res.json()).error, /betting closed at 2026-09-26T00:00:05\.000Z/u);
+    assert.deepEqual(asked, [POOL_ID]);
+    assert.equal(shinami.executed.length, 0);
+  });
+
   it("returns 401 without a session", async () => {
     const base = await start(fakeShinami());
     const res = await fetch(`${base}/wallet`, { method: "POST" });
@@ -270,7 +323,7 @@ describe("wallet HTTP", () => {
 describe("wallet env", () => {
   it("names SHINAMI_ACCESS_KEY when it is missing", () => {
     assert.throws(
-      () => createWalletHandlerFromEnv({}),
+      () => createWalletHandlerFromEnv({}, () => {}),
       /SHINAMI_ACCESS_KEY is required\. Set it in \.env\. See \.env\.example\./u,
     );
   });
