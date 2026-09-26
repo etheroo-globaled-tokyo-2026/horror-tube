@@ -12,7 +12,7 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `game.ts`         | Applies server `RoundState` (`applyRoundState` / `connectToServerRound`). Characters come from ENS (below). |
 | `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
 | `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
-| `coinbox.ts`      | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.                           |
+| `coinbox.ts`      | The slot meter: credit window, coin dial, Sui token tray, PAY BY PHONE sticker, padlocked drawer.           |
 | `room-power.ts`   | The remote's POWER key (`O`): the set dies, films you from the TV, and a face lunges at you when you turn.  |
 | `sfx.ts`          | Sounds made live with Web Audio, plus `sample()` for the POWER scare files in `assets/scare/`.              |
 | `sprites.ts`      | `paint` (pixel art) and the line helpers.                                                                   |
@@ -84,9 +84,9 @@ reads the meter:
 
 **Deposits (the coin box):**
 
-- Coin slot: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Clicking the slot opens the
-  INSERT A COIN panel. After a coin is picked: if no wallet is connected, `<mysten-dapp-kit-connect-modal>` opens; the game
-  checks that the paying wallet has SUI for gas; then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
+- Coin dial: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Turning the dial pays for the
+  tokens waiting in it. If no wallet is connected, `<mysten-dapp-kit-connect-modal>` opens; the game checks that the
+  paying wallet has SUI for gas and enough USDC for the tokens; then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
   `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one
   `0x2::coin::send_funds<USDC>` on a `coinWithBalance({ type: USDC, balance })` coin (`usdcDeposit`), so the USDC lands in
   the in-game wallet's address balance. Bets and the coin return spend only that balance; `POST /tx` rejects coin
@@ -131,7 +131,7 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 
 - **Read:** the camera looks down at a paper waiver on a low stool in front of the TV. The TV shows static above it.
   No remote yet.
-- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV asks for proof of life with a World ID QR code. The hint names World App and offers COPY LINK.
+- **Sign:** ENTER, or click the paper. A signature draws on the line. The TV asks for proof of life with a World ID QR code, the World logo beside it. The hint names World App and offers COPY LINK.
 - **Opening the wallet:** once the proof verifies, the QR goes away and the TV says VIEWER REGISTERED · OPENING YOUR WALLET
   while the game wallet session and the coin box open. If that fails, the TV and hint say which step failed and the
   server's reason; the player stays out.
@@ -222,22 +222,24 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   move when you bet; the TV credit (`… LEFT · 5.00 USDC`) is the real balance plus simulated wins and losses.
 - **No popups.** Clicking the meter zooms the camera onto it, like CloverPit. Up close, the hint bar at the bottom
   names what is under the cursor (`COIN DIAL`, `PADLOCK 5.00 USDC inside`, `PAY BY PHONE`), with no instructions.
-  `ESC`, Backspace or right-click steps back: coin choice → meter → room. From the room, the hint on hover is
+  `ESC`, Backspace or right-click steps back: sticker → meter → room. From the room, the hint on hover is
   `COIN METER 5.00 USDC`.
-- **The coin dial:** deposit from a browser wallet. Click the dial or the wing handle: the hint bar offers the coins
-  (`1` 5 USDC, `2` 10 USDC, `3` 20 USDC, clickable). The handle turns, your wallet extension opens once to approve,
-  and the needle rises.
+- **The token tray and the coin dial:** deposit from a browser wallet. A tray on the side of the box holds Sui
+  tokens worth 1, 5 and 10 USDC (`coin-tokens.ts`); it refills. Drag a token onto the dial, or click it, and it drops
+  into the slit in the wing handle. The tokens wait there, shown on the drum, and the handle shakes until you turn
+  it. Turning it sends one deposit for all of them; your wallet extension opens once to approve. A cancelled or failed
+  deposit, or stepping back before turning, drops the tokens back into the tray. No money moves until the dial turns.
 - **The rental sticker, PAY BY PHONE:** deposit from a phone wallet. Click it and the camera leans in until the QR is
   big enough to scan from the screen; the hint bar shows the address, selectable to copy. Send USDC. The meter counts
   up when the money lands.
 - **The padlock and the drawer:** withdraw. Real meters had no coin return: the collector unlocked the drawer and paid
-  back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, and the credit goes back to
-  the wallet that paid in.
+  back a rebate. Click the padlock or the drawer: the lock swings, the drawer slides out, the credit goes back to
+  the wallet that paid in, and tokens for it lie in the drawer for a moment.
 - **Empty:** the needle rests at 0 and the drums read `00.00`. A and B on the remote do nothing, the TV
   says `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
-- Keys: `D` zooms in and offers the coins, `P` leans in on the sticker, `W` opens the padlock, `1`–`3` pick a coin.
+- Keys: `D` zooms in, `P` leans in on the sticker, `W` opens the padlock, `1`–`3` drop a token, `Enter` turns the dial.
   While zoomed, the remote and the held tape are out of view and the remote keys are off. Stakes are 1, 3 and 5 USDC.
 - **Gas today:** the paying wallet needs testnet SUI for a deposit. The coin return goes through `POST /tx`, which
   Shinami sponsors, so the in-game wallet holds no SUI.
@@ -296,6 +298,7 @@ The warm set:
 | `--blood`, `--blood-deep`     | Death, REC, the remote's LED.                       |
 | `--sulfur`                    | Light, case file numbers, the B key, highlights.    |
 | `--bone`                      | Text on the TV, the A key.                          |
+| `--enamel`                    | The Sui logo only: old, chipped blue enamel.        |
 
 `--cold` is only for the ghost in the logo.
 

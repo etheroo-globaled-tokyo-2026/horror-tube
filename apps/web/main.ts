@@ -12,7 +12,9 @@ import {
   voteSide,
   type Phase,
 } from "./game.ts";
-import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
+import { type CoinBoxPart, type CoinBoxView, createCoinBox, isCoin } from "./coinbox.ts";
+import { COINS } from "./coin-tokens.ts";
+import { SUI_MARK_SVG } from "./sui-mark.ts";
 import { canBet, canCollect } from "./betting.ts";
 import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
@@ -49,7 +51,7 @@ import { keyById, led, remote } from "./room-remote.ts";
 import { shelf, slots, tape, TAPE, updateTape, type Slot } from "./room-shelf.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
-  ["d", "slot"],
+  ["d", "body"],
   ["p", "sticker"],
   ["w", "lock"],
 ]);
@@ -69,23 +71,30 @@ function hintText(): void {
   }
   const hovered = S.chars[T.hover];
   const credit = `${usd(coinBox.credit())} USDC`;
+  const waiting = coinBox.waiting();
+  const collect =
+    S.pending === "claim" ? " · COLLECTING…" : canCollect(S) ? ` · COLLECT ${b("OK")}` : "";
   const meter = Z.error
     ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
-    : Z.pick
-      ? COINS.map((c, i) => `<button data-coin="${c}">${b(String(i + 1))} ${c} USDC</button>`).join(
-          " ",
-        )
-      : Z.at === "sticker"
-        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox.address() ?? ""}</span>`
-        : Z.at !== null && Z.hover === "slot"
-          ? b("COIN DIAL")
+    : Z.at === "sticker"
+      ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox.address() ?? ""}</span>`
+      : Z.at !== null && isCoin(Z.hover)
+        ? `${b("TOKEN")} ${SUI_MARK_SVG} ${String(Z.hover)} USDC ${b(String(COINS.indexOf(Z.hover) + 1))}`
+        : Z.at !== null && Z.hover === "handle"
+          ? waiting > 0
+            ? `${b("COIN DIAL")} TURN FOR ${String(waiting)} USDC ${b("ENTER")}`
+            : `${b("COIN DIAL")} DROP A TOKEN FIRST`
           : Z.at !== null && Z.hover === "lock"
             ? `${b("PADLOCK")} ${credit} inside`
             : Z.at !== null && Z.hover === "sticker"
               ? b("PAY BY PHONE")
-              : Z.at !== null || Z.hover !== null
-                ? `${b("COIN METER")} ${credit}`
-                : "";
+              : Z.at !== null && waiting > 0
+                ? `${b("COIN METER")} +${String(waiting)} USDC WAITING · TURN THE DIAL ${b("ENTER")}`
+                : Z.at !== null
+                  ? `${b("COIN METER")} ${credit} · DRAG A TOKEN TO THE DIAL ${b("1 2 3")}`
+                  : Z.hover !== null
+                    ? `${b("COIN METER")} ${credit}`
+                    : "";
   if (meter) {
     h.innerHTML = Z.at === null ? meter : `${meter} <span class="hint-key">ESC</span>`;
     return;
@@ -114,9 +123,9 @@ function hintText(): void {
                     ? "TUNING IN"
                     : `NEXT ${b("ENTER")}`
       : S.phase === "vote" || S.phase === "countdown"
-        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}`
+        ? `WHO WALKS OUT · ${S.fighters === null ? "" : S.fighters.map((id, side) => `${b(S.chars[id]?.short ?? String(id))} ${String(S.votes[side])}`).join(" · ")} · ${S.voters}/${S.quorum}${collect}`
         : S.phase === "waiting" || S.phase === "over" || S.phase === "pick"
-          ? "TYPE THE NUMBER · OK"
+          ? `TYPE THE NUMBER · OK${collect}`
         : S.phase === "bet" && !S.bet && S.poolId === null
           ? "OPENING THE BOOK"
           : S.pending === "bet"
@@ -156,7 +165,7 @@ function press(id: string): void {
 function turnOff(): void {
   if (S.phase === "gate" && W8.step !== "done") return;
   Z.at = null;
-  Z.pick = false;
+  coinBox.giveBack();
   holdEnd();
   T.buf = "";
   T.held = -1;
@@ -321,9 +330,13 @@ type Pick =
 const shown = (o: THREE.Object3D | null): boolean => o === null || (o.visible && shown(o.parent));
 const within = (o: THREE.Object3D | null, root: THREE.Object3D): boolean =>
   o !== null && (o === root || within(o.parent, root));
-const pickAt = (e: MouseEvent): Pick | null => {
+const aimAt = (e: MouseEvent): THREE.Ray => {
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
+  return ray.ray;
+};
+const pickAt = (e: MouseEvent): Pick | null => {
+  aimAt(e);
   const hit = ray
     .intersectObject(scene, true)
     .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
@@ -366,30 +379,32 @@ function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
   hintText();
 }
-function zoom(at: CoinBoxView | null, pick = false): void {
+function zoom(at: CoinBoxView | null): void {
   Z.at = at;
-  Z.pick = pick;
   hintText();
 }
 function stepBack(): void {
   if (Z.error) Z.error = "";
-  else if (Z.pick) Z.pick = false;
   else if (Z.at === "sticker") Z.at = "meter";
-  else Z.at = null;
+  else {
+    Z.at = null;
+    coinBox.giveBack();
+  }
   hintText();
-}
-function insertCoin(usdc: number): void {
-  coinBox.insert(usdc);
-  zoom("meter");
 }
 function useCoinPart(part: CoinBoxPart): void {
   Z.error = "";
-  if (part === "slot") zoom("meter", true);
-  else if (part === "sticker") zoom("sticker");
+  if (isCoin(part)) {
+    coinBox.drop(part);
+    zoom("meter");
+  } else if (part === "handle") {
+    zoom("meter");
+    coinBox.turn();
+  } else if (part === "sticker") zoom("sticker");
   else if (part === "lock") {
     zoom("meter");
     coinBox.open();
-  } else zoom(Z.at ?? "meter", Z.pick);
+  } else zoom(Z.at ?? "meter");
 }
 function openCoinKey(part: CoinBoxPart): void {
   if (coinBox.address() === null) {
@@ -409,8 +424,6 @@ async function copyWorldIdLink(button: HTMLElement): Promise<void> {
   }
 }
 $("#hint").addEventListener("click", (e) => {
-  const coin = e.target instanceof Element ? e.target.closest("[data-coin]") : null;
-  if (coin instanceof HTMLElement) insertCoin(Number(coin.dataset.coin));
   const copy = e.target instanceof Element ? e.target.closest("[data-copy-link]") : null;
   if (copy instanceof HTMLElement) void copyWorldIdLink(copy);
 });
@@ -429,7 +442,9 @@ function updateHover(): void {
   T.hover = hover;
   hintText();
 }
+let dragFrom: [x: number, y: number] | null = null;
 addEventListener("pointermove", (e) => {
+  if (dragFrom !== null) coinBox.drag(aimAt(e));
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
   const pick = pickAt(e);
@@ -445,7 +460,10 @@ canvas.addEventListener("contextmenu", (e) => {
   if (Z.at !== null) stepBack();
 });
 const PART_CURSOR = {
-  slot: "coin",
+  1: "coin",
+  5: "coin",
+  10: "coin",
+  handle: "grab",
   sticker: "phone",
   lock: "grab",
   body: "press",
@@ -467,6 +485,11 @@ canvas.addEventListener("pointerdown", (e) => {
     if (pick?.at === "coin") return openCoinKey(pick.part);
     return walkTo(walkRef.n + 1);
   }
+  if (Z.at !== null && pick?.at === "coin" && isCoin(pick.part)) {
+    Z.error = "";
+    if (coinBox.grab(pick.part, aimAt(e))) dragFrom = [e.clientX, e.clientY];
+    return;
+  }
   if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
   if (pick === null) return;
   if (pick.at === "paper") return sign();
@@ -481,7 +504,22 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pick.id === "A" || pick.id === "B") sideKey(pick.id === "B" ? 1 : 0);
   else press(pick.id);
 });
-addEventListener("pointerup", holdEnd);
+addEventListener("pointerup", (e) => {
+  holdEnd();
+  if (dragFrom === null) return;
+  const moved = Math.hypot(e.clientX - dragFrom[0], e.clientY - dragFrom[1]) > 6;
+  dragFrom = null;
+  coinBox.release(!moved);
+  hintText();
+});
+const dropDrag = (): void => {
+  if (dragFrom === null) return;
+  dragFrom = null;
+  coinBox.release(false);
+  hintText();
+};
+addEventListener("pointercancel", dropDrag);
+addEventListener("blur", dropDrag);
 addEventListener(
   "keydown",
   (e) => {
@@ -526,7 +564,11 @@ addEventListener(
     }
     if (Z.at !== null) {
       if (k === "escape" || k === "backspace") stepBack();
-      else if (Z.pick && /^[1-3]$/.test(k)) insertCoin(COINS[Number(k) - 1]);
+      else if (k === "enter") useCoinPart("handle");
+      else {
+        const coin = COINS[Number(k) - 1];
+        if (/^[1-3]$/.test(k) && coin !== undefined) useCoinPart(coin);
+      }
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -609,6 +651,7 @@ renderer.setAnimationLoop(() => {
   if (raise) led.material.color.set(Math.sin(t * 8) > 0 ? COL.blood : COL.bloodDeep);
   remote.visible = !waiver && Z.at === null && (walkRef.n < 0 || raise === 1);
   updateTape(performance.now());
+  coinBox.tick(performance.now());
   updateHover();
   coinBox.group.visible = !waiver;
   cable.visible = !waiver;
