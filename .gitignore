@@ -163,3 +163,6 @@ __pycache__/
 # Cursor MCP config (contains API secrets)
 .cursor/mcp.json
 .new-mcp
+
+# git worktrees
+.worktrees
