@@ -449,14 +449,6 @@ const recs = (ch) => `<dl class="recs">
 function gate(step) {
   const g = $("#gate");
   g.hidden = false;
-  if (step === "id")
-    g.innerHTML = `<h1 class="lit">HORROR TUBE</h1><p class="osd t-house">18+ · ONE HUMAN, ONE VOTE</p>
-    <p>Famous horror characters fight to the death. The crowd picks who fights. You bet on who dies. Prove with World ID (Orb) that you are a real human and 18+.</p>
-    <div class="row"><button class="btn primary" data-act="verify">VERIFY WITH WORLD ID</button><button class="btn" data-act="fail">I HAVE NO ORB</button></div>`;
-  if (step === "fail")
-    g.innerHTML = `<h1 class="lit">NOT ELIGIBLE</h1>
-    <p>Only Orb-verified humans can enter or vote. Device and Selfie Check do not prove that you are 18+.</p>
-    <div class="row"><button class="btn" data-act="retry">TRY AGAIN</button></div>`;
   if (step === "wallet")
     g.innerHTML = `<p class="osd t-alive lit">■ VERIFIED · HUMAN 18+</p><h1 class="lit">CONNECT A WALLET</h1>
     <p>Voting is free. To bet, you need test ETH on Sepolia.</p>
@@ -472,10 +464,7 @@ document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
   if (!el || el.disabled) return;
   const act = el.dataset.act;
-  if (act === "verify") gate("wallet");
-  else if (act === "fail") gate("fail");
-  else if (act === "retry") gate("id");
-  else if (act === "wallet") {
+  if (act === "wallet") {
     HT.wallet().then(async (w) => {
       S.wallet = w.account.address;
       S.credit = Number(await w.getBalance({ address: S.wallet })) / 1e18;
@@ -493,10 +482,6 @@ document.addEventListener("click", (e) => {
   } else if (act === "view") {
     S.view = +el.dataset.v || (S.view === 1 ? 2 : 1);
     render();
-  } else if (act === "power") {
-    S.phase = "gate";
-    S.view = 1;
-    gate("id");
   } else if (act === "reset") newSeason();
   else if (act === "ring") pick(+el.dataset.id);
   else if (act === "cast") {
@@ -559,5 +544,4 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-gate("id");
 paintFilm();

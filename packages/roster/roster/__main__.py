@@ -1,9 +1,10 @@
-"""CLI: validate roster JSON, propose sheets, plan import/removal, register/unregister on chain."""
+"""CLI: validate roster JSON, propose sheets, plan import/removal, register/unregister, generate face icons."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from dotenv import load_dotenv
 
 from roster.chain import apply_register_plan, snapshot_existing, unregister_labels
 from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
+from roster.icons import IconGenerationError, required_env, write_face_icons
 from roster.plan import (
     ON_EXISTING_VALUES,
     build_import_plan,
@@ -73,6 +75,26 @@ def _load_sources_file(path: Path) -> list[str]:
     if len(lines) == 0:
         raise FandomError(f"{path}: sources file has no URLs or page titles.")
     return lines
+
+
+def cmd_icons(args: argparse.Namespace) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    input_path = Path(_require_flag(args.input, name="--input"))
+    out_dir = Path(_require_flag(args.out_dir, name="--out-dir"))
+    _refuse_fixture_input(input_path, command="icons")
+    characters = load_characters(input_path)
+    require_no_duplicate_labels(characters, source=str(input_path))
+    written = write_face_icons(
+        characters,
+        out_dir,
+        api_key=required_env("TOGETHER_API_KEY", os.environ),
+        model=required_env("TOGETHER_IMAGE_MODEL", os.environ),
+        api_url=required_env("TOGETHER_API_URL", os.environ),
+    )
+    print(f"Wrote {len(written)} face icon(s) to {out_dir}")
+    for path in written:
+        print(path)
+    return 0
 
 
 def cmd_propose(args: argparse.Namespace) -> int:
@@ -169,14 +191,18 @@ def cmd_plan_remove(args: argparse.Namespace) -> int:
     return 0
 
 
-def _refuse_fixture_for_chain(path: Path) -> None:
+def _refuse_fixture_input(path: Path, *, command: str) -> None:
     resolved = path.resolve()
     if "fixtures" in resolved.parts:
         raise RosterValidationError(
-            f"{path}: register will not accept a fixture. "
+            f"{path}: {command} will not accept a fixture. "
             "Run `python -m roster propose` against Fandom and pass that JSON. "
             "An end-to-end ENS or CDN upload requires that real sheet."
         )
+
+
+def _refuse_fixture_for_chain(path: Path) -> None:
+    _refuse_fixture_input(path, command="register")
 
 
 def cmd_register(args: argparse.Namespace) -> int:
@@ -250,6 +276,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    icons_p = sub.add_parser(
+        "icons",
+        help=(
+            "Generate 100x100 face icons from each character look via the Together "
+            "model in TOGETHER_IMAGE_MODEL. Writes <label>.png. Does not upload "
+            "to the CDN or set the icon URL. Refuses fixture JSON."
+        ),
+    )
+    icons_p.add_argument(
+        "--input",
+        required=True,
+        help="Path to a single-character object or bulk character array JSON.",
+    )
+    icons_p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write <label>.png files. Created if missing.",
+    )
+    icons_p.set_defaults(func=cmd_icons)
 
     propose_p = sub.add_parser(
         "propose",
@@ -404,6 +450,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except RosterValidationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except IconGenerationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

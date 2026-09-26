@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
     "strict": true,
-    "allowJs": true,
     "noEmit": true,
     "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
     "types": ["node"]
   },
-  "exclude": ["node_modules", "dist", "tools"]
+  "include": ["*.ts", "tests/*.ts"]
 }

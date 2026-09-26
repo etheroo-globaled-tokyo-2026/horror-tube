@@ -25,4 +25,4 @@ if (label === undefined || label.trim() === "") {
 - If a variable is missing or blank, fail with an error that names the variable.
 - `.env` stays gitignored. Never commit it.
 
-Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `scripts/pin/` and `scripts/abis/` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
+Checked-in contract artifacts are not environment config. ABIs and the pinned deployment address table under `packages/ens/scripts/pin/` and `packages/ens/scripts/abis.ts` stay in the repo. The app still chooses which deployment, label, key, and RPC to use through `.env`.
