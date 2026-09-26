@@ -17,7 +17,6 @@ import {
   enterRoomAction,
   stakeActionForBattle,
   verifyProofOfHuman,
-  voteActionForRound,
   type IdkitResultJson,
   type VerifyFetch,
 } from "../src/index.js";
@@ -86,12 +85,10 @@ const neverFetch: VerifyFetch = async () => {
   throw new Error("fetch must not be called");
 };
 
-test("action names are per round and per battle", () => {
+test("action names are per battle", () => {
   assert.equal(enterRoomAction(), "enter-room");
-  assert.equal(voteActionForRound("7"), "vote-round-7");
   assert.equal(stakeActionForBattle("42"), "stake-battle-42");
-  assert.throws(() => voteActionForRound(" "), /roundId is required/);
-  assert.throws(() => stakeActionForBattle(""), /battleId is required/);
+  assert.throws(() => stakeActionForBattle(" "), /battleId is required/);
 });
 
 test("loadWorldIdEnv names each missing or blank variable and .env.example", () => {
@@ -137,7 +134,7 @@ test("RP signature message matches the World ID 4.0 spec test vector", () => {
 });
 
 test("createIdkitRequestContext signs with WORLD_ID_SIGNING_KEY and refuses legacy proofs", async () => {
-  const context = createIdkitRequestContext({ action: "vote-round-3", env: testEnv() });
+  const context = createIdkitRequestContext({ action: "stake-battle-3", env: testEnv() });
   assert.equal(context.app_id, APP_ID);
   assert.equal(context.rp_context.rp_id, RP_ID);
   assert.equal(context.allow_legacy_proofs, false);
@@ -159,7 +156,7 @@ test("createIdkitRequestContext signs with WORLD_ID_SIGNING_KEY and refuses lega
   assert.throws(
     () =>
       createIdkitRequestContext({
-        action: "vote-round-3",
+        action: "stake-battle-3",
         env: { ...testEnv(), WORLD_ID_SIGNING_KEY: "" },
       }),
     /WORLD_ID_SIGNING_KEY is required/,
@@ -167,7 +164,7 @@ test("createIdkitRequestContext signs with WORLD_ID_SIGNING_KEY and refuses lega
 });
 
 test("parseProofOfHumanResult rejects legacy, session, and non-Orb results", () => {
-  const base = v4Result("vote-round-1");
+  const base = v4Result("stake-battle-1");
   const item = pohItem();
   assert.equal(parseProofOfHumanResult(base).responses[0].nullifier, NULLIFIER_DECIMAL);
   const rejected: [IdkitResultJson, RegExp][] = [
@@ -186,7 +183,7 @@ test("parseProofOfHumanResult rejects legacy, session, and non-Orb results", () 
 });
 
 test("verifyProofOfHuman forwards the result unchanged to /api/v4/verify/{rp_id}", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   const result = v4Result(action);
   const { fetch, calls } = scriptedFetch(200, JSON.stringify(portalSuccess(action)));
   const verified = await verifyProofOfHuman({
@@ -205,7 +202,7 @@ test("verifyProofOfHuman forwards the result unchanged to /api/v4/verify/{rp_id}
 });
 
 test("staging verification needs a token and sends it to the portal", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   const result = { ...v4Result(action), environment: "staging" };
   const staging = { ...testEnv(), WORLD_ID_ENVIRONMENT: "staging" };
   assert.throws(() => loadWorldIdEnv(staging), /WORLD_ID_STAGING_TOKEN is required/);
@@ -263,7 +260,7 @@ test("sandbox verification needs no token and never sends the staging header", a
 });
 
 test("verifyProofOfHuman rejects before calling the portal on local mismatches", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   const common = { rpId: RP_ID, environment: "production" as const, fetch: neverFetch };
   const base = v4Result(action);
   await assert.rejects(
@@ -278,7 +275,7 @@ test("verifyProofOfHuman rejects before calling the portal on local mismatches",
   await assert.rejects(
     verifyProofOfHuman({
       ...common,
-      action: voteActionForRound("2"),
+      action: stakeActionForBattle("2"),
       signal: WALLET,
       idkitResult: base,
     }),
@@ -305,7 +302,7 @@ test("verifyProofOfHuman rejects before calling the portal on local mismatches",
 });
 
 test("verifyProofOfHuman with signal null requires a proof with no signal", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   const base = v4Result(action);
   const { signal_hash: _dropped, ...unsigned } = pohItem();
   for (const item of [unsigned, { ...unsigned, signal_hash: "0x0" }]) {
@@ -345,7 +342,7 @@ test("verifyProofOfHuman with signal null requires a proof with no signal", asyn
 });
 
 test("verifyProofOfHuman fails closed on every portal rejection", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   const ok = portalSuccess(action);
   const cases: [string, number, string, RegExp][] = [
     [
@@ -417,7 +414,7 @@ test("verifyProofOfHuman fails closed on every portal rejection", async () => {
 
 test("claimHumanAction verifies with the portal, stores the nullifier once, and rejects reuse", async () => {
   const store = new MemoryNullifierStore();
-  const action = voteActionForRound("5");
+  const action = stakeActionForBattle("5");
   const { fetch, calls } = scriptedFetch(200, JSON.stringify(portalSuccess(action)));
   const claim = () =>
     claimHumanAction({
@@ -437,7 +434,7 @@ test("claimHumanAction verifies with the portal, stores the nullifier once, and 
   await assert.rejects(claim(), NullifierAlreadyUsedError);
   assert.equal(calls.length, 1);
 
-  const nextRound = voteActionForRound("6");
+  const nextRound = stakeActionForBattle("6");
   await claimHumanAction({
     action: nextRound,
     signal: WALLET,
@@ -472,7 +469,7 @@ test("claimHumanAction stores nothing when the portal rejects the proof", async 
 });
 
 test("claimHumanAction refuses to run without World ID env", async () => {
-  const action = voteActionForRound("1");
+  const action = stakeActionForBattle("1");
   await assert.rejects(
     claimHumanAction({
       action,
