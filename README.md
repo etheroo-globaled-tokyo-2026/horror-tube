@@ -1,6 +1,6 @@
 # Horror Tube
 
-![Horror Tube](docs/banner.png)
+[![Horror Tube](./docs/banner.png)](./docs/banner.png)
 
 [![Sui](https://img.shields.io/badge/Sui-4DA2FF?style=flat-square&logo=sui&logoColor=white)](https://sui.io)
 [![ENS](https://img.shields.io/badge/ENS-5298FF?style=flat-square&logo=ens&logoColor=white)](https://ens.domains)
