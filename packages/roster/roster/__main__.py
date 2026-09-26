@@ -50,6 +50,21 @@ from roster.validate import (
     require_no_duplicate_strings,
 )
 
+# packages/roster/roster/__main__.py -> repo root (not cwd).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ENV_PATH = REPO_ROOT / ".env"
+
+
+def load_repo_dotenv() -> None:
+    """Load the checkout/worktree root `.env` when present.
+
+    `load_dotenv()` with no path follows cwd, so an empty `packages/roster/.env`
+    can shadow the real file and inject nothing. Missing file is fine for
+    `propose` / `sections`; commands that need vars fail when those vars are blank.
+    """
+    if REPO_ENV_PATH.is_file():
+        load_dotenv(dotenv_path=REPO_ENV_PATH)
+
 
 def _require_ens_label() -> str:
     raw = os.environ.get("ENS_LABEL")
@@ -671,7 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    load_dotenv()
+    load_repo_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

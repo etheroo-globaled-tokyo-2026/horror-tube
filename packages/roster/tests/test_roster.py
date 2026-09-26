@@ -257,12 +257,17 @@ class ProposeTests(unittest.TestCase):
     def test_missing_appearance_section_fails(self):
         with self.assertRaises(FandomError) as ctx:
             _lore("Jason Voorhees (Friday the 13th)")
-        self.assertIn("no Appearance section", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("no Appearance section", message)
+        self.assertIn("Sections:", message)
+        self.assertIn("sections --source", message)
 
     def test_disambiguation_page_fails(self):
         with self.assertRaises(FandomError) as ctx:
             _lore("Freddy Krueger")
-        self.assertIn("disambiguation", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("disambiguation", message)
+        self.assertIn("--source", message)
 
     def test_duplicate_labels_fail(self):
         lore = _lore("Pinhead (Hellraiser)")
@@ -284,6 +289,32 @@ class ProposeTests(unittest.TestCase):
             plan = build_import_plan(loaded, ens_label="horrortube")
             self.assertEqual(plan["plan"], "import")
             self.assertEqual(len(plan["characters"]), 2)
+
+
+class RepoEnvLoadTests(unittest.TestCase):
+    def test_load_repo_dotenv_prefers_repo_root_over_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_env = root / ".env"
+            repo_env.write_text("ENS_LABEL=from-repo-root\n", encoding="utf-8")
+            cwd_dir = root / "packages" / "roster"
+            cwd_dir.mkdir(parents=True)
+            (cwd_dir / ".env").write_text("ENS_LABEL=from-cwd-shadow\n", encoding="utf-8")
+            previous = os.getcwd()
+            with mock.patch.object(cli, "REPO_ENV_PATH", repo_env):
+                with mock.patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop("ENS_LABEL", None)
+                    try:
+                        os.chdir(cwd_dir)
+                        cli.load_repo_dotenv()
+                        self.assertEqual(os.environ.get("ENS_LABEL"), "from-repo-root")
+                    finally:
+                        os.chdir(previous)
+                        os.environ.pop("ENS_LABEL", None)
+
+    def test_load_repo_dotenv_missing_file_is_ok(self):
+        with mock.patch.object(cli, "REPO_ENV_PATH", Path("/nonexistent/horror-tube/.env")):
+            cli.load_repo_dotenv()
 
 
 class CliTests(unittest.TestCase):
