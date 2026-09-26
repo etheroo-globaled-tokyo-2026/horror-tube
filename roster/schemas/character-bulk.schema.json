@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horror-tube.local/schemas/character-bulk.schema.json",
+  "title": "Character bulk list",
+  "description": "Array of character sheets for one import run. Duplicate labels inside the file are rejected by the script after schema validation.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "$ref": "character.schema.json"
+  }
+}
