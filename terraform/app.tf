@@ -168,6 +168,62 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "SUI_NETWORK"
+        value = var.sui_network
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "SUI_GRPC_URL"
+        value = var.sui_grpc_url
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "BETTING_PACKAGE_ID"
+        value = var.betting_package_id
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "BETTING_HOUSE_ID"
+        value = var.betting_house_id
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "SUI_OPERATOR_CAP_ID"
+        value = var.sui_operator_cap_id
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "SUI_MIN_BET"
+        value = var.sui_min_bet
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "BET_FEE_BPS"
+        value = var.bet_fee_bps
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "SUI_OPERATOR_PRIVATE_KEY"
+        value = var.sui_operator_private_key
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
         key   = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
         value = digitalocean_spaces_key.fight_media.access_key
         scope = "RUN_TIME"
@@ -240,13 +296,6 @@ resource "digitalocean_app" "game" {
       env {
         key   = "SKIP_BATTLE_SETTLEMENT"
         value = var.skip_battle_settlement
-        scope = "RUN_TIME"
-        type  = "GENERAL"
-      }
-
-      env {
-        key   = "BATTLE_BETTING_ADDRESS"
-        value = var.battle_betting_address
         scope = "RUN_TIME"
         type  = "GENERAL"
       }

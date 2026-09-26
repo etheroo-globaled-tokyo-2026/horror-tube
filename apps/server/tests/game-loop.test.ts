@@ -43,7 +43,7 @@ function trackingPorts(calls: string[]): ChainWritePorts {
       calls.push("status");
       return "0xstatus";
     },
-    async settleBattle(battleId) {
+    async settleBattle(battleId, _side) {
       calls.push(`settle:${battleId}`);
       return "0xsettle";
     },
@@ -51,28 +51,42 @@ function trackingPorts(calls: string[]): ChainWritePorts {
 }
 
 function trackingBattleBetting(calls: string[]): BattleBettingPorts {
-  let nextId = 1n;
+  let nextId = 1;
   return {
+    config: {
+      network: "testnet",
+      grpcUrl: "https://example.invalid",
+      packageId: "0xpkg",
+      houseId: "0xhouse",
+      coinType: "0x2::sui::SUI",
+    },
+    poolIdFor(battleId) {
+      return `0xpool-${battleId}`;
+    },
     async minBet() {
-      return 10_000_000_000_000n;
+      return 30_000n;
     },
     async openBattle(fighterA, fighterB, closesAtUnix) {
-      const id = nextId;
-      nextId += 1n;
+      const id = `battle-${String(nextId)}`;
+      nextId += 1;
       calls.push(
-        `open:${fighterA},${fighterB},${String(closesAtUnix)}→${String(id)}`,
+        `open:${fighterA},${fighterB},${String(closesAtUnix)}→${id}`,
       );
       return id;
     },
-    async placeBet(battleId, fighter, valueWei) {
-      calls.push(
-        `bet:${String(battleId)},${String(fighter)},${String(valueWei)}`,
-      );
-      return `0xbet${String(battleId)}` as `0x${string}`;
-    },
     async cancelBattle(battleId) {
-      calls.push(`cancel:${String(battleId)}`);
-      return `0xcancel${String(battleId)}` as `0x${string}`;
+      calls.push(`cancel:${battleId}`);
+      return battleId;
+    },
+    async closeBetting(battleId) {
+      calls.push(`close:${battleId}`);
+    },
+    async settle(battleId, side) {
+      calls.push(`settle:${battleId}:${String(side)}`);
+    },
+    async readPoolTotals(battleId) {
+      calls.push(`read:${battleId}`);
+      return [0n, 0n];
     },
   };
 }
@@ -301,6 +315,7 @@ describe("GameLoop ENS status", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "reset-dead" }),
     });
@@ -384,12 +399,11 @@ describe("GameLoop phases", () => {
       `expected openBattle for bravo vs alpha, got ${JSON.stringify(settle.betCalls)}`,
     );
 
-    await loop.bet(0, 2);
-    assert.deepEqual(loop.getState().pool, [2, 0]);
-    assert.ok(
-      settle.betCalls.some((c) => c.startsWith("bet:1,0,20000000000000")),
-      `expected placeBet call, got ${JSON.stringify(settle.betCalls)}`,
-    );
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId, "battleId should be set after openPool");
+    assert.equal(loop.getState().poolId, `0xpool-${battleId}`);
+    loop.setPool(battleId, `0xpool-${battleId}`, [20000, 0]);
+    assert.deepEqual(loop.getState().pool, [20000, 0]);
 
     await loop.attachAgentResult(sampleAgentInsert());
     loop.setOutcome(0, 3);
@@ -402,6 +416,10 @@ describe("GameLoop phases", () => {
     now += 2_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "fight");
+    assert.ok(
+      settle.betCalls.some((c) => c.startsWith("close:")),
+      `expected closeBetting, got ${JSON.stringify(settle.betCalls)}`,
+    );
     assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/fight1.mp4");
     assert.equal(
       loop.getState().frameUrl,
@@ -491,7 +509,7 @@ describe("GameLoop phases", () => {
         calls.push("status");
         return "0xstatus";
       },
-      async settleBattle(battleId) {
+      async settleBattle(battleId, _side) {
         calls.push(`settle:${battleId}`);
         return "0xsettle";
       },
@@ -694,7 +712,7 @@ describe("GameLoop phases", () => {
     assert.deepEqual(settle2.calls, ["injuries", "status"]);
   });
 
-  it("rejects bet outside bet phase and empty video url", async () => {
+  it("rejects empty video url", async () => {
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
       config: baseConfig,
@@ -708,7 +726,7 @@ describe("GameLoop phases", () => {
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "x" }),
     });
-    await assert.rejects(() => loop.bet(0, 1), /bet phase/u);
+    void loop;
     let now = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
@@ -783,7 +801,7 @@ describe("GameLoop phases", () => {
     );
   });
 
-  it("after failVideo refuses bets, cancels the battle, and leaves bet for over", async () => {
+  it("after failVideo cancels the Sui pool and leaves bet for over", async () => {
     let now = 0;
     const settle = unusedSettleDeps(true);
     const loop = new GameLoop({
@@ -809,20 +827,16 @@ describe("GameLoop phases", () => {
     now += 1_000;
     await loop.tick(now);
     assert.equal(loop.getState().phase, "bet");
-    await loop.bet(0, 1);
-    assert.deepEqual(loop.getState().pool, [1, 0]);
+    const battleId = loop.getState().battleId;
+    assert.ok(battleId);
 
     await loop.failVideo("fal render failed: timeout");
     assert.equal(loop.getState().phase, "over");
     assert.equal(loop.getState().error, "fal render failed: timeout");
     assert.deepEqual(loop.getState().pool, [0, 0]);
     assert.ok(
-      settle.betCalls.some((c) => c === "cancel:1"),
+      settle.betCalls.some((c) => c === `cancel:${battleId}`),
       `expected cancelBattle, got ${JSON.stringify(settle.betCalls)}`,
-    );
-    await assert.rejects(
-      () => loop.bet(1, 1),
-      /bet is only allowed in the bet phase|video failure/u,
     );
   });
 
@@ -838,6 +852,7 @@ describe("GameLoop phases", () => {
         betMinSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -892,6 +907,7 @@ describe("GameLoop phases", () => {
         betMinSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -913,12 +929,8 @@ describe("GameLoop phases", () => {
       /Fight job failed: FAL_KEY is required/u,
     );
     assert.ok(
-      settle.betCalls.some((c) => c === "cancel:1"),
+      settle.betCalls.some((c) => c.startsWith("cancel:")),
       `expected cancelBattle, got ${JSON.stringify(settle.betCalls)}`,
-    );
-    await assert.rejects(
-      () => loop.bet(0, 1),
-      /bet is only allowed in the bet phase|video failure/u,
     );
   });
 
@@ -931,6 +943,7 @@ describe("GameLoop phases", () => {
     const loop = new GameLoop({
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -961,11 +974,11 @@ describe("GameLoop phases", () => {
     await flushFightJob();
     assert.deepEqual(
       requests.map((r) => r.battleId),
-      ["1", "2"],
+      ["battle-1", "battle-2"],
     );
 
     pending[0]?.({
-      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: "1" }),
+      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: "battle-1" }),
       winnerSide: 0,
       damage: 1,
       videoUrl: "https://cdn.example/videos/late.mp4",
@@ -992,6 +1005,7 @@ describe("GameLoop phases", () => {
         settleSeconds: 1,
       },
       ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
       now: () => now,
       randomInt: pickFirst,
       battleQueueStore: settle.battleQueueStore,
@@ -1105,6 +1119,5 @@ describe("GameLoop phases", () => {
     assert.equal(loop.getState().phase, "over");
     assert.match(loop.getState().error ?? "", /VIDEO_TIMEOUT_SECONDS/u);
     assert.ok(settle.betCalls.some((c) => c.startsWith("cancel:")));
-    await assert.rejects(() => loop.bet(0, 1), /bet phase|video failure/u);
   });
 });

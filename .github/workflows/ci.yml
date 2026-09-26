@@ -155,10 +155,18 @@ jobs:
       # jason and freddy are registered under horrortube.eth so the server can
       # read each label's ENS status before listen.
       ROSTER_ENS_LABELS: "jason,freddy"
-      # BattleBetting placeBet / openBattle (apps/server/src/battle-betting.ts). Public Sepolia
-      # deploy address; CI key and RPC are not production secrets and send no live tx here.
-      BATTLE_BETTING_ADDRESS: "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
+      # ENS settle writes (not Sui betting).
       AGENT_PRIVATE_KEY: "0xabababababababababababababababababababababababababababababababab"
+      # Sui betting (apps/server/src/battle-betting.ts). Public testnet IDs from deploy;
+      # CI operator key is throwaway and never used for a live openPool in this job.
+      SUI_NETWORK: "testnet"
+      SUI_GRPC_URL: "https://fullnode.testnet.sui.io:443"
+      BETTING_PACKAGE_ID: "0xc451dc1ad607c088b96ebc9b29cdff892a2e13c9275346838664391851213daf"
+      BETTING_HOUSE_ID: "0xa116a4711f6cf51515ba5551c4c5b78b4fc85882a3941ccdc43f65a7dfc68892"
+      SUI_OPERATOR_CAP_ID: "0x9719983f791ebd479c0127299aaa685a1e02e63fce330e9587e543d7d5b46847"
+      SUI_MIN_BET: "30000"
+      BET_FEE_BPS: "200"
+      SUI_OPERATOR_PRIVATE_KEY: "suiprivkey1qz9uuwtjdetzztm8r84hmazeu3cj2uxwkd2utv7vs0qwmezpsdqpqzmfc7q"
       # Startup requires these. The key and pepper are not real. The coin type is public testnet USDC so the tag check passes. CI does not send a transaction.
       SHINAMI_ACCESS_KEY: "ci-not-a-real-shinami-key"
       WALLET_SECRET_PEPPER: "ci-wallet-pepper"
@@ -236,8 +244,15 @@ jobs:
             -e "ENS_LABEL=${SERVER_ENS_LABEL}" \
             -e "SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}" \
             -e "ROSTER_ENS_LABELS=${ROSTER_ENS_LABELS}" \
-            -e "BATTLE_BETTING_ADDRESS=${BATTLE_BETTING_ADDRESS}" \
             -e "AGENT_PRIVATE_KEY=${AGENT_PRIVATE_KEY}" \
+            -e "SUI_NETWORK=${SUI_NETWORK}" \
+            -e "SUI_GRPC_URL=${SUI_GRPC_URL}" \
+            -e "BETTING_PACKAGE_ID=${BETTING_PACKAGE_ID}" \
+            -e "BETTING_HOUSE_ID=${BETTING_HOUSE_ID}" \
+            -e "SUI_OPERATOR_CAP_ID=${SUI_OPERATOR_CAP_ID}" \
+            -e "SUI_MIN_BET=${SUI_MIN_BET}" \
+            -e "BET_FEE_BPS=${BET_FEE_BPS}" \
+            -e "SUI_OPERATOR_PRIVATE_KEY=${SUI_OPERATOR_PRIVATE_KEY}" \
             -e "SHINAMI_ACCESS_KEY=${SHINAMI_ACCESS_KEY}" \
             -e "WALLET_SECRET_PEPPER=${WALLET_SECRET_PEPPER}" \
             -e "SUI_USDC_TYPE=${SUI_USDC_TYPE}" \

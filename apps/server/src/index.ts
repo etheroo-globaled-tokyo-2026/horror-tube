@@ -45,7 +45,9 @@ console.log("database: verified TLS connection ok");
 
 const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
-const chainWritePorts = createEnsChainWritePorts();
+const chainWritePorts = createEnsChainWritePorts(process.env, {
+  settle: (battleId, side) => battleBetting.settle(battleId, side),
+});
 
 const ensLabels = readRosterEnsLabels();
 const ensStatuses = await readRosterEnsStatuses(ensLabels);
@@ -63,6 +65,20 @@ const game = new GameLoop({
 
 const wallet = createWalletHandlerFromEnv(process.env);
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
+const feeBpsRaw = requiredEnv("BET_FEE_BPS");
+if (!/^[0-9]+$/u.test(feeBpsRaw)) {
+  throw new Error(
+    `BET_FEE_BPS must be a whole number. Got ${JSON.stringify(feeBpsRaw)}.`,
+  );
+}
+
+const bettingPublic = {
+  packageId: battleBetting.config.packageId,
+  houseId: battleBetting.config.houseId,
+  coinType: battleBetting.config.coinType,
+  network: battleBetting.config.network,
+  feeBps: Number(feeBpsRaw),
+};
 
 const server = createGameServer({
   port,
@@ -71,6 +87,7 @@ const server = createGameServer({
   wallet,
   game,
   sessionPepper,
+  betting: bettingPublic,
 });
 await listenGameServer(server, {
   port,
@@ -79,6 +96,7 @@ await listenGameServer(server, {
   wallet,
   game,
   sessionPepper,
+  betting: bettingPublic,
 });
 
 const tickMs = 250;
