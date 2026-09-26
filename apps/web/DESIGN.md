@@ -113,8 +113,7 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
 - **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the room.
 - **Walkthrough** (after every signing, like CloverPit): the camera moves to one thing at a time and the hint bar
-  says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The vote clock holds until it ends
-  (`countdown.hold` in `game.ts`); the cast keeps loading.
+  says one line. Click, `ENTER` or `SPACE` moves on, `ESC` skips. The cast keeps loading.
   1. The TV: `THE TV. EVERYTHING AIRS HERE.`
   2. The shelf: `THE RESIDENTS. PULL A TAPE.`
   3. The remote rises, LED blinking: `THE REMOTE. VOTE FOR TWO. THEY FIGHT.`
@@ -171,7 +170,7 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
 - **The remote:** the only thing you use for the game. Digits and OK to vote, VOL ± for the stake (and to flip the guide while
   voting), hold A or B to bet, OK to collect.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
-- **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` skips the phase, `V` shows the records, `M` mutes.
+- **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way), `V` shows the records, `M` mutes.
 
 Rules from review:
 
@@ -231,7 +230,7 @@ and buzzes when it flickers, and the TV hisses as loud as its static. Something 
 - The waiver: a pen scratch, the VERIFIED stamp, and on the fail path the TV clicks off, the paper burns, a deep boom.
 - The remote: a plastic click per key, a buzz when the TV says no, a ratchet while you hold A or B, a clunk when the bet
   locks.
-- The phases: a church bell opens the vote, a typewriter writes the story, a heartbeat speeds up while the bet closes,
+- The phases: a church bell opens the vote, a typewriter writes the story, a heartbeat while the bet is open,
   hits on the fight, the emergency-broadcast tone and a boom at "WE INTERRUPT THIS PROGRAM" (a tape stop if you lost),
   a 1 kHz test tone at END OF PROGRAMMING. The fight video plays its own sound.
 - The coin box: a coin drops in, the meter ticks, the padlock ratchets open, coins pour out, a buzz when the box
