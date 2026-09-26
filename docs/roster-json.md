@@ -12,16 +12,20 @@ and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv
 | `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
 | `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
 | `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
+| `icons-cache`  | no      | Explicitly regenerate icons from checked-in text and exact saved prompts |
 | `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
+| `wipe`         | **yes** | Unregister every character subname. Does not remove the parent `.eth` name |
+| `redeploy`     | **yes** | Propose the 10 cast fighters, upload icons, and register them |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
-`icons-chain` always hit chain (after validating input). Do not confuse them.
+`icons-chain` / `wipe` / `redeploy` always hit chain (after validating input).
+Do not confuse them.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
 `PRIVATE_KEY` (bootstrap/admin), `ROSTER_PRIVATE_KEY` (look/brief/icon), or
 `AGENT_PRIVATE_KEY` (status/injuries) fails with an error that names the variable.
-The CLI loads `.env` via `python-dotenv` when present. `propose` does not require
+The CLI loads the repo-root `.env`, not a `.env` in the working directory. A missing file is fine. `propose` does not require
 ENS env vars. `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
@@ -111,6 +115,21 @@ python3 -m roster propose \
 interpreter is Python 3.9, and a backslash inside an f-string expression is a
 SyntaxError there.
 
+To fetch all 10 entries in `roster/cast.json` and update the checked-in prompt
+cache from that same live Fandom run:
+
+```bash
+python3 -m roster propose \
+  --cast \
+  --out /tmp/horror-tube-live-cast.json \
+  --prompt-cache roster/icon-prompt-cache.json
+```
+
+`--prompt-cache` is accepted only with `--cast`. The cache records
+`label`, `display_name`, the unmodified Fandom `look` and `brief`, the exact
+image prompt, and separate look/brief source URLs. It does not call Together,
+Spaces, or ENS.
+
 ### import (plan only)
 
 ```bash
@@ -194,6 +213,10 @@ empty `icon` field with that URL. A local PNG under `--out-dir` is not enough
 to skip; existence is checked on the bucket. Refuses a path under `fixtures`.
 One character failure stops the command.
 
+`face_prompt` removes configured violent terms from the image prompt only, then
+adds explicit no-blood, no-gore, no-wounds, and no-weapons instructions. The
+sheet's `look` remains the full Fandom sentence.
+
 ```bash
 python3 -m roster propose \
   --n 1 \
@@ -213,12 +236,32 @@ python3 -m roster icons \
   --override
 ```
 
+### icons-cache (Together + Spaces, explicit cache use)
+
+The git-tracked cache is
+`packages/roster/roster/icon-prompt-cache.json`. `icons-cache` uses its saved
+text and exact `image_prompt`; it does not fetch Fandom and does not rebuild the
+prompt from `look`. A missing or malformed cache stops before Together or
+Spaces setup and names the cache file.
+
+```bash
+python3 -m roster icons-cache \
+  --cache roster/icon-prompt-cache.json \
+  --out-dir /tmp/horror-tube-icons \
+  --out /tmp/horror-tube-cached-icons.json \
+  --override
+```
+
+Omit `--override` to reuse canonical `<label>.png` objects already in Spaces.
+As with `icons`, `--override` writes `<label>-<unix-seconds>.png` when the
+canonical object exists.
+
 ### icons-chain (Together + Spaces + ENS icon only)
 
 Discovers every registered character under `ENS_LABEL.eth` from chain. For each
 character whose on-chain `icon` is empty, generates a face PNG from the on-chain
 `look`, uploads to Spaces, and `setText`s **only** the `icon` key to the https
-CDN URL. Does not rewrite `display_name`, `look`, `brief`, `injuries`, or `status`. Skips
+CDN URL. Does not rewrite `display_name`, `look`, `brief`, `injury_places`, `injuries`, or `status`. Skips
 characters that already have a non-empty https icon unless `--override`. Fails
 if `look` is empty (names the label). One failure stops the command.
 
@@ -238,7 +281,8 @@ for each. Use `plan-remove` if you only want the JSON plan.
 ## Character sheet dashboard
 
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
-and shows `display_name` / `look` / `brief` / `injury_places` / `injuries` / `status` / `icon`. Needs
+and shows `display_name` / `look` / `brief` / `injury_places` / `injuries` / `status` / `icon`.
+`packages/ens/scripts/roster.ts` is the shared chain reader for this page, `character-subnames list`, and `apps/web/game.ts`. Needs
 `ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
 in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
 transactions.

@@ -603,33 +603,25 @@ async function main(): Promise<void> {
       }
       const name = subname(label, ensLabel);
       const dnsName = dnsEncodeName(name);
-      const texts: Record<string, string> = {};
+      const texts = {} as Record<(typeof TEXT_KEYS)[number], string>;
       for (const key of TEXT_KEYS) {
         texts[key] = await readText(resolverAddress, dnsName, key);
       }
       const displayName = texts.display_name;
-      if (displayName === undefined || displayName.trim() === "") {
+      if (displayName.trim() === "") {
         fail(`${label}: display_name is missing or blank.`);
       }
-      const rawPlaces = texts.injury_places;
-      if (rawPlaces === undefined) {
-        fail(`${label}: injury_places text record was not read.`);
-      }
-      parseInjuryPlaces(label, rawPlaces);
-      const rawInjuries = texts.injuries;
-      if (rawInjuries === undefined) {
-        fail(`${label}: injuries text record was not read.`);
-      }
-      parseInjuries(label, rawInjuries);
+      parseInjuryPlaces(label, texts.injury_places);
+      parseInjuries(label, texts.injuries);
       out[label] = {
         label,
         display_name: displayName,
-        look: texts.look ?? "",
-        brief: texts.brief ?? "",
-        injury_places: rawPlaces,
-        injuries: rawInjuries,
-        status: texts.status ?? "",
-        icon: texts.icon ?? "",
+        look: texts.look,
+        brief: texts.brief,
+        injury_places: texts.injury_places,
+        injuries: texts.injuries,
+        status: texts.status,
+        icon: texts.icon,
       };
     }
     return out;
