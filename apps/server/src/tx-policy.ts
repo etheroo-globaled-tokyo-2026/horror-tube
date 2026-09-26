@@ -15,7 +15,7 @@ type CallArg = Call["arguments"][number];
 function forbidden(detail: string): HttpError {
   return new HttpError(
     403,
-    `Only a USDC transfer to the coin box or a call to the betting package is allowed. ${detail}`,
+    `Only a USDC transfer, with change returned to the coin box, or a call to the betting package is allowed. ${detail}`,
   );
 }
 
@@ -175,9 +175,7 @@ export function assertSponsorableKind(
             throw forbidden("TransferObjects moved an object other than USDC from this transaction.");
           }
         }
-        if (pureAddress(transfer.address, data.inputs) !== box) {
-          throw forbidden("USDC recipient was not the coin box.");
-        }
+        pureAddress(transfer.address, data.inputs);
         break;
       }
       default:

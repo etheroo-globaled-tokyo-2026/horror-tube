@@ -1,8 +1,9 @@
 import { SuiGrpcClient } from "@mysten/sui/grpc";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
+import { toBase64 } from "@mysten/sui/utils";
+import * as v from "valibot";
 
-export const BURNER_KEY_STORAGE_KEY = "horror-tube.sui-burner-key";
+export const WALLET_SESSION_KEY = "horror-tube.wallet-session";
 
 export const USDC_TYPE =
   "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
@@ -11,41 +12,111 @@ export const USDC_DECIMALS = 6;
 
 export const SUI_TESTNET_GRPC = "https://fullnode.testnet.sui.io:443";
 
-export type KeyStore = Pick<Storage, "getItem" | "setItem">;
+export type SessionStore = Pick<Storage, "getItem" | "setItem">;
 
 export type GameWallet = {
   address: string;
-  signer: Ed25519Keypair;
   client: SuiGrpcClient;
+  session: string;
 };
 
-export function loadBurnerKeypair(store: KeyStore): Ed25519Keypair {
-  const stored = store.getItem(BURNER_KEY_STORAGE_KEY);
-  if (stored === null) {
-    const keypair = Ed25519Keypair.generate();
-    store.setItem(BURNER_KEY_STORAGE_KEY, keypair.getSecretKey());
-    return keypair;
-  }
-  try {
-    return Ed25519Keypair.fromSecretKey(stored);
-  } catch {
-    throw new Error(
-      `${BURNER_KEY_STORAGE_KEY} is not a Sui Ed25519 private key. Refusing to overwrite it.`,
-    );
-  }
+const SessionResponse = v.object({ session: v.pipe(v.string(), v.minLength(1)) });
+const AddressResponse = v.object({ address: v.pipe(v.string(), v.minLength(1)) });
+const DigestResponse = v.object({ digest: v.pipe(v.string(), v.minLength(1)) });
+const ErrorResponse = v.object({ error: v.string() });
+
+function suiClient(): SuiGrpcClient {
+  return new SuiGrpcClient({
+    network: "testnet",
+    baseUrl: SUI_TESTNET_GRPC,
+  });
 }
 
-// WARNING: burner key lives in browser storage. Clearing it or an XSS bug loses the funds. Testnet only; DESIGN.md has the upgrade path.
-export async function getGameWallet(store: KeyStore = localStorage): Promise<GameWallet> {
-  const signer = loadBurnerKeypair(store);
+function storedSession(store: SessionStore): string {
+  const session = store.getItem(WALLET_SESSION_KEY);
+  if (session === null || session.trim() === "") {
+    throw new Error("World ID session is required. Finish the waiver scan first.");
+  }
+  return session;
+}
+
+export function hasWalletSession(store: SessionStore = localStorage): boolean {
+  const session = store.getItem(WALLET_SESSION_KEY);
+  return session !== null && session.trim() !== "";
+}
+
+async function postSchema<TSchema extends v.GenericSchema>(
+  fetchImpl: typeof fetch,
+  path: string,
+  body: string | null,
+  session: string | null,
+  schema: TSchema,
+): Promise<v.InferOutput<TSchema>> {
+  const headers = { "content-type": "application/json" };
+  if (session !== null) {
+    Object.assign(headers, { authorization: `Bearer ${session}` });
+  }
+  const res = await fetchImpl(path, {
+    method: "POST",
+    headers,
+    body: body ?? "{}",
+  });
+  const text = await res.text();
+  let json: v.InferOutput<TSchema> | undefined;
+  try {
+    const parsed = v.safeParse(schema, JSON.parse(text));
+    if (parsed.success) json = parsed.output;
+  } catch (err) {
+    throw new Error(
+      `POST ${path} returned non-JSON. HTTP ${String(res.status)}. Underlying: ${err instanceof Error ? err.message : String(err)} body=${text}`,
+    );
+  }
+  if (!res.ok) {
+    let message = text;
+    try {
+      const errorBody = v.safeParse(ErrorResponse, JSON.parse(text));
+      if (errorBody.success) message = errorBody.output.error;
+    } catch {
+      message = text;
+    }
+    throw new Error(`POST ${path} failed: HTTP ${String(res.status)} ${message}`);
+  }
+  if (json === undefined) {
+    throw new Error(`POST ${path} response did not match the expected fields. body=${text}`);
+  }
+  return json;
+}
+
+async function walletFromSession(session: string, fetchImpl: typeof fetch): Promise<GameWallet> {
+  const body = await postSchema(fetchImpl, "/wallet", null, session, AddressResponse);
   return {
-    address: signer.toSuiAddress(),
-    signer,
-    client: new SuiGrpcClient({
-      network: "testnet",
-      baseUrl: "https://fullnode.testnet.sui.io:443",
-    }),
+    address: body.address,
+    session,
+    client: suiClient(),
   };
+}
+
+export async function openGameWallet(
+  idkitResultJson: string,
+  store: SessionStore = localStorage,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GameWallet> {
+  const login = await postSchema(
+    fetchImpl,
+    "/auth/world-id",
+    idkitResultJson,
+    null,
+    SessionResponse,
+  );
+  store.setItem(WALLET_SESSION_KEY, login.session);
+  return walletFromSession(login.session, fetchImpl);
+}
+
+export async function getGameWallet(
+  store: SessionStore = localStorage,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GameWallet> {
+  return walletFromSession(storedSession(store), fetchImpl);
 }
 
 export async function getUsdcBalance(wallet: GameWallet): Promise<bigint> {
@@ -53,11 +124,6 @@ export async function getUsdcBalance(wallet: GameWallet): Promise<bigint> {
     owner: wallet.address,
     coinType: USDC_TYPE,
   });
-  return BigInt(balance.balance);
-}
-
-export async function getSuiBalance(wallet: GameWallet): Promise<bigint> {
-  const { balance } = await wallet.client.core.getBalance({ owner: wallet.address });
   return BigInt(balance.balance);
 }
 
@@ -75,13 +141,24 @@ export function usdcTransfer(to: string, units: bigint): Transaction {
   return tx;
 }
 
-export async function sendUsdc(wallet: GameWallet, to: string, units: bigint): Promise<void> {
-  const result = await wallet.client.signAndExecuteTransaction({
-    transaction: usdcTransfer(to, units),
-    signer: wallet.signer,
+export async function sendUsdc(
+  wallet: GameWallet,
+  to: string,
+  units: bigint,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const tx = usdcTransfer(to, units);
+  tx.setSender(wallet.address);
+  const bytes = await tx.build({
+    onlyTransactionKind: true,
+    assumeSufficientAddressBalances: true,
   });
-  if (result.$kind === "FailedTransaction") {
-    throw new Error(result.FailedTransaction.status.error?.message ?? "USDC transfer failed");
-  }
-  await wallet.client.waitForTransaction({ digest: result.Transaction.digest });
+  const paid = await postSchema(
+    fetchImpl,
+    "/tx",
+    JSON.stringify({ txKind: toBase64(bytes) }),
+    wallet.session,
+    DigestResponse,
+  );
+  await wallet.client.waitForTransaction({ digest: paid.digest });
 }

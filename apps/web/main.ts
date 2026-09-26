@@ -32,12 +32,8 @@ import {
   createCoinBox,
 } from "./coinbox.ts";
 import QRCode from "qrcode";
-import { getGameWallet } from "./wallet.ts";
-import {
-  fetchEnterRoomRequest,
-  startEnterRoomProof,
-  verifyEnterRoomProof,
-} from "./world-id.ts";
+import { getGameWallet, hasWalletSession, openGameWallet } from "./wallet.ts";
+import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -1248,7 +1244,7 @@ function drawTape(ch: Character): void {
 }
 function tapeResident(): Character | null {
   if (S.phase === "gate") return null;
-  if (S.phase === "vote" && !S.cast) {
+  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
     if (T.reveal >= 0 && performance.now() < T.revealUntil) return S.chars[T.reveal] ?? null;
     if (T.buf.length === 2) return S.chars[+T.buf - 1] ?? null;
   }
@@ -1430,7 +1426,15 @@ function updateShelf(shown: Character | null): void {
   shelf.visible = S.phase !== "gate" || W8.step === "done";
   for (const slot of slots) {
     const ch = S.chars[slot.id];
-    slot.mesh.visible = shelf.visible && !!ch && shown !== ch;
+    slot.mesh.visible =
+      shelf.visible &&
+      !!ch &&
+      shown !== ch &&
+      !(
+        (S.phase === "vote" || S.phase === "countdown") &&
+        S.champion !== null &&
+        ch.id === S.champion
+      );
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);
@@ -1466,10 +1470,10 @@ function updateTape(now: number): void {
 }
 
 const video = document.createElement("video");
-video.src = "assets/demo-fight.mp4";
 video.playsInline = true;
 video.preload = "auto";
 video.muted = true;
+let lastVideoUrl: string | null = null;
 const small = document.createElement("canvas");
 small.width = 160;
 small.height = 120;
@@ -1477,6 +1481,19 @@ const sg = ctx2d(small, { willReadFrequently: true });
 const RAMP = [COL.soot, COL.rustDeep, COL.rust, COL.bone].map(rgb);
 let vidMode: "" | "live" | "rec" = "";
 function syncVideo(): void {
+  const url = S.videoUrl;
+  if (!url) {
+    if (vidMode) {
+      video.pause();
+      vidMode = "";
+    }
+    lastVideoUrl = null;
+    return;
+  }
+  if (url !== lastVideoUrl) {
+    video.src = url;
+    lastVideoUrl = url;
+  }
   const mode = S.phase === "fight" ? "live" : replaying() ? "rec" : "";
   if (mode === vidMode) return;
   vidMode = mode;
@@ -1550,12 +1567,30 @@ function drawGuide(now: number): void {
     g.imageSmoothingEnabled = false;
     g.drawImage(filmCanvas, ...crop(160, 90, W, top), 0, 0, W, top);
   } else {
+    const REEL_MS = 2600,
+      CUT_MS = 160,
+      ch = S.chars[Math.floor(now / REEL_MS) % S.chars.length];
     g.fillStyle = COL.char;
     g.fillRect(0, 0, W, top);
-    g.textAlign = "center";
-    g.font = "700 26px Silkscreen";
-    g.fillStyle = COL.bone;
-    g.fillText("NOTHING HAS AIRED YET", W / 2, top / 2 + 8);
+    if (!LOW && now % REEL_MS < CUT_MS) {
+      for (let y = 0; y < top; y += 4) {
+        g.fillStyle = Math.random() < 0.5 ? COL.grime : COL.soot;
+        g.fillRect(0, y, W, 4);
+      }
+    } else if (ch) {
+      g.imageSmoothingEnabled = false;
+      g.drawImage(face(ch), 40, 28, 180, 180);
+      g.textAlign = "left";
+      g.font = "700 22px Silkscreen";
+      g.fillStyle = COL.sulfur;
+      g.fillText(`CH ${num(ch.id + 1)}`, 252, 88);
+      g.font = "30px DotGothic16";
+      g.fillStyle = COL.bone;
+      const y = wrap(g, ch.name.toUpperCase(), 252, 130, W - 276, 34);
+      g.font = "700 22px Silkscreen";
+      g.fillStyle = ch.alive ? COL.bone : COL.rust;
+      g.fillText(ch.alive ? "ALIVE" : "DEAD", 252, y + 10);
+    }
   }
   if (S.last) {
     g.textAlign = "left";
@@ -1580,8 +1615,25 @@ function drawGuide(now: number): void {
   g.textAlign = "right";
   g.fillText(S.cast ? "YOUR PICKS ARE IN" : "TYPE A NUMBER", W - 16, top + 23);
   S.chars.forEach((ch, i) => {
-    const x = i < 5 ? 12 : W / 2 + 6,
-      y = top + 34 + (i % 5) * 42,
+    if (
+      (S.phase === "vote" || S.phase === "countdown") &&
+      S.champion !== null &&
+      ch.id === S.champion
+    ) {
+      return;
+    }
+    const visibleIndex = S.chars
+      .filter(
+        (c) =>
+          !(
+            (S.phase === "vote" || S.phase === "countdown") &&
+            S.champion !== null &&
+            c.id === S.champion
+          ),
+      )
+      .indexOf(ch);
+    const x = visibleIndex < 5 ? 12 : W / 2 + 6,
+      y = top + 34 + (visibleIndex % 5) * 42,
       mine = S.picks.includes(ch.id);
     if (mine) {
       g.fillStyle = COL.bone;
@@ -1595,10 +1647,11 @@ function drawGuide(now: number): void {
     g.fillText(num(ch.id + 1), x + 44, y + 28);
     g.font = "22px DotGothic16";
     g.fillStyle = !ch.alive ? COL.rust : mine ? COL.soot : COL.bone;
-    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28);
+    const nameW = W / 2 - 110;
+    g.fillText(ch.name, x + 88, mine ? y + 22 : y + 28, nameW);
     if (!ch.alive) {
       g.fillStyle = COL.rust;
-      g.fillRect(x + 86, y + 20, g.measureText(ch.name).width + 4, 2);
+      g.fillRect(x + 86, y + 20, Math.min(g.measureText(ch.name).width, nameW) + 4, 2);
     }
     if (mine) {
       g.font = "700 12px Silkscreen";
@@ -1647,6 +1700,9 @@ function drawTV(): void {
     weight = 700,
   ): void => {
     g.font = `${weight} ${size}px ${face}`;
+    const width = g.measureText(t).width,
+      max = W - 64;
+    if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -1675,10 +1731,16 @@ function drawTV(): void {
         g.fillStyle = COL.soot;
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
-            if (modules.get(row, col))
-              g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
+            if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
         text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
-        text("Orb only. We check it on our side.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+        text(
+          "Orb only. We check it on our side.",
+          oy + side + 68,
+          22,
+          COL.bone,
+          "DotGothic16",
+          400,
+        );
       } else {
         text("STARTING WORLD ID…", 210, 36, COL.sulfur);
         text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
@@ -1742,14 +1804,22 @@ function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
-  } else if (S.phase === "vote" && !S.cast && (T.buf || (T.reveal >= 0 && now < T.revealUntil))) {
+  } else if (
+    (S.phase === "vote" || S.phase === "countdown") &&
+    !S.cast &&
+    (T.buf || (T.reveal >= 0 && now < T.revealUntil))
+  ) {
     fill(COL.soot);
     noise = 0.14;
     if (T.reveal >= 0 && now < T.revealUntil) {
       const ch = char(T.reveal);
       text(`RESIDENT ${num(ch.id + 1)}`, 150, 30, COL.sulfur);
       text(ch.name.toUpperCase(), 230, 44, COL.blood);
-      text(S.picks.length === 2 ? "THANK YOU. GOOD NIGHT." : "ONE MORE.", 330, 26);
+      text(
+        S.picks.length >= S.slots ? "THANK YOU. GOOD NIGHT." : "ONE MORE.",
+        330,
+        26,
+      );
     } else {
       text(`${T.buf.padEnd(2, "_")}`, 170, 110);
       const n = +T.buf,
@@ -1757,6 +1827,8 @@ function drawTV(): void {
       if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
       else if (!ch) text("NO SUCH RESIDENT", 280, 28, COL.rust);
       else if (!ch.alive) text("THIS ROOM IS EMPTY", 280, 28, COL.rust);
+      else if (S.champion !== null && ch.id === S.champion)
+        text("THE CHAMPION STAYS ON", 280, 28, COL.rust);
       else if (S.picks.includes(ch.id)) text("YOU ALREADY ASKED FOR THEM", 280, 24, COL.rust);
       else {
         g.font = "24px DotGothic16";
@@ -1767,20 +1839,22 @@ function drawTV(): void {
     }
   } else {
     const filmCanvas = film();
-    if (S.phase === "vote") drawGuide(now);
+    if (S.phase === "vote" || S.phase === "countdown") drawGuide(now);
     else if (vidMode && video.readyState >= 2) videoFrame();
     else if (filmCanvas.width) g.drawImage(filmCanvas, 20, 0, 120, 90, 0, 0, W, H);
     const [a, b] = (S.fighters || []).map(char);
-    if (S.phase === "story") {
+    if (S.phase === "countdown") {
       fill(COL.soot);
-      text("TONIGHT'S EPISODE IS BEING WRITTEN", 90, 20, COL.rust);
-      g.textAlign = "left";
-      g.font = "28px DotGothic16";
-      g.fillStyle = COL.bone;
-      const y = wrap(g, S.story, 60, 170, W - 120, 36);
-      g.fillText("WINNER: ████████", 60, y + 10);
-      g.fillText("DAMAGE: ██", 60, y + 46);
-      g.textAlign = "center";
+      text("VOTING CLOSES", 120, 36, COL.sulfur);
+      text(mmss(S.t), 220, 64, COL.blood);
+      text(
+        `${String(S.voters)} / ${String(S.quorum)} humans in`,
+        300,
+        26,
+        COL.bone,
+        "DotGothic16",
+        400,
+      );
     } else if (S.phase === "bet") {
       fill(COL.bone);
       text("WHO WALKS OUT?", 80, 44, COL.soot);
@@ -1814,7 +1888,6 @@ function drawTV(): void {
           COL.bloodDeep,
         );
       }
-      text(`closes in ${mmss(S.t)}`, 450, 20, COL.rustDeep, "DotGothic16", 400);
     } else if (S.phase === "fight") {
       if (!vidMode && S.frame % 28 >= 22) {
         fill(COL.soot);
@@ -1921,9 +1994,11 @@ function hintText(): void {
             ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
             : W8.step === "done"
               ? "WARMING UP"
-              : ""
+              : `NEXT ${b("ENTER")}`
       : S.phase === "vote" && !S.cast
-        ? `PICK TWO · NUMBER ${b("OK")}`
+        ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
+        : S.phase === "countdown" && !S.cast
+          ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
         : S.phase === "bet" && !S.bet && S.credit > 0
           ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
           : S.claim
@@ -1931,8 +2006,8 @@ function hintText(): void {
             : S.phase === "over"
               ? `AGAIN ${b("OK")}`
               : S.credit <= 0
-                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")}`
-                : "";
+                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -1946,8 +2021,9 @@ function press(id: string): void {
   setTimeout(() => led.material.color.set(COL.bloodDeep), 120);
   if (S.phase === "gate") return;
   if (/^\d$/.test(id)) {
-    if (S.phase === "vote" && !S.cast) {
+    if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
       T.reveal = -1;
+      T.held = -1;
       T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
     }
   } else if (id === "clr") {
@@ -1961,15 +2037,21 @@ function press(id: string): void {
   hintText();
 }
 function ok(): void {
-  if (S.phase === "vote" && !S.cast && T.buf.length === 2) {
+  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast && T.buf.length === 2) {
     const ch = S.chars[Number(T.buf) - 1];
-    if (!ch || !ch.alive || S.picks.includes(ch.id)) return sfx.deny();
+    if (
+      !ch ||
+      !ch.alive ||
+      S.picks.includes(ch.id) ||
+      (S.champion !== null && ch.id === S.champion)
+    )
+      return sfx.deny();
     pick(ch.id);
     sfx.pick();
     T.buf = "";
     T.reveal = ch.id;
     T.revealUntil = performance.now() + 3200;
-    if (S.picks.length === 2) $("#h-cast").click();
+    if (S.picks.length >= S.slots) $("#h-cast").click();
   } else if (S.claim) {
     $("#h-claim").click();
     sfx.coins(14);
@@ -2070,6 +2152,10 @@ async function beginWorldIdScan(): Promise<void> {
     if (signal.aborted) return;
     await verifyEnterRoomProof(idkitResult);
     if (signal.aborted) return;
+    await openGameWallet(JSON.stringify(idkitResult));
+    if (signal.aborted) return;
+    await mountCoinBox();
+    if (signal.aborted) return;
     verified();
   } catch (err) {
     if (signal.aborted) return;
@@ -2082,14 +2168,16 @@ async function beginWorldIdScan(): Promise<void> {
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
-  setTimeout(
-    () =>
-      cut(() => {
-        enterRoom();
-        walkTo(0);
-      }),
-    1400,
-  );
+}
+function nextGateStep(): void {
+  if (W8.step === "signed")
+    cut(() => {
+      enterRoom();
+      walkTo(0);
+    });
+  else if (W8.step === "off") step("burn");
+  else if (W8.step === "burn") step("dark");
+  else if (W8.step === "dark") retry();
 }
 function enterRoom(): void {
   step("done");
@@ -2100,7 +2188,9 @@ function enterRoom(): void {
 }
 let coinBox: CoinBox | null = null;
 let chainCredit = 0;
-void getGameWallet().then((wallet) => {
+async function mountCoinBox(): Promise<void> {
+  if (coinBox !== null) return;
+  const wallet = await getGameWallet();
   coinBox = createCoinBox(
     wallet,
     (usdc) => {
@@ -2118,7 +2208,12 @@ void getGameWallet().then((wallet) => {
   coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
   shade(coinBox.group);
   scene.add(coinBox.group);
-});
+}
+if (hasWalletSession()) {
+  void mountCoinBox().catch((err: Error) => {
+    console.error(`Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
     new THREE.CatmullRomCurve3(
@@ -2227,8 +2322,6 @@ function noOrb(): void {
   scanAbort = null;
   W8.qrUri = "";
   step("off");
-  setTimeout(() => step("burn"), LOW ? 0 : 500);
-  setTimeout(() => step("dark"), LOW ? 0 : 3100);
 }
 function retry(): void {
   cut(() => {
@@ -2309,7 +2402,7 @@ addEventListener(
     if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
-      else if (k === "enter" && W8.step === "dark") retry();
+      else if (k === "enter") nextGateStep();
       else if (k === "x") noOrb();
       else return;
       e.preventDefault();
@@ -2464,7 +2557,7 @@ renderer.setAnimationLoop(() => {
 
 const PHASE_SOUND = new Map<Phase, () => void>([
   ["vote", sfx.bell],
-  ["story", () => sfx.type(DUR.story)],
+  ["countdown", sfx.static],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
@@ -2482,8 +2575,8 @@ hooks.render = () => {
     const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && !S.cast && S.phase === "story")
-      say("You did not choose. Someone else did.", 4200);
+    if (was === "vote" && S.phase === "countdown")
+      say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();

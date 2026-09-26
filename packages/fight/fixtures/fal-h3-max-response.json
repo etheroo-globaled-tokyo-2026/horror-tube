@@ -1,0 +1,12 @@
+{
+  "video": {
+    "url": "https://v3b.fal.media/files/b/example/fight.mp4",
+    "content_type": "video/mp4",
+    "file_name": "fight.mp4",
+    "file_size": 3554670
+  },
+  "expanded_prompt": "expanded shot list from fixture",
+  "timings": {
+    "inference": 2.5
+  }
+}
