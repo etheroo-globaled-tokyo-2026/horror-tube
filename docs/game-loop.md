@@ -200,11 +200,12 @@ type RoundState = {
     bet: { side: 0 | 1; units: number; digest: string } | null; // its bet on the live bout
     error: string | null; // last bot failure; does not stop the round
   }[];
-  chars: { id: number; alive: boolean; kills: number; damage: number }[];
+  chars: { id: number; label: string; alive: boolean; kills: number; damage: number }[];
 };
 ```
 
-Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
+Character ids are the server's: the index into `ROSTER_ENS_LABELS` sorted by label. `chars[].label` is each id's ENS label.
+The room keys the roster it reads from ENS by that label, so every id it shows or sends is the server's.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
 `chars[].alive` is the server's holding copy for the current season. Settle updates it when the fight duration
 elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue, then
@@ -213,7 +214,7 @@ pays out. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
 
-- `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
+- `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. A pick of a dead character (or the champion) is refused with `400` naming the character. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
 - `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID`, `HOUSE_BOT_SUI_PRIVATE_KEYS`, or `HOUSE_BOT_STAKE_UNITS` is missing, or if the bot stake is below the House `min_bet`. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
 

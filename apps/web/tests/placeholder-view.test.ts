@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { CLOSES_AT_UNSET, placeholderView, type PlaceholderInput } from "../placeholder-view.ts";
+import { withServerIds } from "../round-client.ts";
 
 function state(overrides: Partial<PlaceholderInput>): PlaceholderInput {
   return {
@@ -49,6 +50,27 @@ describe("placeholderView", () => {
       { name: "Chucky", votes: 5 },
       { name: "Jason", votes: 2 },
     ]);
+  });
+
+  it("ticking a character sends the game server's id for it when ENS lists the cast in another order", () => {
+    const read = ["jason", "freddy", "chucky", "count"].map((label) => ({
+      label,
+      name: label.toUpperCase(),
+      alive: true,
+    }));
+    const server = ["chucky", "count", "freddy", "jason"].map((label, id) => ({
+      id,
+      label,
+      alive: true,
+      kills: 0,
+      damage: 0,
+    }));
+    const view = placeholderView(state({ chars: withServerIds(read, server) }));
+    const candidates = view?.screen === "vote" ? view.candidates : [];
+    for (const ticked of ["JASON", "FREDDY"]) {
+      const sent = candidates.find((c) => c.name === ticked)?.id;
+      assert.equal(sent, server.find((c) => c.label.toUpperCase() === ticked)?.id, ticked);
+    }
   });
 
   it("shows the stored betting_closes_at as given, and says when it is not stored yet", () => {

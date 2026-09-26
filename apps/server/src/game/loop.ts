@@ -257,6 +257,7 @@ export class GameLoop {
       })),
       chars: this.chars.map((c) => ({
         id: c.id,
+        label: c.ensLabel,
         alive: c.alive,
         kills: c.kills,
         damage: c.damage,
@@ -720,11 +721,13 @@ export class GameLoop {
       throw new Error(`Unknown character id: ${String(id)}.`);
     }
     if (!char.alive) {
-      throw new Error(`Character ${String(id)} is dead and cannot receive votes.`);
+      throw new Error(
+        `vote rejected: ${char.ensLabel} (character ${String(id)}) is dead and cannot receive votes.`,
+      );
     }
     if (this.champion !== null && id === this.champion) {
       throw new Error(
-        `Character ${String(id)} is the champion and is hidden from the vote list.`,
+        `vote rejected: ${char.ensLabel} (character ${String(id)}) is the champion and stays on for the next fight.`,
       );
     }
   }

@@ -23,11 +23,7 @@ import { foundry } from "viem/chains";
 
 import { permissionedResolverAbi } from "../scripts/abis.js";
 import { CONTRACTS_V2_COMMIT } from "../scripts/pin.js";
-import {
-  loadAgentKey,
-  loadBootstrapKey,
-  loadRosterKey,
-} from "../scripts/process-keys.js";
+import { loadAgentKey, loadBootstrapKey, loadRosterKey } from "../scripts/process-keys.js";
 import {
   AGENT_TEXT_KEYS,
   ROSTER_TEXT_KEYS,
@@ -40,24 +36,18 @@ import {
   classifyInjuriesRewrite,
   rewriteEmptyInjuriesValues,
 } from "../scripts/rewrite-empty-injuries.js";
+import { setTextIfChanged } from "../scripts/set-text-if-changed.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pinDir = join(here, "..", "scripts", "pin");
 
-const BOOTSTRAP_KEY =
-  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
-const ROSTER_KEY =
-  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
-const AGENT_KEY =
-  "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" as const;
-const THIRD_KEY =
-  "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" as const;
+const BOOTSTRAP_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
+const ROSTER_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
+const AGENT_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a" as const;
+const THIRD_KEY = "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6" as const;
 
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
-const textResolverAbi = parseAbi([
-  "function text(bytes32 node, string key) view returns (string)",
-]);
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+const textResolverAbi = parseAbi(["function text(bytes32 node, string key) view returns (string)"]);
 
 const bootstrap = privateKeyToAccount(BOOTSTRAP_KEY);
 const roster = privateKeyToAccount(ROSTER_KEY);
@@ -92,8 +82,7 @@ async function waitForRpc(url: string): Promise<void> {
       if (res.ok) {
         return;
       }
-    } catch {
-    }
+    } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`anvil RPC at ${url} did not become ready`);
@@ -228,9 +217,7 @@ describe("grant result assertion (unit, no network)", () => {
   const account = "0x0000000000000000000000000000000000000001";
 
   it("accepts a true grant result", () => {
-    assert.doesNotThrow(() =>
-      assertWritePermissionGranted(true, "status", account),
-    );
+    assert.doesNotThrow(() => assertWritePermissionGranted(true, "status", account));
   });
 
   it("rejects a false grant result with grant context", () => {
@@ -264,11 +251,9 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
 
     const port = await getFreeLocalPort();
     rpcUrl = `http://127.0.0.1:${port}`;
-    anvil = spawn(
-      "anvil",
-      ["--port", String(port), "--chain-id", "31337", "--silent"],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
+    anvil = spawn("anvil", ["--port", String(port), "--chain-id", "31337", "--silent"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let anvilErr = "";
     anvil.stderr?.on("data", (chunk: Buffer) => {
       anvilErr += chunk.toString();
@@ -285,6 +270,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     publicClient = createPublicClient({
       chain: foundry,
       transport: http(rpcUrl),
+      pollingInterval: 50,
     });
     const wallet = createWalletClient({
       account: bootstrap,
@@ -425,19 +411,93 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     return text;
   }
 
+  async function setIfChangedAs(
+    account: PrivateKeyAccount,
+    resolverAddress: Address,
+    name: string,
+    value: string,
+  ): Promise<{ action: string; nonceDelta: number }> {
+    const wallet = createWalletClient({
+      account,
+      chain: foundry,
+      transport: http(rpcUrl),
+    });
+    const nonceBefore = await publicClient.getTransactionCount({
+      address: account.address,
+      blockTag: "pending",
+    });
+    const result = await setTextIfChanged({
+      publicClient,
+      walletClient: wallet,
+      role: "roster",
+      resolver: resolverAddress,
+      dnsName: dnsEncodeName(name),
+      label: name,
+      key: "look",
+      value,
+    });
+    const nonceAfter = await publicClient.getTransactionCount({
+      address: account.address,
+      blockTag: "pending",
+    });
+    return { action: result.action, nonceDelta: nonceAfter - nonceBefore };
+  }
+
+  it("setTextIfChanged sends no transaction when the stored value matches", async () => {
+    const name = "skip-unchanged.test.eth";
+    assert.deepEqual(await setIfChangedAs(roster, resolver, name, "pale"), {
+      action: "write",
+      nonceDelta: 1,
+    });
+    assert.deepEqual(await setIfChangedAs(roster, resolver, name, "pale"), {
+      action: "skip",
+      nonceDelta: 0,
+    });
+    assert.deepEqual(await setIfChangedAs(roster, resolver, name, "pale "), {
+      action: "write",
+      nonceDelta: 1,
+    });
+    assert.equal(await readText(dnsEncodeName(name), "look"), "pale ");
+  });
+
+  it("setTextIfChanged fails naming label and key when the read fails, and sends nothing", async () => {
+    const nonceBefore = await publicClient.getTransactionCount({
+      address: roster.address,
+    });
+    await assert.rejects(
+      setIfChangedAs(roster, third.address, "read-fail.test.eth", "x"),
+      /label=read-fail\.test\.eth key=look role=roster/u,
+    );
+    assert.equal(await publicClient.getTransactionCount({ address: roster.address }), nonceBefore);
+  });
+
   it("exposes grantSetterRoles on the pinned ABI used by grants", () => {
     const setter = buildSetTextSetter("status");
     assert.match(setter, /^0xc7279f88/u);
     assert.ok(
       permissionedResolverAbi.some(
         (entry) =>
-          entry.type === "function" &&
-          "name" in entry &&
-          entry.name === "grantSetterRoles",
+          entry.type === "function" && "name" in entry && entry.name === "grantSetterRoles",
       ),
     );
-    assert.ok(
-      !JSON.stringify(permissionedResolverAbi).includes("authorizeTextRoles"),
+    assert.ok(!JSON.stringify(permissionedResolverAbi).includes("authorizeTextRoles"));
+  });
+
+  it("a repeat grant of roles already held passes without a new grant", async () => {
+    const wallet = createWalletClient({
+      account: bootstrap,
+      chain: foundry,
+      transport: http(rpcUrl),
+    });
+    assert.deepEqual(
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient: wallet,
+        resolver,
+        account: roster.address,
+        keys: [...ROSTER_TEXT_KEYS],
+      }),
+      [false, false, false],
     );
   });
 
@@ -446,10 +506,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     assert.equal(await setTextAs(agent, name, "status", "alive"), "ok");
     assert.equal(await setTextAs(agent, name, "status", "dead"), "ok");
     assert.equal(await setTextAs(agent, name, "injuries", "[]"), "ok");
-    assert.equal(
-      await setTextAs(agent, name, "injuries", '["left arm"]'),
-      "ok",
-    );
+    assert.equal(await setTextAs(agent, name, "injuries", '["left arm"]'), "ok");
   });
 
   it("roster can overwrite look, brief, and icon", async () => {
@@ -458,14 +515,8 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     assert.equal(await setTextAs(roster, name, "look", "scarred"), "ok");
     assert.equal(await setTextAs(roster, name, "brief", "lore"), "ok");
     assert.equal(await setTextAs(roster, name, "brief", "later lore"), "ok");
-    assert.equal(
-      await setTextAs(roster, name, "icon", "https://cdn.example/a.png"),
-      "ok",
-    );
-    assert.equal(
-      await setTextAs(roster, name, "icon", "https://cdn.example/b.png"),
-      "ok",
-    );
+    assert.equal(await setTextAs(roster, name, "icon", "https://cdn.example/a.png"), "ok");
+    assert.equal(await setTextAs(roster, name, "icon", "https://cdn.example/b.png"), "ok");
   });
 
   it("bootstrap can set all five card keys", async () => {
@@ -473,29 +524,15 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
     assert.equal(await setTextAs(bootstrap, name, "status", "alive"), "ok");
     assert.equal(await setTextAs(bootstrap, name, "injuries", "[]"), "ok");
     assert.equal(await setTextAs(bootstrap, name, "look", "admin-look"), "ok");
-    assert.equal(
-      await setTextAs(bootstrap, name, "brief", "admin-brief"),
-      "ok",
-    );
-    assert.equal(
-      await setTextAs(
-        bootstrap,
-        name,
-        "icon",
-        "https://cdn.example/admin.png",
-      ),
-      "ok",
-    );
+    assert.equal(await setTextAs(bootstrap, name, "brief", "admin-brief"), "ok");
+    assert.equal(await setTextAs(bootstrap, name, "icon", "https://cdn.example/admin.png"), "ok");
   });
 
   it("agent reverts on roster keys", async () => {
     const name = "agent-deny.test.eth";
     assert.equal(await setTextAs(agent, name, "look", "x"), "revert");
     assert.equal(await setTextAs(agent, name, "brief", "x"), "revert");
-    assert.equal(
-      await setTextAs(agent, name, "icon", "https://x.example/a.png"),
-      "revert",
-    );
+    assert.equal(await setTextAs(agent, name, "icon", "https://x.example/a.png"), "revert");
   });
 
   it("roster reverts on agent keys", async () => {
@@ -507,11 +544,7 @@ describe("permissioned resolver roles (local anvil, pinned bytecode)", () => {
   it("a third non-bootstrap key reverts on all five text keys", async () => {
     assert.notEqual(third.address, bootstrap.address);
     for (const key of ["status", "injuries", "look", "brief", "icon"]) {
-      assert.equal(
-        await setTextAs(third, "third-deny.test.eth", key, "x"),
-        "revert",
-        key,
-      );
+      assert.equal(await setTextAs(third, "third-deny.test.eth", key, "x"), "revert", key);
     }
   });
 
