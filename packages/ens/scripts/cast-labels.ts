@@ -4,23 +4,37 @@
  */
 import cast from "../../roster/roster/cast.json";
 
+function entryLabel(entry: unknown): string | undefined {
+  if (entry === null || typeof entry !== "object" || !("label" in entry)) {
+    return undefined;
+  }
+  const label = entry.label;
+  if (typeof label !== "string") {
+    return undefined;
+  }
+  const trimmed = label.trim();
+  if (trimmed === "") {
+    return undefined;
+  }
+  return trimmed;
+}
+
 export function labelsFromCastEntries(entries: unknown): string[] {
   if (!Array.isArray(entries)) {
-    throw new Error(
-      `cast labels: expected an array of cast entries. Got ${typeof entries}.`,
-    );
+    throw new Error(`cast labels: expected an array of cast entries. Got ${typeof entries}.`);
   }
   const labels: string[] = [];
+  const seen = new Set<string>();
   for (const entry of entries) {
-    if (
-      entry !== null &&
-      typeof entry === "object" &&
-      "label" in entry &&
-      typeof (entry as { label: unknown }).label === "string" &&
-      (entry as { label: string }).label.trim() !== ""
-    ) {
-      labels.push((entry as { label: string }).label.trim());
+    const label = entryLabel(entry);
+    if (label === undefined) {
+      continue;
     }
+    if (seen.has(label)) {
+      throw new Error(`cast labels: duplicate label ${label}`);
+    }
+    seen.add(label);
+    labels.push(label);
   }
   if (labels.length !== entries.length) {
     throw new Error(
