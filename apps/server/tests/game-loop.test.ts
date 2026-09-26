@@ -1383,7 +1383,6 @@ describe("chain call retries", () => {
   ) {
     const clock = { now: 0 };
     const deps = unusedSettleDeps();
-    let n = 0;
     const loop = new GameLoop({
       config: {
         ...baseConfig,
@@ -1401,16 +1400,12 @@ describe("chain call retries", () => {
       chainWritePorts: overrides.chainWritePorts ?? deps.chainWritePorts,
       battleBetting: overrides.battleBetting ?? deps.battleBetting,
       fightJob: overrides.fightJob ?? deps.fightJob,
-      verifyWorldId: async () => {
-        n += 1;
-        return { nullifier: `retry-${String(n)}` };
-      },
     });
     return { loop, clock, deps };
   }
 
   async function openStageOneBout(loop: GameLoop, clock: { now: number }): Promise<void> {
-    await loop.vote({}, [0, 1]);
+    await loop.voteWithNullifier("retry-voter", [0, 1]);
     clock.now += 1_000;
     await loop.tick(clock.now);
   }
