@@ -481,11 +481,24 @@ function tearDraw(
     );
   } else g.drawImage(src, sx, sy, sw, sh, dx, dy, dw, dh);
 }
+function fit(
+  sw: number,
+  sh: number,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+): [number, number, number, number] {
+  const k = Math.min(dw / sw, dh / sh),
+    w = Math.round(sw * k),
+    h = Math.round(sh * k);
+  return [dx + Math.round((dw - w) / 2), dy + Math.round((dh - h) / 2), w, h];
+}
 export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
   if (S.videoStyle === "rotoscope") {
     dg.imageSmoothingEnabled = false;
     dg.drawImage(video, 0, 0, DRAWN_W, DRAWN_H);
-    tearDraw(drawn, crop(DRAWN_W, DRAWN_H, dw, dh), dx, dy, dw, dh);
+    tearDraw(drawn, [0, 0, DRAWN_W, DRAWN_H], ...fit(DRAWN_W, DRAWN_H, dx, dy, dw, dh));
     return;
   }
   const w = 160,
