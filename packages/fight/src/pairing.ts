@@ -9,7 +9,6 @@ import { livingCardSchema, type LivingCard } from "./types.js";
 export type PairingInput = {
   champion: LivingCard | null;
   candidates: LivingCard[];
-  /** The viewer booked `champion` for the opening bout. The model picks only the opponent. */
   opening?: boolean;
 };
 

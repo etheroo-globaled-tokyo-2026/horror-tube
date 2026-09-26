@@ -8,14 +8,7 @@ import type { PutFightVideoInput } from "@horror-tube/fight-media";
 import { z } from "zod";
 
 import { runFightTurn, type FalVideoInput } from "../src/index.js";
-import {
-  fighterA,
-  fighterB,
-  livingOpponent,
-  otherLiving,
-  sampleFightInput,
-  validModelTurn,
-} from "./fixtures.js";
+import { sampleFightInput, validModelTurn } from "./fixtures.js";
 
 const fixturePath = join(
   dirname(fileURLToPath(import.meta.url)),
