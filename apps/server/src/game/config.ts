@@ -3,15 +3,12 @@ import { requiredEnv } from "@horror-tube/betting";
 export type GameLoopConfig = {
   quorumVotes: number;
   voteCountdownSeconds: number;
-  bettingCloseAfterVideoStartSeconds: number;
+  bettingWindowSeconds: number;
   videoTimeoutSeconds: number;
   settleSeconds: number;
 };
 
-function requiredPositiveInt(
-  name: string,
-  env: NodeJS.ProcessEnv,
-): number {
+function requiredPositiveInt(name: string, env: NodeJS.ProcessEnv): number {
   const raw = requiredEnv(name, env);
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) {
@@ -22,24 +19,17 @@ function requiredPositiveInt(
   return n;
 }
 
-export function readGameLoopConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): GameLoopConfig {
+export function readGameLoopConfig(env: NodeJS.ProcessEnv = process.env): GameLoopConfig {
   return {
     quorumVotes: requiredPositiveInt("QUORUM_VOTES", env),
     voteCountdownSeconds: requiredPositiveInt("VOTE_COUNTDOWN_SECONDS", env),
-    bettingCloseAfterVideoStartSeconds: requiredPositiveInt(
-      "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS",
-      env,
-    ),
+    bettingWindowSeconds: requiredPositiveInt("BETTING_WINDOW_SECONDS", env),
     videoTimeoutSeconds: requiredPositiveInt("VIDEO_TIMEOUT_SECONDS", env),
     settleSeconds: requiredPositiveInt("SETTLE_SECONDS", env),
   };
 }
 
-export function readRosterEnsLabels(
-  env: NodeJS.ProcessEnv = process.env,
-): string[] {
+export function readRosterEnsLabels(env: NodeJS.ProcessEnv = process.env): string[] {
   const raw = requiredEnv("ROSTER_ENS_LABELS", env);
   const labels = raw
     .split(",")
@@ -53,9 +43,7 @@ export function readRosterEnsLabels(
   const sorted = [...labels].sort((a, b) => a.localeCompare(b));
   const unique = new Set(sorted);
   if (unique.size !== sorted.length) {
-    throw new Error(
-      `ROSTER_ENS_LABELS must not contain duplicate labels. See .env.example.`,
-    );
+    throw new Error(`ROSTER_ENS_LABELS must not contain duplicate labels. See .env.example.`);
   }
   return sorted;
 }
