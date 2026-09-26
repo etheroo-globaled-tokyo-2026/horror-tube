@@ -25,9 +25,9 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 `packages/ens/scripts/roster.ts` (the same reader as the dashboard). It needs `ENS_LABEL` and
 `VITE_SEPOLIA_RPC_URL` in the repo-root `.env`. The RPC URL ships in the page, so use a public keyless one.
 
-- Name: the label in caps, until a `display_name` record exists.
+- Name: the `display_name` record. A blank `display_name` stops the page load.
 - Face: the `icon` PNG, everywhere (tape, spine, guide, fight figures).
-- Case file: `brief` and `injuries`. `look` is for the video model only.
+- Case file: `brief` and current `injuries`. `injury_places` is the list of places that character can be injured. `look` is for the video model only.
 - `status=dead` shows the character crossed off and in black and white. It cannot get votes.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.

@@ -10,7 +10,6 @@ import {
   formatEther,
   getAddress,
   http,
-  isHex,
   keccak256,
   parseAbi,
   parseEventLogs,
@@ -31,7 +30,28 @@ import {
   PIN_DEPLOYED_AT,
   loadSubnamePinAddresses,
 } from "./pin.js";
-import { readRosterFromChain } from "./roster.js";
+import {
+  parseInjuries,
+  parseInjuryPlaces,
+  readRegisteredLabels,
+  readRosterFromChain,
+} from "./roster.js";
+import {
+  AGENT_TEXT_KEYS,
+  REGISTER_BOOTSTRAP_TEXT_KEYS,
+  ROSTER_TEXT_KEYS,
+  grantTextSetterRoles,
+} from "./grant-text-roles.js";
+import {
+  loadAgentKey,
+  loadBootstrapKey,
+  loadRosterKey,
+  requiredEnv as requiredEnvFromMap,
+} from "./process-keys.js";
+import {
+  classifyInjuriesRewrite,
+  rewriteEmptyInjuriesValues,
+} from "./rewrite-empty-injuries.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
 
@@ -46,7 +66,15 @@ const ROLE_SET_RESOLVER = 1n << 24n;
 const ROLE_UNREGISTER = 1n << 12n;
 const CHARACTER_ROLE_BITMAP =
   ROLE_SET_SUBREGISTRY | ROLE_SET_RESOLVER | ROLE_UNREGISTER;
-const TEXT_KEYS = ["look", "brief", "injuries", "status", "icon"] as const;
+const TEXT_KEYS = [
+  "display_name",
+  "look",
+  "brief",
+  "injury_places",
+  "injuries",
+  "status",
+  "icon",
+] as const;
 
 const textResolverAbi = parseAbi([
   "function text(bytes32 node, string key) view returns (string)",
@@ -58,7 +86,9 @@ type Command =
   | "apply-register"
   | "unregister"
   | "list"
-  | "set-icon";
+  | "labels"
+  | "set-icon"
+  | "rewrite-empty-injuries";
 
 type IconUpdate = {
   label: string;
@@ -67,8 +97,10 @@ type IconUpdate = {
 
 type CharacterSheet = {
   label: string;
+  display_name: string;
   look: string;
   brief: string;
+  injury_places: string;
   injuries: string;
   status: string;
   icon: string;
@@ -90,13 +122,11 @@ function fail(message: string): never {
 }
 
 function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.trim() === "") {
-    fail(
-      `${name} is required. Set it in .env. See .env.example. Refusing to fall back.`,
-    );
+  try {
+    return requiredEnvFromMap(name);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
-  return value.trim();
 }
 
 function parseLabel(value: string | undefined): string {
@@ -119,21 +149,11 @@ function parseLabel(value: string | undefined): string {
   return trimmed;
 }
 
-function parsePrivateKey(value: string): Hex {
-  const normalized = value.startsWith("0x") ? value : `0x${value}`;
-  if (!isHex(normalized) || normalized.length !== 66) {
-    fail(
-      `PRIVATE_KEY must be a 32-byte hex string (0x + 64 hex chars). Got length ${normalized.length}`,
-    );
-  }
-  return normalized;
-}
-
 function parseCommand(argv: string[]): Command {
   const arg = argv[2];
   if (arg === undefined || arg.trim() === "") {
     fail(
-      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | set-icon.",
+      "Command is required. Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.",
     );
   }
   if (
@@ -142,12 +162,14 @@ function parseCommand(argv: string[]): Command {
     arg === "apply-register" ||
     arg === "unregister" ||
     arg === "list" ||
-    arg === "set-icon"
+    arg === "labels" ||
+    arg === "set-icon" ||
+    arg === "rewrite-empty-injuries"
   ) {
     return arg;
   }
   fail(
-    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | set-icon.`,
+    `Unknown command "${arg}". Use: ensure | snapshot | apply-register | unregister | list | labels | set-icon | rewrite-empty-injuries.`,
   );
 }
 
@@ -247,16 +269,37 @@ async function main(): Promise<void> {
   const command = parseCommand(process.argv);
   const ensLabel = parseLabel(process.env.ENS_LABEL);
   const rpcUrl = requiredEnv("SEPOLIA_RPC_URL");
-  const privateKey = parsePrivateKey(requiredEnv("PRIVATE_KEY"));
+  let bootstrapKey: ReturnType<typeof loadBootstrapKey>;
+  let rosterKey: ReturnType<typeof loadRosterKey>;
+  let agentKey: ReturnType<typeof loadAgentKey>;
+  try {
+    bootstrapKey = loadBootstrapKey();
+    rosterKey = loadRosterKey();
+    agentKey = loadAgentKey();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
   const pin = loadSubnamePinAddresses();
 
-  const account = privateKeyToAccount(privateKey);
+  const account = privateKeyToAccount(bootstrapKey.privateKey);
+  const rosterAccount = privateKeyToAccount(rosterKey.privateKey);
+  const agentAccount = privateKeyToAccount(agentKey.privateKey);
   const publicClient = createPublicClient({
     chain: sepolia,
     transport: http(rpcUrl),
   });
   const walletClient = createWalletClient({
     account,
+    chain: sepolia,
+    transport: http(rpcUrl),
+  });
+  const rosterWallet = createWalletClient({
+    account: rosterAccount,
+    chain: sepolia,
+    transport: http(rpcUrl),
+  });
+  const agentWallet = createWalletClient({
+    account: agentAccount,
     chain: sepolia,
     transport: http(rpcUrl),
   });
@@ -274,7 +317,9 @@ async function main(): Promise<void> {
         },
         parent: `${ensLabel}.eth`,
         command,
-        wallet: account.address,
+        bootstrap: account.address,
+        roster: rosterAccount.address,
+        agent: agentAccount.address,
         rpcUrl,
       },
       null,
@@ -562,11 +607,27 @@ async function main(): Promise<void> {
       for (const key of TEXT_KEYS) {
         texts[key] = await readText(resolverAddress, dnsName, key);
       }
+      const displayName = texts.display_name;
+      if (displayName === undefined || displayName.trim() === "") {
+        fail(`${label}: display_name is missing or blank.`);
+      }
+      const rawPlaces = texts.injury_places;
+      if (rawPlaces === undefined) {
+        fail(`${label}: injury_places text record was not read.`);
+      }
+      parseInjuryPlaces(label, rawPlaces);
+      const rawInjuries = texts.injuries;
+      if (rawInjuries === undefined) {
+        fail(`${label}: injuries text record was not read.`);
+      }
+      parseInjuries(label, rawInjuries);
       out[label] = {
         label,
+        display_name: displayName,
         look: texts.look ?? "",
         brief: texts.brief ?? "",
-        injuries: texts.injuries ?? "",
+        injury_places: rawPlaces,
+        injuries: rawInjuries,
         status: texts.status ?? "",
         icon: texts.icon ?? "",
       };
@@ -574,8 +635,71 @@ async function main(): Promise<void> {
     return out;
   }
 
+  async function writeTextWithWallet(
+    wallet: typeof walletClient,
+    resolverAddress: Address,
+    dnsName: Hex,
+    label: string,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    let textHash: Hex;
+    try {
+      textHash = await wallet.writeContract({
+        address: resolverAddress,
+        abi: permissionedResolverAbi,
+        functionName: "setText",
+        args: [dnsName, key, value],
+      });
+    } catch (error) {
+      fail(
+        `PermissionedResolver.setText(${label}, ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    console.log(
+      `setTextTxHash=${textHash} label=${label} key=${key} writer=${wallet.account.address}`,
+    );
+    await waitSuccess(publicClient, textHash, `setText ${label} ${key}`);
+  }
+
+  async function grantRestrictedTextRoles(resolverAddress: Address): Promise<void> {
+    console.log(
+      `grantSetterRoles roster=${rosterAccount.address} keys=${ROSTER_TEXT_KEYS.join(",")}`,
+    );
+    try {
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient,
+        resolver: resolverAddress,
+        account: rosterAccount.address,
+        keys: ROSTER_TEXT_KEYS,
+      });
+    } catch (error) {
+      fail(
+        `grantSetterRoles for roster failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    console.log(
+      `grantSetterRoles agent=${agentAccount.address} keys=${AGENT_TEXT_KEYS.join(",")}`,
+    );
+    try {
+      await grantTextSetterRoles({
+        publicClient,
+        walletClient,
+        resolver: resolverAddress,
+        account: agentAccount.address,
+        keys: AGENT_TEXT_KEYS,
+      });
+    } catch (error) {
+      fail(
+        `grantSetterRoles for agent failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   if (command === "ensure") {
     const ensured = await ensureParentInfrastructure();
+    await grantRestrictedTextRoles(ensured.resolver);
     console.log(
       JSON.stringify(
         {
@@ -583,6 +707,8 @@ async function main(): Promise<void> {
           subregistry: ensured.subregistry,
           resolver: ensured.resolver,
           parentExpiry: parentState.expiry.toString(),
+          rosterGrants: [...ROSTER_TEXT_KEYS],
+          agentGrants: [...AGENT_TEXT_KEYS],
         },
         null,
         2,
@@ -625,18 +751,26 @@ async function main(): Promise<void> {
     }
     const plan = raw as RegisterPlan;
     const ensured = await ensureParentInfrastructure();
+    await grantRestrictedTextRoles(ensured.resolver);
 
     for (const entry of plan.characters) {
       if (
         typeof entry.label !== "string" ||
+        typeof entry.display_name !== "string" ||
         typeof entry.look !== "string" ||
         typeof entry.brief !== "string" ||
+        typeof entry.injury_places !== "string" ||
         typeof entry.injuries !== "string" ||
         typeof entry.status !== "string" ||
         typeof entry.icon !== "string"
       ) {
         fail(`Plan entry missing required string fields: ${JSON.stringify(entry)}`);
       }
+      if (entry.display_name.trim() === "") {
+        fail(`Plan entry ${entry.label} has blank display_name.`);
+      }
+      parseInjuryPlaces(entry.label, entry.injury_places);
+      parseInjuries(entry.label, entry.injuries);
       const id = labelId(entry.label);
       let status: number;
       try {
@@ -684,26 +818,34 @@ async function main(): Promise<void> {
       }
 
       const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
-      for (const key of TEXT_KEYS) {
-        const value = entry[key];
-        let textHash: Hex;
-        try {
-          textHash = await walletClient.writeContract({
-            address: ensured.resolver,
-            abi: permissionedResolverAbi,
-            functionName: "setText",
-            args: [dnsName, key, value],
-          });
-        } catch (error) {
-          fail(
-            `PermissionedResolver.setText(${entry.label}, ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        console.log(`setTextTxHash=${textHash} label=${entry.label} key=${key}`);
-        await waitSuccess(
-          publicClient,
-          textHash,
-          `setText ${entry.label} ${key}`,
+      for (const key of REGISTER_BOOTSTRAP_TEXT_KEYS) {
+        await writeTextWithWallet(
+          walletClient,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
+        );
+      }
+      for (const key of ROSTER_TEXT_KEYS) {
+        await writeTextWithWallet(
+          rosterWallet,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
+        );
+      }
+      for (const key of AGENT_TEXT_KEYS) {
+        await writeTextWithWallet(
+          agentWallet,
+          ensured.resolver,
+          dnsName,
+          entry.label,
+          key,
+          entry[key],
         );
       }
 
@@ -812,6 +954,25 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "labels") {
+    const outPath = requireFlag(process.argv, "--out");
+    let labels: string[];
+    try {
+      labels = await readRegisteredLabels(ensLabel, rpcUrl, pin.ETHRegistry);
+    } catch (error) {
+      fail(
+        `list registered labels failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    writeFileSync(outPath, `${JSON.stringify(labels, null, 2)}\n`);
+    console.log(`Wrote registered labels: ${outPath}`);
+    console.log(`registered=${String(labels.length)}`);
+    for (const label of labels) {
+      console.log(`label=${label}`);
+    }
+    return;
+  }
+
   if (command === "list") {
     const outPath = requireFlag(process.argv, "--out");
     let roster: Awaited<ReturnType<typeof readRosterFromChain>>;
@@ -826,9 +987,11 @@ async function main(): Promise<void> {
     for (const sheet of roster.sheets) {
       byLabel[sheet.label] = {
         label: sheet.label,
+        display_name: sheet.display_name,
         look: sheet.look,
         brief: sheet.brief,
-        injuries: sheet.injuries,
+        injury_places: JSON.stringify(sheet.injury_places),
+        injuries: JSON.stringify(sheet.injuries),
         status: sheet.status,
         icon: sheet.icon,
       };
@@ -847,6 +1010,7 @@ async function main(): Promise<void> {
     const outPath = requireFlag(process.argv, "--out");
     const updates = parseIconUpdates(updatesPath);
     const ensured = await ensureParentInfrastructure();
+    await grantRestrictedTextRoles(ensured.resolver);
     const results: { label: string; icon: string; txHash: Hex }[] = [];
 
     for (const update of updates) {
@@ -875,7 +1039,7 @@ async function main(): Promise<void> {
       const dnsName = dnsEncodeName(subname(update.label, ensLabel));
       let textHash: Hex;
       try {
-        textHash = await walletClient.writeContract({
+        textHash = await rosterWallet.writeContract({
           address: ensured.resolver,
           abi: permissionedResolverAbi,
           functionName: "setText",
@@ -883,11 +1047,11 @@ async function main(): Promise<void> {
         });
       } catch (error) {
         fail(
-          `PermissionedResolver.setText(${update.label}, icon) failed: ${error instanceof Error ? error.message : String(error)}`,
+          `PermissionedResolver.setText(${update.label}, icon) via roster key failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       console.log(
-        `setTextTxHash=${textHash} label=${update.label} key=icon icon=${update.icon}`,
+        `setTextTxHash=${textHash} label=${update.label} key=icon icon=${update.icon} writer=${rosterAccount.address}`,
       );
       await waitSuccess(
         publicClient,
@@ -903,6 +1067,91 @@ async function main(): Promise<void> {
 
     writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`);
     console.log(`Wrote set-icon results: ${outPath}`);
+    return;
+  }
+
+  if (command === "rewrite-empty-injuries") {
+    const labelsPath = requireFlag(process.argv, "--labels");
+    const raw = readJson(labelsPath);
+    if (!Array.isArray(raw) || raw.some((x) => typeof x !== "string")) {
+      fail(`--labels must be a JSON array of label strings. Got: ${labelsPath}`);
+    }
+    const labels = raw as string[];
+    if (labels.length === 0) {
+      fail(`${labelsPath}: rewrite-empty-injuries label list must not be empty.`);
+    }
+    const ensured = await ensureParentInfrastructure();
+    await grantRestrictedTextRoles(ensured.resolver);
+
+    const living: { label: string; injuries: string }[] = [];
+    for (const label of labels) {
+      const id = labelId(label);
+      let regStatus: number;
+      try {
+        regStatus = Number(
+          await publicClient.readContract({
+            address: ensured.subregistry,
+            abi: userRegistryAbi,
+            functionName: "getStatus",
+            args: [id],
+          }),
+        );
+      } catch (error) {
+        fail(
+          `UserRegistry.getStatus(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (regStatus !== STATUS_REGISTERED) {
+        console.log(`skip ${label}: not REGISTERED (getStatus=${regStatus})`);
+        continue;
+      }
+      const dnsName = dnsEncodeName(subname(label, ensLabel));
+      const statusText = await readText(ensured.resolver, dnsName, "status");
+      if (statusText === "dead") {
+        console.log(`skip ${label}: status=dead`);
+        continue;
+      }
+      const injuriesText = await readText(ensured.resolver, dnsName, "injuries");
+      living.push({ label, injuries: injuriesText });
+    }
+
+    const batch = rewriteEmptyInjuriesValues(living);
+    for (const skipped of batch.skipped) {
+      console.log(`skip ${skipped}: injuries already a JSON array`);
+    }
+    if (batch.stop !== undefined) {
+      fail(
+        `rewrite-empty-injuries stopped on ${subname(batch.stop.label, ensLabel)}: injuries is not a JSON array. raw=${JSON.stringify(batch.stop.raw)}`,
+      );
+    }
+    for (const entry of batch.rewrites) {
+      const decision = classifyInjuriesRewrite("");
+      if (decision.action !== "rewrite") {
+        fail(`internal: expected rewrite for empty injuries on ${entry.label}`);
+      }
+      const dnsName = dnsEncodeName(subname(entry.label, ensLabel));
+      await writeTextWithWallet(
+        agentWallet,
+        ensured.resolver,
+        dnsName,
+        entry.label,
+        "injuries",
+        entry.next,
+      );
+      console.log(
+        `rewrote ${subname(entry.label, ensLabel)} injuries "" -> [] via agent key`,
+      );
+    }
+    console.log(
+      JSON.stringify(
+        {
+          rewritten: batch.rewrites.map((r) => r.label),
+          skipped: batch.skipped,
+        },
+        null,
+        2,
+      ),
+    );
     return;
   }
 

@@ -3,27 +3,34 @@
 Part of #23: propose character sheets from Fandom, validate JSON, emit **plans**,
 and **register/unregister** character subnames under `ENS_LABEL` on Sepolia ENSv2.
 
-| Command       | Chain?  | Role                                                                      |
-| ------------- | ------- | ------------------------------------------------------------------------- |
-| `propose`     | no      | Build roster JSON from Fandom `api.php`                                   |
-| `import`      | no      | Validate JSON and write an import **plan** (`chain_writes: false`)        |
-| `plan-remove` | no      | Validate labels and write a removal **plan** (`chain_writes: false`)      |
-| `register`    | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`          |
-| `remove`      | **yes** | `UserRegistry.unregister` for each label                                  |
-| `icons`       | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet  |
-| `icons-chain` | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
+| Command        | Chain?  | Role                                                                 |
+| -------------- | ------- | -------------------------------------------------------------------- |
+| `sections`     | no      | Print Fandom `api.php` section headings as JSON                      |
+| `propose`      | no      | Build roster JSON from Fandom `api.php`                              |
+| `import`       | no      | Validate JSON and write an import **plan** (`chain_writes: false`)   |
+| `plan-remove`  | no      | Validate labels and write a removal **plan** (`chain_writes: false`) |
+| `register`     | **yes** | Read chain text/status, then `UserRegistry.register` + `setText`     |
+| `remove`       | **yes** | `UserRegistry.unregister` for each label                             |
+| `icons`        | no      | Generate face PNGs, upload to Spaces CDN, write `icon` URLs on the sheet |
+| `icons-chain`  | **yes** | Fill empty on-chain `icon` from chain `look` (Spaces + setText icon only) |
 
 `import` / `plan-remove` never send transactions. `register` / `remove` /
 `icons-chain` always hit chain (after validating input). Do not confuse them.
 
 Parent name comes from `ENS_LABEL` (`label.eth`). Character subnames are
 `label.<ENS_LABEL>.eth`. Missing or blank `ENS_LABEL`, `SEPOLIA_RPC_URL`, or
-`PRIVATE_KEY` fails with an error that names the variable. The CLI loads `.env`
-via `python-dotenv` when present. `propose` does not require ENS env vars.
-`icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
+`PRIVATE_KEY` (bootstrap/admin), `ROSTER_PRIVATE_KEY` (look/brief/icon), or
+`AGENT_PRIVATE_KEY` (status/injuries) fails with an error that names the variable.
+The CLI loads `.env` via `python-dotenv` when present. `propose` does not require
+ENS env vars. `icons` does not require ENS env vars; it requires `TOGETHER_API_KEY`,
 `TOGETHER_IMAGE_MODEL`, `TOGETHER_API_URL`, `SPACES_ACCESS_KEY_ID`,
 `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_CDN_HOST`, and `SPACES_ENDPOINT`.
+Spaces uploads use those two Spaces keys only and ignore `AWS_PROFILE`.
 `icons-chain` requires both the ENS write vars and the Together/Spaces vars.
+
+Restricted keys must not be the bootstrap address. Roster and fight writers load
+`ROSTER_PRIVATE_KEY` / `AGENT_PRIVATE_KEY` and refuse to run when that address
+equals `PRIVATE_KEY`.
 
 ## Schemas
 
@@ -36,14 +43,16 @@ Checked in under `packages/roster/roster/schemas/`:
 
 ### Required fields (every key must be present)
 
-| Key        | Rules                                                                                                                            |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                                                                              |
-| `look`     | Non-empty string                                                                                                                 |
-| `brief`    | Non-empty string                                                                                                                 |
-| `injuries` | String; use `""` when unhurt. **Missing key is an error** (no silent default)                                                    |
+| Key        | Rules                                                                         |
+| ---------- | ----------------------------------------------------------------------------- |
+| `label`    | Lowercase DNS label (`a-z0-9` and internal hyphens)                           |
+| `display_name` | Non-empty human-readable name; never defaulted from `label`               |
+| `injury_places` | JSON array of at least one place this character can be injured. `propose` reads `injury_places.json` (issues #11, #12, #13) and fails if the label is missing |
+| `look`     | Non-empty string                                                              |
+| `brief`    | Non-empty string                                                              |
+| `injuries` | String containing a JSON array of non-empty strings; use `"[]"` when unhurt. **Missing key is an error** |
 | `status`   | Must be present. New sheets use `alive`. `dead` is not selectable. `""` is only for names written before `alive` was the default |
-| `icon`     | `""` or an `https://` URL. Missing key is an error                                                                               |
+| `icon`     | `""` or an `https://` URL. Missing key is an error                            |
 
 **Forbidden keys:** `strength`, `intelligence`, `luck`, `role`.
 
@@ -81,6 +90,27 @@ python3 -m roster propose \
   --out /tmp/pinhead.json
 ```
 
+When one article has the body and another has the fight kit, pass both pages
+with `--n 1`. The look page must have a look heading and the brief page a brief
+heading (the same headings `propose --source` accepts). Both titles must produce
+the same label. A disambiguation URL fails. `cast.json` entries with
+`look_source` / `brief_source` use the same path.
+
+```bash
+python3 -m roster sections \
+  --source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)'
+
+python3 -m roster propose \
+  --n 1 \
+  --look-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Universal_Monsters)' \
+  --brief-source 'https://villains.fandom.com/wiki/Frankenstein%27s_Monster_(Mary_Shelley)' \
+  --out /tmp/frankenstein.json
+```
+
+`sections` prints headings only. Use it instead of an inline script. The roster
+interpreter is Python 3.9, and a backslash inside an f-string expression is a
+SyntaxError there.
+
 ### import (plan only)
 
 ```bash
@@ -91,12 +121,27 @@ ENS_LABEL=horrortube python3 -m roster import \
 
 Writes a normalized import plan. Does not submit a transaction.
 
+### wipe and redeploy (sends transactions)
+
+`wipe` unregisters every character subname under `ENS_LABEL`. It does not read text records and it does not remove the parent `.eth` name.
+
+`redeploy` proposes the 10 fighters in `packages/roster/roster/cast.json` from live Fandom pages, uploads face icons, and registers them with `display_name`, `injury_places`, and `injuries`. It stops if a page has no look or brief section. It does not invent those fields.
+
+```bash
+python3 -m roster wipe
+python3 -m roster redeploy
+```
+
 ### register (sends transactions)
 
 Ensures the parent has a UserRegistry subregistry and PermissionedResolver
-(deployed via pin `VerifiableFactory` if missing), reads chain status/text for
-each label, then registers and writes `look` / `brief` / `injuries` / `status` /
-`icon` via `setText`.
+(deployed via pin `VerifiableFactory` if missing), grants restricted setter
+roles via pinned `grantSetterRoles`, reads chain status/text for each label,
+then registers with the bootstrap key and splits `setText` writes:
+
+- bootstrap (`PRIVATE_KEY`): `display_name`, `injury_places`
+- roster (`ROSTER_PRIVATE_KEY`): `look`, `brief`, `icon`
+- agent (`AGENT_PRIVATE_KEY`): `status`, `injuries` (new names get `alive` / `[]`)
 
 ```bash
 python3 -m roster register --input /tmp/one-character.json
@@ -109,6 +154,17 @@ are the source of prior `status` / `injuries` (not only a local file).
 - `skip`: leave chain unchanged and report the label
 - `restore`: set `status` to `alive` and write `injuries` from the **input file**
   (the file must include `injuries` explicitly)
+
+### rewrite-empty-injuries (agent key only; not fight-settle)
+
+One-shot repair for living characters whose on-chain `injuries` text is exactly
+`""`. Sets those to `[]` with `AGENT_PRIVATE_KEY`. Stops on any other non-array
+value and prints the subname and raw value. Do not run this as part of fight
+settle. Do not point this at live Sepolia from CI.
+
+```bash
+pnpm ens:subnames rewrite-empty-injuries --labels /tmp/labels.json
+```
 
 ### plan-remove (plan only)
 
@@ -162,7 +218,7 @@ python3 -m roster icons \
 Discovers every registered character under `ENS_LABEL.eth` from chain. For each
 character whose on-chain `icon` is empty, generates a face PNG from the on-chain
 `look`, uploads to Spaces, and `setText`s **only** the `icon` key to the https
-CDN URL. Does not rewrite `look`, `brief`, `injuries`, or `status`. Skips
+CDN URL. Does not rewrite `display_name`, `look`, `brief`, `injuries`, or `status`. Skips
 characters that already have a non-empty https icon unless `--override`. Fails
 if `look` is empty (names the label). One failure stops the command.
 
@@ -181,10 +237,8 @@ for each. Use `plan-remove` if you only want the JSON plan.
 
 ## Character sheet dashboard
 
-The chain reader is `packages/ens/scripts/roster.ts`. It has no Node imports, so the dashboard, `character-subnames list`, and the web game (`apps/web/game.ts`) all use it.
-
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
-and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
+and shows `display_name` / `look` / `brief` / `injury_places` / `injuries` / `status` / `icon`. Needs
 `ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
 in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
 transactions.

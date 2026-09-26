@@ -27,7 +27,7 @@ def describe_ens_action(label: str, ens_label: str, *, kind: str) -> str:
     if kind == "import":
         return (
             f"Intended ENS action for {name}: register (or update text on) the subname "
-            f"under parent {ens_label}.eth. Text keys: look, brief, injuries, status, icon. "
+            f"under parent {ens_label}.eth. Text keys: display_name, look, brief, injury_places, injuries, status, icon. "
             "Plan only; does not send the transaction. Use `python -m roster register` to send."
         )
     if kind == "remove":
@@ -39,7 +39,7 @@ def describe_ens_action(label: str, ens_label: str, *, kind: str) -> str:
     if kind == "register":
         return (
             f"ENS chain action for {name}: register (if needed) and setText "
-            f"(look, brief, injuries, status, icon) under parent {ens_label}.eth."
+            f"(display_name, look, brief, injury_places, injuries, status, icon) under parent {ens_label}.eth."
         )
     raise RosterValidationError(f"Unknown ENS action kind: {kind!r}")
 

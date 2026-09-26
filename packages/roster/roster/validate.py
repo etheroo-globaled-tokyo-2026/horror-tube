@@ -82,6 +82,49 @@ def _check_icon(icon: str, *, context: str) -> None:
         )
 
 
+def parse_string_list(
+    value: Any, *, context: str, key: str, minimum: int
+) -> list[str]:
+    if not isinstance(value, str):
+        raise RosterValidationError(f"{context}: {key} must be a string.")
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise RosterValidationError(
+            f"{context}: {key} must be a JSON array of strings. Got: {value!r}"
+        ) from exc
+    if not isinstance(parsed, list):
+        raise RosterValidationError(
+            f"{context}: {key} must be a JSON array of strings. Got: {value!r}"
+        )
+    items: list[str] = []
+    for index, item in enumerate(parsed):
+        if not isinstance(item, str):
+            raise RosterValidationError(
+                f"{context}: {key}[{index}] must be a string. Got: {item!r}"
+            )
+        trimmed = item.strip()
+        if trimmed == "":
+            raise RosterValidationError(
+                f"{context}: {key}[{index}] must not be empty or whitespace-only."
+            )
+        items.append(trimmed)
+    if len(items) < minimum:
+        raise RosterValidationError(
+            f"{context}: {key} must contain at least {minimum} "
+            f"{'entry' if minimum == 1 else 'entries'}. Got: {value!r}"
+        )
+    return items
+
+
+def parse_injuries(value: Any, *, context: str) -> list[str]:
+    return parse_string_list(value, context=context, key="injuries", minimum=0)
+
+
+def parse_injury_places(value: Any, *, context: str) -> list[str]:
+    return parse_string_list(value, context=context, key="injury_places", minimum=1)
+
+
 def _check_character_rules(character: Mapping[str, Any], *, context: str) -> None:
     forbidden = FORBIDDEN_KEYS.intersection(character.keys())
     if forbidden:
@@ -89,7 +132,16 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
             f"{context}: forbidden keys present: {', '.join(sorted(forbidden))}. "
             "Do not include strength, intelligence, luck, or role."
         )
-    for key in ("label", "look", "brief", "injuries", "status", "icon"):
+    for key in (
+        "label",
+        "display_name",
+        "look",
+        "brief",
+        "injury_places",
+        "injuries",
+        "status",
+        "icon",
+    ):
         if key not in character:
             raise RosterValidationError(
                 f"{context}: missing required key {key!r}. "
@@ -100,12 +152,17 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
         raise RosterValidationError(
             f"{context}: status must be one of {sorted(STATUS_ALLOWED)!r}. Got: {status!r}"
         )
-    if not isinstance(character["injuries"], str):
-        raise RosterValidationError(f"{context}: injuries must be a string.")
+    parse_injury_places(character["injury_places"], context=context)
+    parse_injuries(character["injuries"], context=context)
     label = character["label"]
     if not isinstance(label, str) or not _LABEL_RE.fullmatch(label):
         raise RosterValidationError(
             f"{context}: label must be a single lowercase DNS label. Got: {label!r}"
+        )
+    display_name = character["display_name"]
+    if not isinstance(display_name, str) or display_name.strip() == "":
+        raise RosterValidationError(
+            f"{context}: display_name must be a non-empty string."
         )
     if not isinstance(character["look"], str) or character["look"].strip() == "":
         raise RosterValidationError(f"{context}: look must be a non-empty string.")
@@ -117,11 +174,16 @@ def _check_character_rules(character: Mapping[str, Any], *, context: str) -> Non
 
 
 def normalize_character(character: Mapping[str, Any]) -> Character:
+    context = f"character {character.get('label')!r}"
+    injury_places = parse_injury_places(character["injury_places"], context=context)
+    injuries = parse_injuries(character["injuries"], context=context)
     return {
         "label": character["label"],
+        "display_name": character["display_name"].strip(),
         "look": character["look"],
         "brief": character["brief"],
-        "injuries": character["injuries"],
+        "injury_places": json.dumps(injury_places, ensure_ascii=False),
+        "injuries": json.dumps(injuries, ensure_ascii=False),
         "status": character["status"],
         "icon": character["icon"],
     }
@@ -179,9 +241,8 @@ def is_dead_or_injured(character: Mapping[str, Any]) -> bool:
     injuries = character.get("injuries")
     if status == "dead":
         return True
-    if isinstance(injuries, str) and injuries != "":
-        return True
-    return False
+    label = character.get("label")
+    return len(parse_injuries(injuries, context=f"character {label!r}")) > 0
 
 
 def index_by_label(characters: Sequence[Mapping[str, Any]]) -> dict[str, Character]:

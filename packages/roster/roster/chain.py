@@ -8,7 +8,12 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from roster.validate import Character, RosterValidationError
+from roster.validate import (
+    Character,
+    RosterValidationError,
+    parse_injuries,
+    parse_injury_places,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 TSX = REPO_ROOT / "packages" / "ens" / "node_modules" / ".bin" / "tsx"
@@ -46,6 +51,52 @@ def ensure_parent_infrastructure() -> None:
     run_chain(["ensure"])
 
 
+def _chain_character(label: str, value: Mapping[str, Any], *, source: str) -> Character:
+    for key in (
+        "label",
+        "display_name",
+        "look",
+        "brief",
+        "injury_places",
+        "injuries",
+        "status",
+        "icon",
+    ):
+        if key not in value or not isinstance(value[key], str):
+            raise RosterValidationError(
+                f"{source} {label!r} missing string field {key!r}."
+            )
+    display_name = value["display_name"]
+    if display_name.strip() == "":
+        raise RosterValidationError(
+            f"{source} {label!r} has blank display_name."
+        )
+    raw_places = value["injury_places"]
+    raw_injuries = value["injuries"]
+    try:
+        injury_places = parse_injury_places(raw_places, context=f"{source} {label!r}")
+    except RosterValidationError as exc:
+        raise RosterValidationError(
+            f"{source} {label!r} has invalid injury_places {raw_places!r}: {exc}"
+        ) from exc
+    try:
+        injuries = parse_injuries(raw_injuries, context=f"{source} {label!r}")
+    except RosterValidationError as exc:
+        raise RosterValidationError(
+            f"{source} {label!r} has invalid injuries {raw_injuries!r}: {exc}"
+        ) from exc
+    return {
+        "label": value["label"],
+        "display_name": display_name,
+        "look": value["look"],
+        "brief": value["brief"],
+        "injury_places": json.dumps(injury_places, ensure_ascii=False),
+        "injuries": json.dumps(injuries, ensure_ascii=False),
+        "status": value["status"],
+        "icon": value["icon"],
+    }
+
+
 def snapshot_existing(labels: Sequence[str]) -> dict[str, Character]:
     if len(labels) == 0:
         return {}
@@ -70,19 +121,7 @@ def snapshot_existing(labels: Sequence[str]) -> dict[str, Character]:
             raise RosterValidationError(
                 f"Chain snapshot entry for {label!r} must be a character object."
             )
-        for key in ("label", "look", "brief", "injuries", "status", "icon"):
-            if key not in value or not isinstance(value[key], str):
-                raise RosterValidationError(
-                    f"Chain snapshot {label!r} missing string field {key!r}."
-                )
-        out[label] = {
-            "label": value["label"],
-            "look": value["look"],
-            "brief": value["brief"],
-            "injuries": value["injuries"],
-            "status": value["status"],
-            "icon": value["icon"],
-        }
+        out[label] = _chain_character(label, value, source="Chain snapshot")
     return out
 
 
@@ -98,6 +137,24 @@ def unregister_labels(labels: Sequence[str]) -> None:
         labels_path = Path(tmp) / "labels.json"
         labels_path.write_text(json.dumps(list(labels)) + "\n", encoding="utf-8")
         run_chain(["unregister", "--labels", str(labels_path)])
+
+
+def list_registered_labels() -> list[str]:
+    """Registered subname labels. Does not read text records."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_path = Path(tmp) / "labels.json"
+        run_chain(["labels", "--out", str(out_path)])
+        try:
+            raw: Any = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RosterValidationError(
+                f"Failed to read registered label list {out_path}: {exc}"
+            ) from exc
+    if not isinstance(raw, list) or any(not isinstance(item, str) for item in raw):
+        raise RosterValidationError(
+            f"Registered label list must be a JSON array of strings. Got {type(raw).__name__}."
+        )
+    return raw
 
 
 def list_registered() -> dict[str, Character]:
@@ -122,19 +179,7 @@ def list_registered() -> dict[str, Character]:
             raise RosterValidationError(
                 f"Registered roster entry for {label!r} must be a character object."
             )
-        for key in ("label", "look", "brief", "injuries", "status", "icon"):
-            if key not in value or not isinstance(value[key], str):
-                raise RosterValidationError(
-                    f"Registered roster {label!r} missing string field {key!r}."
-                )
-        out[label] = {
-            "label": value["label"],
-            "look": value["look"],
-            "brief": value["brief"],
-            "injuries": value["injuries"],
-            "status": value["status"],
-            "icon": value["icon"],
-        }
+        out[label] = _chain_character(label, value, source="Registered roster")
     return out
 
 
