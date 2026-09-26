@@ -8,7 +8,7 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "include": ["*.ts", "tests/*.ts"]
 }

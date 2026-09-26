@@ -53,6 +53,7 @@ Both stages use one rule: fill the empty slots. Stage 1 has 2 empty slots. Stage
 
 - If the video fails or takes longer than `VIDEO_TIMEOUT_SECONDS`, show the error and refund all bets.
 - Do not show a placeholder video (see `.cursor/rules/no-fallbacks.mdc`).
+- Exception until the video pipeline exists: the client plays `apps/web/assets/demo-fight.mp4` for every fight. Remove it when `videoUrl` is real.
 
 ### Settle
 
@@ -70,13 +71,13 @@ Both stages use one rule: fill the empty slots. Stage 1 has 2 empty slots. Stage
 
 Read from `.env`. Add each variable to `.env.example` with an empty value.
 
-| Variable | Dev | Prod |
-|---|---|---|
-| `QUORUM_VOTES` | 1 | 2 |
-| `VOTE_COUNTDOWN_SECONDS` | 15 | 15 |
-| `BET_MIN_SECONDS` | 10 | 10 |
-| `VIDEO_TIMEOUT_SECONDS` | 300 | 300 |
-| `SETTLE_SECONDS` | 8 | 8 |
+| Variable                 | Dev | Prod |
+| ------------------------ | --- | ---- |
+| `QUORUM_VOTES`           | 1   | 2    |
+| `VOTE_COUNTDOWN_SECONDS` | 15  | 15   |
+| `BET_MIN_SECONDS`        | 10  | 10   |
+| `VIDEO_TIMEOUT_SECONDS`  | 300 | 300  |
+| `SETTLE_SECONDS`         | 8   | 8    |
 
 The fight lasts as long as the video. It needs no variable.
 
@@ -107,12 +108,17 @@ type RoundState = {
 };
 ```
 
+Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
+`look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
+
 **Actions from the client:**
 
 - `vote(proof, picks)`: `picks.length` must equal `slots`. The champion and dead characters are rejected. The server verifies the World ID proof.
 - `bet(side, amount)`: allowed only in the `bet` phase.
 
 ## Client changes
+
+Not started. Today the client runs the old local loop: a timer on every phase, top 2 by votes, no champion.
 
 1. In `apps/web/game.ts`, remove the local loop: the `setInterval` timer, the fake votes, the fake pool growth, `next()`, and the `story` phase.
 2. In `apps/web/main.ts`, add the `countdown` phase. Make the vote screen use `slots` (1 or 2 picks), and hide the champion from the list.

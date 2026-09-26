@@ -3,179 +3,11 @@ import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  type Address,
-  type Hex,
-  type PublicClient,
-  createPublicClient,
-  decodeAbiParameters,
-  decodeFunctionData,
-  encodeFunctionData,
-  getAddress,
-  http,
-  keccak256,
-  parseAbi,
-  parseAbiItem,
-  stringToBytes,
-  toHex,
-} from "viem";
-import { sepolia } from "viem/chains";
 
-import { ethRegistryAbi, permissionedResolverAbi, userRegistryAbi } from "./abis.js";
 import { loadSubnamePinAddresses } from "./pin.js";
+import { type CharacterSheet, readRosterFromChain } from "./roster.js";
 
 loadDotenv({ path: new URL("../../../.env", import.meta.url) });
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-const ZERO_BYTES32 =
-  "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
-const STATUS_REGISTERED = 2;
-export const REGISTER_SELECTOR = "0x85f3e643" as const;
-const transferSingleEvent = parseAbiItem(
-  "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
-);
-/** Inclusive block count per eth_getLogs window. Never larger than this. */
-export const MAX_LOG_CHUNK_BLOCKS = 49999n;
-/** Cap on backward windows from chain head. */
-export const MAX_RECENT_LOG_CHUNKS = 4;
-/** Lowest block number this dashboard will query. Never block 0. */
-export const MIN_LOG_BLOCK = 1n;
-
-export type BlockRange = {
-  fromBlock: bigint;
-  toBlock: bigint;
-};
-
-/**
- * Inclusive block windows walking backward from `latestBlock`.
- * Each window spans at most `maxChunkBlocks` blocks. Never includes block 0.
- */
-export function recentLogScanChunks(
-  latestBlock: bigint,
-  maxChunks: number = MAX_RECENT_LOG_CHUNKS,
-  maxChunkBlocks: bigint = MAX_LOG_CHUNK_BLOCKS,
-): BlockRange[] {
-  if (!Number.isInteger(maxChunks) || maxChunks < 1) {
-    throw new Error(
-      `recentLogScanChunks: maxChunks must be a positive integer. Got: ${String(maxChunks)}`,
-    );
-  }
-  if (maxChunkBlocks < 1n) {
-    throw new Error(
-      `recentLogScanChunks: maxChunkBlocks must be >= 1. Got: ${maxChunkBlocks.toString()}`,
-    );
-  }
-  if (latestBlock < MIN_LOG_BLOCK) {
-    return [];
-  }
-  const chunks: BlockRange[] = [];
-  let toBlock = latestBlock;
-  for (let i = 0; i < maxChunks && toBlock >= MIN_LOG_BLOCK; i++) {
-    let fromBlock = toBlock - (maxChunkBlocks - 1n);
-    if (fromBlock < MIN_LOG_BLOCK) {
-      fromBlock = MIN_LOG_BLOCK;
-    }
-    chunks.push({ fromBlock, toBlock });
-    if (fromBlock <= MIN_LOG_BLOCK) {
-      break;
-    }
-    toBlock = fromBlock - 1n;
-  }
-  return chunks;
-}
-
-const textResolverAbi = parseAbi([
-  "function text(bytes32 node, string key) view returns (string)",
-]);
-
-export type CharacterSheet = {
-  label: string;
-  display_name: string;
-  name: string;
-  owner: string;
-  look: string;
-  brief: string;
-  injury_places: string[];
-  injuries: string[];
-  status: string;
-  icon: string;
-};
-
-type CharacterTexts = {
-  display_name: string;
-  look: string;
-  brief: string;
-  injury_places: string;
-  injuries: string;
-  status: string;
-  icon: string;
-};
-
-export function parseStringList(
-  label: string,
-  key: string,
-  raw: string,
-  minimum: number,
-): string[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(
-      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (!Array.isArray(parsed)) {
-    throw new Error(
-      `${label}: ${key} must be a JSON array of non-empty strings. Got ${JSON.stringify(raw)}`,
-    );
-  }
-  const items = parsed.map((item, index) => {
-    if (typeof item !== "string" || item.trim() === "") {
-      throw new Error(
-        `${label}: ${key}[${String(index)}] must be a non-empty string. Got ${JSON.stringify(raw)}`,
-      );
-    }
-    return item.trim();
-  });
-  if (items.length < minimum) {
-    throw new Error(
-      `${label}: ${key} must contain at least ${String(minimum)} entry. Got ${JSON.stringify(raw)}`,
-    );
-  }
-  return items;
-}
-
-export function parseInjuries(label: string, raw: string): string[] {
-  return parseStringList(label, "injuries", raw, 0);
-}
-
-export function parseInjuryPlaces(label: string, raw: string): string[] {
-  return parseStringList(label, "injury_places", raw, 1);
-}
-
-export function characterSheetFromTexts(
-  label: string,
-  name: string,
-  owner: string,
-  texts: CharacterTexts,
-): CharacterSheet {
-  if (texts.display_name.trim() === "") {
-    throw new Error(`${label}: display_name is missing or blank.`);
-  }
-  return {
-    label,
-    display_name: texts.display_name.trim(),
-    name,
-    owner,
-    look: texts.look,
-    brief: texts.brief,
-    injury_places: parseInjuryPlaces(label, texts.injury_places),
-    injuries: parseInjuries(label, texts.injuries),
-    status: texts.status,
-    icon: texts.icon,
-  };
-}
 
 export function ensAppUrl(name: string): string {
   return `https://app.ens.dev/${encodeURI(name)}`;
@@ -193,9 +25,7 @@ function fail(message: string): never {
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.trim() === "") {
-    fail(
-      `${name} is required. Set it in .env. See .env.example. Refusing to fall back.`,
-    );
+    fail(`${name} is required. Set it in .env. See .env.example. Refusing to fall back.`);
   }
   return value.trim();
 }
@@ -230,9 +60,7 @@ export function parseDashboardPort(value: string | undefined): number {
   }
   const port = Number(trimmed);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(
-      `DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`,
-    );
+    throw new Error(`DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`);
   }
   return port;
 }
@@ -288,9 +116,7 @@ function stopPid(pid: number, signal: NodeJS.Signals, port: number): void {
       return;
     }
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Failed to send ${signal} to pid ${pid} on port ${port}: ${detail}`,
-    );
+    throw new Error(`Failed to send ${signal} to pid ${pid} on port ${port}: ${detail}`);
   }
 }
 
@@ -333,63 +159,7 @@ export async function reclaimPort(port: number): Promise<number[]> {
     return pids;
   }
   const left = parseListenerPids(await lsofListeners(port), process.pid);
-  throw new Error(
-    `Port ${port} still in use after SIGKILL. pid=${left.join(",")}`,
-  );
-}
-
-function labelId(label: string): bigint {
-  return BigInt(keccak256(stringToBytes(label)));
-}
-
-function dnsEncodeName(name: string): Hex {
-  if (name === "") {
-    return "0x00";
-  }
-  const labels = name.split(".");
-  const bytes: number[] = [];
-  for (const label of labels) {
-    if (label === "") {
-      throw new Error(`dnsEncodeName: empty label in name ${JSON.stringify(name)}`);
-    }
-    const encoded = new TextEncoder().encode(label);
-    if (encoded.length === 0 || encoded.length > 255) {
-      throw new Error(
-        `dnsEncodeName: invalid label length ${encoded.length} in ${name}`,
-      );
-    }
-    bytes.push(encoded.length);
-    bytes.push(...encoded);
-  }
-  bytes.push(0);
-  return toHex(Uint8Array.from(bytes));
-}
-
-function subname(label: string, ensLabel: string): string {
-  return `${label}.${ensLabel}.eth`;
-}
-
-export function decodeRegisterLabel(input: Hex): string | null {
-  const normalized = input.toLowerCase();
-  if (!normalized.startsWith(REGISTER_SELECTOR)) {
-    return null;
-  }
-  try {
-    const decoded = decodeFunctionData({
-      abi: userRegistryAbi,
-      data: input,
-    });
-    if (decoded.functionName !== "register") {
-      return null;
-    }
-    const label = decoded.args[0];
-    if (typeof label !== "string") {
-      return null;
-    }
-    return label;
-  } catch {
-    return null;
-  }
+  throw new Error(`Port ${port} still in use after SIGKILL. pid=${left.join(",")}`);
 }
 
 export function escapeHtml(value: string): string {
@@ -399,6 +169,13 @@ export function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function renderListHtml(items: readonly string[]): string {
+  if (items.length === 0) {
+    return "none";
+  }
+  return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
 function renderIconHtml(icon: string): string {
@@ -411,17 +188,7 @@ function renderIconHtml(icon: string): string {
   return `<span>${escapeHtml(icon)}</span>`;
 }
 
-function renderInjuriesHtml(injuries: readonly string[]): string {
-  if (injuries.length === 0) {
-    return "none";
-  }
-  return `<ul>${injuries.map((injury) => `<li>${escapeHtml(injury)}</li>`).join("")}</ul>`;
-}
-
-export function renderDashboardHtml(
-  parentName: string,
-  sheets: readonly CharacterSheet[],
-): string {
+export function renderDashboardHtml(parentName: string, sheets: readonly CharacterSheet[]): string {
   const cards = sheets
     .map((sheet) => {
       return [
@@ -432,8 +199,8 @@ export function renderDashboardHtml(
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
-        `<dt>injury places</dt><dd>${renderInjuriesHtml(sheet.injury_places)}</dd>`,
-        `<dt>injuries</dt><dd>${renderInjuriesHtml(sheet.injuries)}</dd>`,
+        `<dt>injury places</dt><dd>${renderListHtml(sheet.injury_places)}</dd>`,
+        `<dt>injuries</dt><dd>${renderListHtml(sheet.injuries)}</dd>`,
         `<dt>status</dt><dd class="status">${escapeHtml(sheet.status === "" ? "(empty)" : sheet.status)}</dd>`,
         `<dt>icon</dt><dd class="icon">${renderIconHtml(sheet.icon)}</dd>`,
         `</dl>`,
@@ -492,11 +259,10 @@ h1 {
   font-size: 1.1rem;
   margin-bottom: 0.35rem;
 }
-.name a,
+.sheet h2 a,
 .addr a {
   color: var(--sulfur);
 }
-.name,
 .addr {
   margin-bottom: 0.75rem;
   word-break: break-all;
@@ -532,276 +298,12 @@ ${cards}
 `;
 }
 
-async function collectRecentTransferSingleLogs(
-  publicClient: PublicClient,
-  address: Address,
-): Promise<{
-  logs: readonly { transactionHash: Hex }[];
-  fromBlock: bigint;
-  toBlock: bigint;
-}> {
-  const latestBlock = await publicClient.getBlockNumber();
-  const planned = recentLogScanChunks(latestBlock);
-  if (planned.length === 0) {
-    throw new Error(
-      `Cannot scan TransferSingle logs: latest block ${latestBlock.toString()} is below MIN_LOG_BLOCK ${MIN_LOG_BLOCK.toString()}`,
-    );
-  }
-
-  console.error(
-    `discover: subregistry=${address} latestBlock=${latestBlock.toString()} maxChunks=${String(MAX_RECENT_LOG_CHUNKS)} maxChunkBlocks=${MAX_LOG_CHUNK_BLOCKS.toString()}`,
-  );
-
-  const all: { transactionHash: Hex }[] = [];
-  let seenAnyLog = false;
-  let searchedFrom = planned[0]!.fromBlock;
-  let searchedTo = planned[0]!.toBlock;
-
-  for (const { fromBlock, toBlock } of planned) {
-    searchedFrom = fromBlock < searchedFrom ? fromBlock : searchedFrom;
-    searchedTo = toBlock > searchedTo ? toBlock : searchedTo;
-
-    let chunk: readonly { transactionHash: Hex }[];
-    try {
-      chunk = await publicClient.getLogs({
-        address,
-        event: transferSingleEvent,
-        fromBlock,
-        toBlock,
-      });
-    } catch (error) {
-      throw new Error(
-        `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    console.error(
-      `discover: eth_getLogs fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()} logs=${String(chunk.length)}`,
-    );
-
-    if (chunk.length > 0) {
-      seenAnyLog = true;
-      for (const log of chunk) {
-        all.push({ transactionHash: log.transactionHash });
-      }
-    } else if (seenAnyLog) {
-      break;
-    }
-  }
-
-  return { logs: all, fromBlock: searchedFrom, toBlock: searchedTo };
-}
-
-async function discoverRegisteredLabels(
-  publicClient: PublicClient,
-  subregistry: Address,
-): Promise<string[]> {
-  const { logs, fromBlock, toBlock } = await collectRecentTransferSingleLogs(
-    publicClient,
-    subregistry,
-  );
-  const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
-  const candidateLabels = new Set<string>();
-  for (const hash of txHashes) {
-    let tx: { input: Hex };
-    try {
-      tx = await publicClient.getTransaction({ hash });
-    } catch (error) {
-      throw new Error(
-        `getTransaction(${hash}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    const label = decodeRegisterLabel(tx.input);
-    if (label !== null) {
-      candidateLabels.add(label);
-    }
-  }
-
-  if (candidateLabels.size === 0) {
-    throw new Error(
-      `No register() labels found in TransferSingle logs for ${subregistry} in blocks ${fromBlock.toString()}..${toBlock.toString()}`,
-    );
-  }
-
-  const registered: string[] = [];
-  for (const label of [...candidateLabels].sort()) {
-    let status: number;
-    try {
-      status = Number(
-        await publicClient.readContract({
-          address: subregistry,
-          abi: userRegistryAbi,
-          functionName: "getStatus",
-          args: [labelId(label)],
-        }),
-      );
-    } catch (error) {
-      throw new Error(
-        `UserRegistry.getStatus(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (status === STATUS_REGISTERED) {
-      registered.push(label);
-    }
-  }
-  return registered;
-}
-
-async function readText(
-  publicClient: PublicClient,
-  resolverAddress: Address,
-  dnsName: Hex,
-  key: string,
-): Promise<string> {
-  const data = encodeFunctionData({
-    abi: textResolverAbi,
-    functionName: "text",
-    args: [ZERO_BYTES32, key],
-  });
-  let encoded: Hex;
-  try {
-    encoded = (await publicClient.readContract({
-      address: resolverAddress,
-      abi: permissionedResolverAbi,
-      functionName: "resolve",
-      args: [dnsName, data],
-    })) as Hex;
-  } catch (error) {
-    throw new Error(
-      `PermissionedResolver.resolve(text ${key}) failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  try {
-    const [value] = decodeAbiParameters([{ type: "string" }], encoded);
-    return value;
-  } catch (error) {
-    throw new Error(
-      `Failed to decode text(${key}) resolve result: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-async function loadCharacterSheets(
-  publicClient: PublicClient,
-  ensLabel: string,
-  subregistry: Address,
-  resolver: Address,
-  labels: readonly string[],
-): Promise<CharacterSheet[]> {
-  const sheets: CharacterSheet[] = [];
-  for (const label of labels) {
-    const name = subname(label, ensLabel);
-    const dnsName = dnsEncodeName(name);
-    let owner: Address;
-    try {
-      const state = await publicClient.readContract({
-        address: subregistry,
-        abi: userRegistryAbi,
-        functionName: "getState",
-        args: [labelId(label)],
-      });
-      owner = getAddress(state.latestOwner);
-    } catch (error) {
-      throw new Error(
-        `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    const display_name = await readText(
-      publicClient,
-      resolver,
-      dnsName,
-      "display_name",
-    );
-    const look = await readText(publicClient, resolver, dnsName, "look");
-    const brief = await readText(publicClient, resolver, dnsName, "brief");
-    const injury_places = await readText(
-      publicClient,
-      resolver,
-      dnsName,
-      "injury_places",
-    );
-    const injuries = await readText(publicClient, resolver, dnsName, "injuries");
-    const status = await readText(publicClient, resolver, dnsName, "status");
-    const icon = await readText(publicClient, resolver, dnsName, "icon");
-    sheets.push(
-      characterSheetFromTexts(label, name, owner, {
-        display_name,
-        look,
-        brief,
-        injury_places,
-        injuries,
-        status,
-        icon,
-      }),
-    );
-  }
-  return sheets;
-}
-
-export async function readRosterFromChain(
-  ensLabel: string,
-  rpcUrl: string,
-): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
-  const pin = loadSubnamePinAddresses();
-  const publicClient = createPublicClient({
-    chain: sepolia,
-    transport: http(rpcUrl),
-  });
-
-  let subregistry: Address;
-  let resolver: Address;
-  try {
-    const [sub, res] = await Promise.all([
-      publicClient.readContract({
-        address: pin.ETHRegistry,
-        abi: ethRegistryAbi,
-        functionName: "getSubregistry",
-        args: [ensLabel],
-      }),
-      publicClient.readContract({
-        address: pin.ETHRegistry,
-        abi: ethRegistryAbi,
-        functionName: "getResolver",
-        args: [ensLabel],
-      }),
-    ]);
-    subregistry = getAddress(sub);
-    resolver = getAddress(res);
-  } catch (error) {
-    throw new Error(
-      `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  if (subregistry === ZERO_ADDRESS) {
-    throw new Error(
-      `Parent ${ensLabel}.eth has no subregistry (getSubregistry returned zero address).`,
-    );
-  }
-  if (resolver === ZERO_ADDRESS) {
-    throw new Error(
-      `Parent ${ensLabel}.eth has no resolver (getResolver returned zero address).`,
-    );
-  }
-
-  const labels = await discoverRegisteredLabels(publicClient, subregistry);
-  const sheets = await loadCharacterSheets(
-    publicClient,
-    ensLabel,
-    subregistry,
-    resolver,
-    labels,
-  );
-  return { parentName: `${ensLabel}.eth`, sheets };
-}
-
 async function main(): Promise<void> {
   const ensLabel = parseLabel(process.env.ENS_LABEL);
   const rpcUrl = requiredEnv("SEPOLIA_RPC_URL");
   const portEnv = process.env.DASHBOARD_PORT;
   const port = parseDashboardPort(portEnv);
-  const portSource =
-    portEnv === undefined || portEnv.trim() === "" ? "fixed" : "DASHBOARD_PORT";
+  const portSource = portEnv === undefined || portEnv.trim() === "" ? "fixed" : "DASHBOARD_PORT";
 
   const stopped = await reclaimPort(port);
   if (stopped.length > 0) {
@@ -816,13 +318,16 @@ async function main(): Promise<void> {
         return;
       }
       try {
-        const roster = await readRosterFromChain(ensLabel, rpcUrl);
+        const roster = await readRosterFromChain(
+          ensLabel,
+          rpcUrl,
+          loadSubnamePinAddresses().ETHRegistry,
+        );
         const html = renderDashboardHtml(roster.parentName, roster.sheets);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
       } catch (error) {
-        const message =
-          error instanceof Error ? (error.stack ?? error.message) : String(error);
+        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
         console.error(`GET / chain read failed:\n${message}`);
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
         res.end(message);
