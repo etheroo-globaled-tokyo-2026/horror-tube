@@ -87,11 +87,11 @@ export function drawTape(ch: Character): void {
   g.fillStyle = ch.injuries ? COL.bone : COL.grime;
   g.font = "18px DotGothic16";
   wrap(g, ch.injuries || "None recorded.", 24, y + 34, VW - 48, 23);
-  g.textAlign = "center";
-  g.fillStyle = COL.grime;
-  g.font = "700 12px Silkscreen";
-  g.fillText("RETAIN AFTER DEATH", VW / 2, VH - 18);
   if (!ch.alive) {
+    g.textAlign = "center";
+    g.fillStyle = COL.grime;
+    g.font = "700 12px Silkscreen";
+    g.fillText("RETAIN AFTER DEATH", VW / 2, VH - 18);
     g.save();
     g.translate(VW / 2, 150);
     g.rotate(-0.2);

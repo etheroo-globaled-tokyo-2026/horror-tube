@@ -25,6 +25,7 @@ export const num = (n: number): string => String(n).padStart(2, "0");
 
 export const T = {
   buf: "",
+  betSide: -1,
   stake: 1,
   hold: -1,
   holdN: 0,
