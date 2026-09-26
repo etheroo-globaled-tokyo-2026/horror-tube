@@ -66,6 +66,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@horror-tube/betting':
+        specifier: workspace:*
+        version: link:../../packages/betting
       '@horror-tube/ens':
         specifier: workspace:*
         version: link:../../packages/ens
