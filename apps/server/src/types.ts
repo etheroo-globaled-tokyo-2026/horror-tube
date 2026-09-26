@@ -11,6 +11,11 @@ export type RoundState = {
   voters: number; // humans who voted (quorum check)
   quorum: number;
   votes: Record<number, number>;
+  /**
+   * Stage-1 tally as stored in Postgres `tallies`, set before phase becomes bet.
+   * Null until that write succeeds. Ranked: most votes, then earliest reachedAt.
+   */
+  tally: { id: number; votes: number; reachedAt: number }[] | null;
   fighters: [number, number] | null;
   /** Sui pool battle id (UUID). Null outside the bet/fight/settle window. */
   battleId: string | null;

@@ -4,7 +4,7 @@ import { extname, resolve, sep } from "node:path";
 
 import * as v from "valibot";
 
-import { PlaybackStartStoreError, type GameLoop } from "./game/loop.js";
+import { StoreWriteError, type GameLoop } from "./game/loop.js";
 import { HttpError } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import type { RoundState } from "./types.js";
@@ -304,7 +304,7 @@ async function handleRequest(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`POST /playback-start failed: ${message}`);
-          sendJson(res, err instanceof PlaybackStartStoreError ? 500 : 409, {
+          sendJson(res, err instanceof StoreWriteError ? 500 : 409, {
             ok: false,
             error: message,
           });
@@ -337,11 +337,12 @@ async function handleRequest(
           return;
         }
         try {
-          opts.game.voteWithNullifier(nullifier, picks);
+          await opts.game.voteWithNullifier(nullifier, picks);
           sendState(res, opts.game.getState());
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, 400, { ok: false, error: message });
+          if (err instanceof StoreWriteError) console.error(`POST /vote failed: ${message}`);
+          sendJson(res, err instanceof StoreWriteError ? 500 : 400, { ok: false, error: message });
         }
         return;
       }
