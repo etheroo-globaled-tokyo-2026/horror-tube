@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import { $, newSeason } from "./game.ts";
 import { ctx2d } from "./sprites.ts";
+import { drawLogoLine } from "./logo.ts";
 import { fetchEnterRoomRequest, startEnterRoomProof, verifyEnterRoomProof } from "./world-id.ts";
-import { openGameWallet } from "./wallet.ts";
+import { openGameWallet, type GameWallet } from "./wallet.ts";
+import { enterWithProof, entryDownDetail, entryFailLine } from "./waiver-entry.ts";
 import { sfx } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
 import { lambert, seed, speckle } from "./room-materials.ts";
@@ -45,9 +47,7 @@ export function drawPaper(now: number): void {
   speckle(g, PW, PH, [COL.grime, COL.rust], 260);
   g.textAlign = "left";
   g.textBaseline = "alphabetic";
-  g.fillStyle = COL.blood;
-  g.font = "700 38px Silkscreen";
-  g.fillText("HORROR TUBE", 28, 62);
+  drawLogoLine(g, 28, 62, PW - 56);
   g.fillStyle = COL.rustDeep;
   g.font = "700 20px Silkscreen";
   g.fillText("READ BEFORE YOU WATCH", 28, 92);
@@ -112,7 +112,7 @@ export function drawPaper(now: number): void {
 type WaiverHooks = {
   hintText: () => void;
   walkTo: (n: number) => void;
-  mountCoinBox: () => Promise<void>;
+  mountCoinBox: (wallet: GameWallet) => Promise<void>;
 };
 export const waiverHooks: WaiverHooks = {
   hintText: () => {
@@ -182,32 +182,34 @@ export async function beginWorldIdScan(): Promise<void> {
     waiverHooks.hintText();
     const idkitResult = await proof.wait();
     if (signal.aborted) return;
-    await verifyEnterRoomProof(idkitResult);
-    if (signal.aborted) return;
-    await openGameWallet(JSON.stringify(idkitResult));
-    if (signal.aborted) return;
-    await waiverHooks.mountCoinBox();
-    if (signal.aborted) return;
+    const outcome = await enterWithProof(
+      idkitResult,
+      {
+        verify: verifyEnterRoomProof,
+        openWallet: (json) => openGameWallet(json),
+        mountCoinBox: (wallet) => waiverHooks.mountCoinBox(wallet),
+        onVerified: () => {
+          W8.qrUri = "";
+          step("wallet");
+        },
+      },
+      signal,
+    );
+    if (outcome === "cancelled") return;
     verified();
-  } catch (err) {
+  } catch (cause) {
     if (signal.aborted) return;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`World ID enter-room failed: ${message}`);
-    scanFailed(message);
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    console.error(`World ID enter-room failed: ${error.message}`);
+    scanFailed(error);
   }
 }
-function failLine(message: string): string {
-  if (/nullifier_replayed|max_verifications_reached|already used/iu.test(message))
-    return "This World ID already used its one entry.";
-  if (/user_rejected|cancelled/iu.test(message)) return "The scan was cancelled.";
-  if (/credential_unavailable/iu.test(message)) return "World App has no Orb credential.";
-  return "The unique human scan failed.";
-}
-export function scanFailed(message: string): void {
+export function scanFailed(error: Error): void {
   scanAbort?.abort();
   scanAbort = null;
   W8.qrUri = "";
-  W8.fail = failLine(message);
+  W8.fail = entryFailLine(error);
+  W8.down = entryDownDetail(error) ?? "";
   step("off");
 }
 export function verified(): void {
@@ -233,7 +235,6 @@ export function enterRoom(): void {
   step("done");
   paper.visible = false;
   stool.visible = false;
-  $("#gate").hidden = true;
   void newSeason();
 }
 export function noOrb(): void {
@@ -248,6 +249,7 @@ export function retry(): void {
     W8.ink = 0;
     W8.qrUri = "";
     W8.fail = "";
+    W8.down = "";
     burnLight.intensity = 0;
     paperFlag.drawn = false;
     step("read");

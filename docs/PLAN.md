@@ -10,12 +10,12 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 | Part                         | Status                                                                                                                                                    |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Web game (`apps/web`)        | Built. The room, TV, remote, shelf, and coin box. The client applies server `RoundState` (`applyRoundState` / `connectToServerRound`); it does not own the loop timers. |
-| World ID                     | Live. Waiver signs an IDKit 4.0 Orb proof for `enter-room`; the server verifies at `POST /world-id/verify`. Staging (`WORLD_ID_ENVIRONMENT=staging`) covers repeat judge scans. |
+| World ID                     | Live. Waiver signs an IDKit 4.0 Orb proof for `enter-room`; the server verifies at `POST /world-id/verify`. Sandbox (`WORLD_ID_ENVIRONMENT=sandbox`) gives each tester's World ID (Sandbox) build its own nullifier; staging is the one-identity simulator. |
 | Wallet                       | Built. Sui testnet burner in the browser. A real USDC deposit is tested. The coin return is not.                                                          |
 | ENS parent and subnames      | Built. `horrortube.eth` on Sepolia ENSv2, subnames with text records, register/remove/icon CLIs (`docs/roster-json.md`).                                  |
 | Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                   |
 | Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                  |
-| Betting contract             | Built on Sepolia: `BattleBetting` (`docs/battle-betting.md`). The game does not call it yet. `POST /bet` only adds to the in-memory pool. A Sui port is being scoped. |
+| Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet. |
 | Game server                  | Built (`apps/server`). Vote→bet→fight→settle holding loop; battle-result queue schema and settle state machine land with #60. |
 | Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                  |
 | ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or settle stays on the round error. `POST /retry-settle` runs the pending steps again. |
@@ -28,7 +28,7 @@ See `apps/web/DESIGN.md`.
 
 - **ENS name**: character state (subnames and text records) on Sepolia. The web game reads its characters from here.
 - **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons/rounds/votes and the battle-result queue (`battle_results`). Not Durable Objects.
-- **Smart contract**: `BattleBetting` on Eth Sepolia takes ETH bets and settles from ENS. Built; see [battle-betting.md](battle-betting.md). Moving the betting pool to a Move package on Sui testnet is being scoped.
+- **Smart contract**: the Move package `horror_tube::betting` on Sui testnet holds one USDC pool per battle. The server's operator key opens, closes, cancels and settles it. See [sui-betting.md](sui-betting.md).
 - **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
@@ -45,8 +45,8 @@ See `apps/web/DESIGN.md`.
 6. **Story**: the LLM gets the story prompt, the character state, and lore text for each character (from the database or fandom.com).
    The LLM picks the winner and the winner's damage, and writes them as the last line of the turn.
    The server stores the winner and damage in the database, **not onchain**.
-7. **Open betting**: the backend's operator wallet calls `openBattle` with the two fighters and the countdown end. Voting closes and betting opens.
-8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Today `POST /bet` adds the amount to the in-memory pool. The app does not call `BattleBetting`, and USDC is not debited on-chain.
+7. **Open betting**: voting closes and betting opens. The server's operator key opens the battle's Sui pool (`open_pool`).
+8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Each bet is USDC into the battle's Sui pool, sent through `POST /tx`; Shinami pays the gas.
    The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
 9. **Show video**: the fight video plays from `RoundState.videoUrl`. There is no local demo clip.
 10. **Update ENS**: after betting is closed and the fight duration has elapsed, the server writes winner `injuries`, then loser `status=dead`. The room shows the same outcome on in-memory `chars`. The server then calls `settleBattle` on the Sui pool. A failed ENS write or settle stays on the round error and does not start the next bout. `POST /retry-settle` runs the pending ENS steps again. Moving the loser to a dead-pool name is still open (question 2).
@@ -111,7 +111,7 @@ ENS holds the game state of the characters. It is central to the game, not decor
 | The game roster                               | The web game reads the subnames and text records from Sepolia. No hardcoded characters                                                       |
 | Capabilities lost to damage                   | Open: Enhanced Access Control roles, or a text record (open question 1)                                                                      |
 | Loser goes to the dead pool                   | Move or alias the subname (open question 2)                                                                                                  |
-| The contract pays out from ENS state          | `BattleBetting` on Sepolia reads the loser's `status` itself. A Sui betting contract would be settled by the backend after it reads `status` |
+| Payouts follow ENS state                      | The server settles the battle's Sui pool only after it writes the loser's `status=dead` to ENS                                              |
 | Bonus: fighters as AI agents                  | Each character is an agent namespace with its own permissions (ENSIP-25/26)                                                                  |
 
 **Requirements:** ENSv2 on Sepolia, no hard-coded values, a live demo link, and open-source code.
@@ -127,11 +127,11 @@ Links:
 
 ## Betting
 
-- `BattleBetting` on Sepolia takes bets in test ETH. Real money is not necessary for the demo. Details: [battle-betting.md](battle-betting.md).
-- Betting opens when voting closes (`openBattle`). It closes when the fight video is ready (`closeBetting`), or at the battle's `closesAt` at the latest.
-- Winners share the pool in proportion to their bets, after a 2% fee taken from the losing side. If nobody bet on the winner, all bets are refunded. The minimum bet is a few cents of ETH; the admin can change it.
-- The contract settles from ENS: the fighter whose `status` is `dead` lost.
-- Next: a pool Move contract on Sui testnet, paid in testnet USDC, is being scoped. In the room, `POST /bet` only grows the in-memory pool; it does not call `BattleBetting` or debit USDC on-chain.
+- Bets are testnet USDC in one Sui pool per battle (`horror_tube::betting`). Real money is not necessary for the demo. Details: [sui-betting.md](sui-betting.md).
+- Betting opens when voting closes (`open_pool`). It closes `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` after the first room starts the fight video (`close_betting`), or at the pool's `closes_at_ms` at the latest (`docs/game-loop.md`).
+- Winners share the pool in proportion to their bets, after a 2% fee taken from the losing side. If either side has no bets, all bets are refunded. The minimum bet is 0.03 USDC; the admin can change it.
+- The server settles the pool for the winner after it writes the loser's `status=dead` to ENS. A failed video cancels the pool, and every bet is refunded.
+- Players bet and claim from their Shinami wallets through `POST /tx`; Shinami pays the gas.
 
 ## Out of scope
 

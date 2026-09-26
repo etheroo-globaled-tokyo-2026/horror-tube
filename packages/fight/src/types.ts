@@ -1,41 +1,54 @@
-/** Living roster card fields used as fight narration input. */
-export type LivingCard = {
-  subname: string;
-  display_name?: string;
-  look: string;
-  brief: string;
-  injuries: string[];
-  status: "alive";
-};
+import { z } from "zod";
+
+const nonEmptyString = z
+  .string({ error: "must be a non-empty string" })
+  .regex(/\S/);
+
+export const livingCardSchema = z.object(
+  {
+    subname: nonEmptyString,
+    display_name: nonEmptyString.optional(),
+    look: nonEmptyString,
+    brief: nonEmptyString,
+    injuries: z.array(nonEmptyString, {
+      error: "must be a JSON array of strings",
+    }),
+    status: z.literal("alive", { error: 'must be "alive"' }),
+  },
+  { error: "must be a JSON object" },
+);
+
+export type LivingCard = z.infer<typeof livingCardSchema>;
 
 export type FightInput = {
   fighterA: LivingCard;
   fighterB: LivingCard;
-  /** Living opponents still on the roster outside this bout. Used after the fight to pick a random next challenger; the model does not choose them. */
   eligibleOpponents: LivingCard[];
 };
 
-export type Shot = {
-  /** Timed beat, e.g. "0-4s". */
-  time_range: string;
-  /** Visible character looks present in the shot. */
-  characters: string;
-  action: string;
-  camera: string;
-  style: string;
-};
+export const shotSchema = z.object({
+  time_range: z.string(),
+  characters: z.string(),
+  action: z.string(),
+  camera: z.string(),
+  style: z.string(),
+});
 
-export type NarrationTurn = {
-  shots: Shot[];
-  loser_subname: string;
-  winner_subname: string;
-  winner_injuries: string[];
-  rationale: string;
+export type Shot = z.infer<typeof shotSchema>;
+
+export const narrationModelTurnSchema = z.object({
+  shots: z.array(shotSchema),
+  loser_subname: z.string(),
+  winner_subname: z.string(),
+  winner_injuries: z.array(z.string()),
+  rationale: z.string(),
+});
+
+export type NarrationModelTurn = z.infer<typeof narrationModelTurnSchema>;
+
+export type NarrationTurn = NarrationModelTurn & {
   next_opponent_subname: string;
 };
-
-/** Structured model output. Next opponent is set by rotation after the fight. */
-export type NarrationModelTurn = Omit<NarrationTurn, "next_opponent_subname">;
 
 export type FightTurnResult = {
   turn: NarrationTurn;
@@ -43,13 +56,7 @@ export type FightTurnResult = {
   nextOpponentSubname: string;
   rationale: string;
   videoPrompt: string;
-  /** Durable Spaces CDN URL after upload. Never the expiring fal generator URL. */
   videoUrl: string;
-  /**
-   * Durable Spaces CDN URL of this fight's last frame under frames/.
-   * Stored on the round as RoundState.frameUrl; the next bout passes it as
-   * image_url to fal image-to-video.
-   */
   frameUrl: string;
   expandedPrompt: string | null;
 };

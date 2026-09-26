@@ -107,9 +107,9 @@ describe("roster getTransaction rate limits (unit, no network)", () => {
 
   it("retries 429 on getTransaction and discovery still returns labels", async () => {
     const hashPinhead =
-      "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
+      "0x1111111111111111111111111111111111111111111111111111111111111111" as const;
     const hashChucky =
-      "0x2222222222222222222222222222222222222222222222222222222222222222" as Hex;
+      "0x2222222222222222222222222222222222222222222222222222222222222222" as const;
     const pinheadInput = registerInput("pinhead");
     const chuckyInput = registerInput("chucky");
     let pinheadAttempts = 0;

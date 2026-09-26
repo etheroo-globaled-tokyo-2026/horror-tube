@@ -259,24 +259,6 @@ export const sfx = {
     tone(room, t, "sine", 60, 60, 0.4, 0.01, 1.2);
     hiss(tv, t + 0.1, "highpass", 4000, 4000, 0.7, 0.12, 0.4, 0.3);
   }),
-  bell: on((): void => {
-    const t = now(),
-      f = 110;
-    hiss(room, t, "bandpass", 1500, 1500, 1, 0.3, 0.001, 0.02);
-    const parts: [ratio: number, amp: number, decay: number][] = [
-      [0.5, 0.5, 4],
-      [1, 1, 3.5],
-      [1.19, 0.6, 2.5],
-      [1.56, 0.45, 2],
-      [2, 0.35, 1.6],
-      [2.51, 0.2, 1.2],
-      [2.66, 0.2, 1],
-      [3.01, 0.1, 0.8],
-    ];
-    for (const [r, a, d] of parts)
-      for (const dt of [-0.3, 0.3])
-        tone(room, t, "sine", f * r + dt, f * r + dt, a * 0.08, 0.004, d);
-  }),
   type: on((dur: number): void => {
     const t = now();
     let s = 0;
@@ -326,15 +308,6 @@ export const sfx = {
     hiss(tv, t, "bandpass", 3500, 3500, 0.6, 0.45, 0.002, 0.14);
     tone(room, t + 0.1, "sine", 90, 32, 0.9, 0.004, 1.4);
     hiss(room, t + 0.1, "bandpass", 4000, 400, 0.8, 0.3, 0.005, 0.8);
-  }),
-  pick: on((): void => {
-    const t = now();
-    [1318.5, 1244.5].forEach((f, i) => {
-      const s = t + i * 0.32;
-      tone(room, s, "sine", f, f, 0.18, 0.002, 1.2);
-      tone(room, s, "sine", f * 3, f * 3, 0.04, 0.002, 0.4);
-      tone(room, s, "sine", f * 5.4, f * 5.4, 0.02, 0.001, 0.15);
-    });
   }),
   coins: on((n: number): void => {
     const t = now();

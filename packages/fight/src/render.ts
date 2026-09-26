@@ -23,11 +23,9 @@ export function renderEnsLines(turn: NarrationTurn): [string, string] {
   return [loser, winner];
 }
 
-/** Fixed arena sentence prepended to every fal video prompt. Not written to ENS. */
 export const ARENA_VIDEO_PROMPT_PREFIX =
   "Use a terrifying battle royale arena for the battle, each fighter starting on opposite sides.";
 
-/** Prompt sent to fal. Omits rationale and ENS update lines. */
 export function videoPromptFromTurn(
   turn: NarrationTurn,
   options: { continueFromFrame?: boolean } = {},
@@ -36,7 +34,6 @@ export function videoPromptFromTurn(
   if (options.continueFromFrame !== true) {
     return body;
   }
-  // Start image can still show the previous loser; the model must not bring them back.
   return `${body}\n\nContinue from the start image. Any character who died in the previous bout is gone from the arena and must not reappear.`;
 }
 

@@ -2,21 +2,24 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { z } from "zod";
 
 import {
   FightError,
   loadFalVideoConfig,
   loadNarrationConfig,
-  type FalVideoConfig,
   type NarrationConfig,
 } from "./env.js";
 import { generateFightVideo } from "./fal-video.js";
 import { narrateFight } from "./narrate.js";
 import { cryptoRandomInt } from "./rotation.js";
-import type { FightInput, LivingCard } from "./types.js";
+import {
+  livingCardSchema,
+  type FightInput,
+  type LivingCard,
+} from "./types.js";
 import { validateFightInput } from "./validate.js";
 
-/** Anthropic model id production narration sends. The demo refuses any other. */
 export const PRODUCTION_NARRATION_MODEL = "claude-sonnet-5";
 
 function usage(): string {
@@ -76,7 +79,12 @@ function optionalFlag(argv: string[], name: string): string | undefined {
   return value;
 }
 
-function readJsonFile(path: string): unknown {
+const jsonValueSchema = z.json();
+type JsonValue = z.infer<typeof jsonValueSchema>;
+
+const rosterRowSchema = z.object({ label: z.string() });
+
+function readJsonFile(path: string): JsonValue {
   const absolute = resolve(path);
   let raw: string;
   try {
@@ -89,7 +97,7 @@ function readJsonFile(path: string): unknown {
     );
   }
   try {
-    return JSON.parse(raw);
+    return jsonValueSchema.parse(JSON.parse(raw));
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new FightError(
@@ -99,63 +107,33 @@ function readJsonFile(path: string): unknown {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function fieldPath(path: readonly PropertyKey[]): string {
+  return path
+    .map((key) =>
+      Number.isInteger(key) ? `[${String(key)}]` : ` ${String(key)}`,
+    )
+    .join("");
 }
 
-function requiredString(
-  record: Record<string, unknown>,
-  field: string,
-  label: string,
-): string {
-  const value = record[field];
-  if (typeof value !== "string" || value.trim() === "") {
-    const labelHint =
-      field === "subname" && typeof record.label === "string"
-        ? ` This file has label=${JSON.stringify(record.label)}. The demo card needs subname.`
-        : "";
-    throw new FightError(
-      `${label} ${field} must be a non-empty string. Got: ${JSON.stringify(value)}.${labelHint}`,
+export function livingCardFromJson(value: JsonValue, label: string): LivingCard {
+  const card = livingCardSchema.safeParse(value, { reportInput: true });
+  if (card.success) {
+    return card.data;
+  }
+  const problems = card.error.issues.map(
+    (issue) =>
+      `${label}${fieldPath(issue.path)} ${issue.message}. Got: ${JSON.stringify(issue.input)}.`,
+  );
+  const rosterRow = rosterRowSchema.safeParse(value);
+  if (
+    rosterRow.success &&
+    card.error.issues.some((issue) => issue.path[0] === "subname")
+  ) {
+    problems.push(
+      `This file has label=${JSON.stringify(rosterRow.data.label)}. The demo card needs subname.`,
     );
   }
-  return value;
-}
-
-export function livingCardFromJson(value: unknown, label: string): LivingCard {
-  if (!isRecord(value)) {
-    throw new FightError(`${label} must be a JSON object.`);
-  }
-  const injuriesRaw = value.injuries;
-  if (!Array.isArray(injuriesRaw)) {
-    throw new FightError(
-      `${label} injuries must be a JSON array of strings. Got: ${JSON.stringify(injuriesRaw)}`,
-    );
-  }
-  const injuries = injuriesRaw.map((item, index) => {
-    if (typeof item !== "string" || item.trim() === "") {
-      throw new FightError(
-        `${label} injuries[${String(index)}] must be a non-empty string. Got: ${JSON.stringify(item)}`,
-      );
-    }
-    return item;
-  });
-  const status = value.status;
-  if (status !== "alive") {
-    throw new FightError(
-      `${label} status must be "alive". Got: ${JSON.stringify(status)}`,
-    );
-  }
-  const card: LivingCard = {
-    subname: requiredString(value, "subname", label),
-    look: requiredString(value, "look", label),
-    brief: requiredString(value, "brief", label),
-    injuries,
-    status: "alive",
-  };
-  if (value.display_name !== undefined) {
-    card.display_name = requiredString(value, "display_name", label);
-  }
-  return card;
+  throw new FightError(problems.join("\n"));
 }
 
 function loadLivingCard(path: string, label: string): LivingCard {
@@ -166,7 +144,7 @@ function loadOpponents(path: string): LivingCard[] {
   const value = readJsonFile(path);
   if (!Array.isArray(value)) {
     throw new FightError(
-      `opponents file must be a JSON array. Got: ${typeof value}`,
+      `opponents file must be a JSON array. Got: ${JSON.stringify(value)}`,
     );
   }
   return value.map((entry, index) =>
@@ -212,10 +190,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   );
 }
 
-export function loadDemoConfigs(env: Record<string, string | undefined>): {
-  narrationConfig: NarrationConfig;
-  falConfig: FalVideoConfig;
-} {
+export function loadDemoConfigs(env: Record<string, string | undefined>) {
   const narrationConfig = loadNarrationConfig(env);
   assertProductionNarration(narrationConfig);
   const falConfig = loadFalVideoConfig(env);
@@ -227,8 +202,8 @@ if (
   entry !== undefined &&
   import.meta.url === pathToFileURL(resolve(entry)).href
 ) {
-  main().catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
+  main().catch((cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : String(cause);
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;
   });

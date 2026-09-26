@@ -1,9 +1,5 @@
 import { requiredEnv } from "@horror-tube/betting";
 
-/**
- * DigitalOcean Managed Postgres project CA PEM (from GET .../databases/{id}/ca).
- * Accepts PEM text, dotenv-style `\\n` escapes, or the API's base64-wrapped PEM.
- */
 export function readDatabaseCaCert(
   env: NodeJS.ProcessEnv = process.env,
 ): string {

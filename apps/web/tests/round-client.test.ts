@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 
 import { formatPoolOdds } from "../odds.ts";
-import { postPlaybackStart, type ServerRoundState } from "../round-client.ts";
+import {
+  SessionPostError,
+  fetchRoundState,
+  postPlaybackStart,
+  postStart,
+  type ServerRoundState,
+} from "../round-client.ts";
 import { WALLET_SESSION_KEY, type SessionStore } from "../wallet.ts";
 
 function memoryStore(session: string | null = null): SessionStore {
@@ -34,77 +40,88 @@ describe("formatPoolOdds", () => {
   });
 });
 
-describe("postPlaybackStart", () => {
+const baseState: ServerRoundState = {
+  round: 1,
+  phase: "waiting",
+  endsAt: null,
+  champion: null,
+  fighters: null,
+  battleId: null,
+  poolId: null,
+  pool: [0, 0],
+  winner: null,
+  videoUrl: null,
+  videoStartedAt: null,
+  bettingClosesAt: null,
+  frameUrl: null,
+  error: null,
+  bots: [],
+  chars: [],
+};
+
+function respond(t: TestContext, status: number, json: string, seen: RequestInit[] = []): void {
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    if (init !== undefined) seen.push(init);
+    return new Response(json, {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.mock.method(globalThis, "fetch", fakeFetch);
+}
+
+describe("session posts", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
+    await assert.rejects(() => postStart(memoryStore(null)), /World ID session is required/u);
     await assert.rejects(
       () => postPlaybackStart("battle-1", memoryStore(null)),
       /World ID session is required/u,
     );
   });
 
-  it("sends the stored session as Authorization Bearer", async () => {
-    const store = memoryStore("signed-session");
-    const state: ServerRoundState = {
-      round: 1,
-      phase: "bet",
-      endsAt: null,
-      champion: null,
-      fighters: [0, 1],
-      battleId: "battle-1",
-      poolId: "0xpool",
-      pool: [0, 0],
-      winner: null,
-      videoUrl: "https://cdn.example/v.mp4",
-      videoStartedAt: 1_000,
-      bettingClosesAt: 6_000,
-      frameUrl: null,
-      error: null,
-      chars: [],
-    };
-    const prev = globalThis.fetch;
-    globalThis.fetch = (async (_input, init) => {
-      const headers = new Headers(init?.headers);
-      assert.equal(headers.get("authorization"), "Bearer signed-session");
-      assert.equal(init?.body, JSON.stringify({ battleId: "battle-1" }));
-      return new Response(JSON.stringify({ ok: true, state }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }) as typeof fetch;
-    try {
-      const got = await postPlaybackStart("battle-1", store);
-      assert.equal(got.bettingClosesAt, 6_000);
-    } finally {
-      globalThis.fetch = prev;
-    }
+  it("sends the stored session as Authorization Bearer and returns the state", async (t) => {
+    const seen: RequestInit[] = [];
+    respond(
+      t,
+      200,
+      JSON.stringify({ ok: true, state: { ...baseState, phase: "bet", fighters: [0, 1] } }),
+      seen,
+    );
+    const got = await postStart(memoryStore("signed-session"));
+    assert.equal(got.phase, "bet");
+    assert.equal(new Headers(seen[0]?.headers).get("authorization"), "Bearer signed-session");
+  });
+
+  it("surfaces the server's status, code, and error when a start is refused", async (t) => {
+    respond(
+      t,
+      409,
+      JSON.stringify({
+        ok: false,
+        error: "start refused: a bout is already open (phase=bet).",
+        code: "bout_open",
+      }),
+    );
+    await assert.rejects(
+      () => postStart(memoryStore("signed-session")),
+      (cause: unknown) =>
+        cause instanceof SessionPostError &&
+        cause.status === 409 &&
+        cause.code === "bout_open" &&
+        /already open/u.test(cause.message),
+    );
   });
 });
 
 describe("RoundState client contract", () => {
-  it("accepts bet|fight|settle|over phases from the server", () => {
-    const state: ServerRoundState = {
-      round: 2,
-      phase: "bet",
-      endsAt: null,
-      champion: 0,
-      fighters: [0, 1],
-      battleId: "battle-2",
-      poolId: "0xpool",
-      pool: [0, 0],
-      winner: null,
-      videoUrl: null,
-      videoStartedAt: null,
-      bettingClosesAt: null,
-      frameUrl: null,
-      error: null,
-      chars: [
-        { id: 0, alive: true, kills: 1, damage: 10 },
-        { id: 1, alive: true, kills: 0, damage: 0 },
-      ],
-    };
-    assert.equal(state.phase, "bet");
-    assert.equal(state.champion, 0);
-    assert.deepEqual(state.fighters, [0, 1]);
-    assert.equal(state.videoUrl, null);
+  it("accepts the waiting phase a fresh server boots in", async (t) => {
+    respond(t, 200, JSON.stringify(baseState));
+    assert.equal((await fetchRoundState()).phase, "waiting");
+  });
+
+  it("rejects a RoundState that is missing a field", async (t) => {
+    const { pool: _pool, ...withoutPool } = baseState;
+    respond(t, 200, JSON.stringify(withoutPool));
+    await assert.rejects(fetchRoundState(), /GET \/round sent an invalid RoundState:.*pool/su);
   });
 });

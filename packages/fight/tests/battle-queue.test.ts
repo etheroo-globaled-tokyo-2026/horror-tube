@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-  BattleQueueError,
   createQueuedRecord,
   fightInputFromQueuedNext,
   markBettingClosed,
@@ -84,11 +83,7 @@ describe("settle gates", () => {
     await store.save(row);
     await assert.rejects(
       () => settleQueuedBattle(row, trackingPorts(calls), store),
-      (err: unknown) => {
-        assert.ok(err instanceof BattleQueueError);
-        assert.match(err.message, /betting-closed signal is missing/u);
-        return true;
-      },
+      { name: "BattleQueueError", message: /betting-closed signal is missing/u },
     );
     assert.deepEqual(calls, []);
     const saved = await store.get(row.id);
@@ -103,11 +98,7 @@ describe("settle gates", () => {
     await store.save(row);
     await assert.rejects(
       () => settleQueuedBattle(row, trackingPorts(calls), store),
-      (err: unknown) => {
-        assert.ok(err instanceof BattleQueueError);
-        assert.match(err.message, /playback-finished signal is missing/u);
-        return true;
-      },
+      { name: "BattleQueueError", message: /playback-finished signal is missing/u },
     );
     assert.deepEqual(calls, []);
   });

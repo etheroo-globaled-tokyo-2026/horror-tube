@@ -23,14 +23,10 @@ export type WalkStep = {
 };
 export const walkRef = { n: -1 };
 
-export const esc = (text: string): string =>
-  text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 export const num = (n: number): string => String(n).padStart(2, "0");
 
 export const T = {
   buf: "",
-  reveal: -1,
-  revealUntil: 0,
   stake: 1,
   hold: -1,
   holdN: 0,
@@ -48,15 +44,16 @@ export const say = (text: string, ms = 3600): void => {
 
 export const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
+export type Step = "read" | "ink" | "scan" | "wallet" | "signed" | "done" | "off" | "burn" | "dark";
 export type Waiver = {
   step: Step;
   at: number;
   ink: number;
   qrUri: string;
   fail: string;
+  down: string;
 };
-export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "" };
+export const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "", fail: "", down: "" };
 
 export type G = CanvasRenderingContext2D;
 

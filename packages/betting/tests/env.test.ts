@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Secp256k1Keypair } from "@mysten/sui/keypairs/secp256k1";
-import { readKeypair, readNetwork, requiredEnv } from "../src/env.js";
+import { readKeypair, readKeypairs, readNetwork, requiredEnv } from "../src/env.js";
 
 function assertNamedError(run: () => void, name: string, secret?: string): void {
   let error: Error | undefined;
@@ -55,5 +55,31 @@ describe("readKeypair", () => {
       Secp256k1Keypair.generate().getSecretKey(),
     ];
     for (const value of malformed) assertNamedError(() => read(value), name, value);
+  });
+});
+
+describe("readKeypairs", () => {
+  const name = "HOUSE_BOT_SUI_PRIVATE_KEYS";
+  const read = (value: string | undefined) => readKeypairs(name, { [name]: value });
+
+  it("reads one signer per comma-separated key", () => {
+    const keys = [Ed25519Keypair.generate(), Ed25519Keypair.generate()];
+    assert.deepEqual(
+      read(keys.map((k) => ` ${k.getSecretKey()} `).join(",")).map((k) => k.toSuiAddress()),
+      keys.map((k) => k.toSuiAddress()),
+    );
+  });
+
+  it("names the variable when missing, and the entry when one is blank or malformed", () => {
+    const valid = Ed25519Keypair.generate().getSecretKey();
+    const malformed = valid.replace("suiprivkey1", "suiprivkey2");
+    assertNamedError(() => read(undefined), name);
+    assertNamedError(() => read(`${valid},`), `${name} entry 2`);
+    assertNamedError(() => read(`${valid},${malformed}`), `${name} entry 2`, malformed);
+  });
+
+  it("refuses the same key twice", () => {
+    const valid = Ed25519Keypair.generate().getSecretKey();
+    assertNamedError(() => read(`${valid},${valid}`), name, valid);
   });
 });

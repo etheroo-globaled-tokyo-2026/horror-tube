@@ -1,7 +1,10 @@
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
 import { toBase64 } from "@mysten/sui/utils";
 import * as v from "valibot";
+
+import { requestFailure } from "./waiver-entry.ts";
 
 export const WALLET_SESSION_KEY = "horror-tube.wallet-session";
 
@@ -13,14 +16,13 @@ export type SessionStore = Pick<Storage, "getItem" | "setItem">;
 
 export type GameWallet = {
   address: string;
-  client: SuiGrpcClient;
+  client: ClientWithCoreApi;
   session: string;
 };
 
 const SessionResponse = v.object({ session: v.pipe(v.string(), v.minLength(1)) });
 const AddressResponse = v.object({ address: v.pipe(v.string(), v.minLength(1)) });
 const DigestResponse = v.object({ digest: v.pipe(v.string(), v.minLength(1)) });
-const ErrorResponse = v.object({ error: v.string() });
 
 function suiClient(): SuiGrpcClient {
   return new SuiGrpcClient({
@@ -68,16 +70,7 @@ async function postSchema<TSchema extends v.GenericSchema>(
       `POST ${path} returned non-JSON. HTTP ${String(res.status)}. Underlying: ${err instanceof Error ? err.message : String(err)} body=${text}`,
     );
   }
-  if (!res.ok) {
-    let message = text;
-    try {
-      const errorBody = v.safeParse(ErrorResponse, JSON.parse(text));
-      if (errorBody.success) message = errorBody.output.error;
-    } catch {
-      message = text;
-    }
-    throw new Error(`POST ${path} failed: HTTP ${String(res.status)} ${message}`);
-  }
+  if (!res.ok) throw requestFailure(path, res.status, text);
   if (json === undefined) {
     throw new Error(`POST ${path} response did not match the expected fields. body=${text}`);
   }
@@ -151,7 +144,6 @@ export function usdcDeposit(coinType: string, to: string, units: bigint): Transa
   return tx;
 }
 
-/** Build a gasless kind, POST /tx, wait for the digest. Returns the digest. */
 export async function runKind(
   wallet: GameWallet,
   tx: Transaction,
@@ -163,15 +155,22 @@ export async function runKind(
     onlyTransactionKind: true,
     assumeSufficientAddressBalances: true,
   });
-  const paid = await postSchema(
+  const { digest } = await postSchema(
     fetchImpl,
     "/tx",
     JSON.stringify({ txKind: toBase64(bytes) }),
     wallet.session,
     DigestResponse,
   );
-  await wallet.client.waitForTransaction({ digest: paid.digest });
-  return paid.digest;
+  const result = await wallet.client.core.waitForTransaction({ digest }).catch((err: Error) => {
+    throw new Error(`Transaction ${digest} was sent but not confirmed on chain. ${err.message}`);
+  });
+  if (result.$kind === "FailedTransaction") {
+    throw new Error(
+      `Transaction ${digest} failed on chain: ${result.FailedTransaction.status.error?.message ?? "no error message"}`,
+    );
+  }
+  return digest;
 }
 
 export async function sendUsdc(
