@@ -103,7 +103,8 @@ jobs:
             -CA "${cert_dir}/ca.crt" -CAkey "${cert_dir}/ca.key" -CAcreateserial \
             -out "${cert_dir}/server.crt" -days 1 \
             -copy_extensions copy
-          chmod 644 "${cert_dir}/server.key" "${cert_dir}/server.crt" "${cert_dir}/ca.crt"
+          chmod 755 "${cert_dir}"
+          chmod 644 "${cert_dir}/server.key" "${cert_dir}/server.crt" "${cert_dir}/ca.crt" "${cert_dir}/ca.key"
           pg_cid="$(docker run -d --name ht-pg --network "$net" \
             -e POSTGRES_PASSWORD=ci \
             -e POSTGRES_USER=ci \
@@ -113,11 +114,11 @@ jobs:
             -c ssl=on \
             -c ssl_cert_file=/certs/server.crt \
             -c ssl_key_file=/certs/server.key)"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if docker exec "$pg_cid" pg_isready -U ci -d ci >/dev/null 2>&1; then
               break
             fi
-            if [ "$i" -eq 30 ]; then
+            if [ "$i" -eq 60 ]; then
               echo "postgres not ready" >&2
               docker logs "$pg_cid" >&2
               exit 1
