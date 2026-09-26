@@ -6,11 +6,12 @@ import json
 import os
 import tempfile
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
 from roster import __main__ as cli
-from roster.fandom import FandomError, parse_page_html
+from roster.fandom import FandomError, fetch_page_lore, resolve_page
 from roster.plan import build_import_plan, build_removal_plan
 from roster.propose import propose_sheets, sheet_from_lore, sheets_payload
 from roster.validate import (
@@ -23,10 +24,23 @@ from roster.validate import (
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "roster" / "fixtures" / "sample-characters.json"
-FANDOM_DRACULA = ROOT / "roster" / "fixtures" / "fandom-dracula.html"
-FANDOM_WOLFMAN = ROOT / "roster" / "fixtures" / "fandom-wolfman.html"
-FANDOM_MISSING = ROOT / "roster" / "fixtures" / "fandom-missing-text.html"
-FANDOM_DRACULA_FILM = ROOT / "roster" / "fixtures" / "fandom-dracula-film.html"
+# Real villains.fandom.com api.php responses keyed by "<host> <sorted query>".
+FANDOM_API = json.loads(
+    (ROOT / "roster" / "fixtures" / "fandom-api.json").read_text(encoding="utf-8")
+)
+WIKI = "villains.fandom.com"
+
+
+def _recorded_api(host, params):
+    key = f"{host} {urllib.parse.urlencode(sorted(params.items()))}"
+    if key not in FANDOM_API:
+        raise AssertionError(f"no recorded api.php response for {key}")
+    return FANDOM_API[key]
+
+
+def _lore(title):
+    with mock.patch("roster.fandom.fetch_api", side_effect=_recorded_api):
+        return fetch_page_lore(resolve_page(title, wiki=WIKI))
 
 
 def _char(**overrides):
@@ -155,54 +169,61 @@ class RemovalPlanTests(unittest.TestCase):
         self.assertIn("unregister", plan["labels"][0]["ens_action"].lower())
 
 
+class ResolvePageTests(unittest.TestCase):
+    def test_wiki_url_is_parsed_not_fetched(self):
+        ref = resolve_page("https://villains.fandom.com/wiki/Pinhead_(Hellraiser)", wiki=None)
+        self.assertEqual((ref.host, ref.title), (WIKI, "Pinhead (Hellraiser)"))
+
+    def test_non_fandom_host_fails(self):
+        with self.assertRaises(FandomError) as ctx:
+            resolve_page("https://en.wikipedia.org/wiki/Pinhead", wiki=None)
+        self.assertIn("fandom.com", str(ctx.exception))
+
+    def test_title_without_wiki_fails(self):
+        with self.assertRaises(FandomError) as ctx:
+            resolve_page("Pinhead", wiki=None)
+        self.assertIn("--wiki", str(ctx.exception))
+
+
 class ProposeTests(unittest.TestCase):
-    def test_fixture_html_becomes_sheet(self):
-        html = FANDOM_DRACULA.read_text(encoding="utf-8")
-        lore = parse_page_html(html, url="https://horror.fandom.com/wiki/Dracula")
-        sheet = sheet_from_lore(lore)
-        self.assertEqual(sheet["label"], "dracula")
-        self.assertIn("cloak", sheet["look"].lower())
-        self.assertIn("throat", sheet["brief"].lower())
+    def test_appearance_and_powers_become_sheet(self):
+        sheet = sheet_from_lore(_lore("Pinhead (Hellraiser)"))
+        self.assertEqual(sheet["label"], "pinhead")
+        self.assertTrue(sheet["look"].startswith("Pinhead's unique physical description"))
+        self.assertTrue(sheet["brief"].startswith("Immortality: Pinhead is shown"))
         self.assertEqual(sheet["injuries"], "")
         self.assertEqual(sheet["status"], "")
-        self.assertTrue(sheet["icon"].startswith("https://"))
+        self.assertEqual(sheet["icon"], "")
         self.assertNotIn("strength", sheet)
         self.assertNotIn("role", sheet)
 
-    def test_missing_lore_text_fails(self):
-        html = FANDOM_MISSING.read_text(encoding="utf-8")
-        lore = parse_page_html(html, url="https://horror.fandom.com/wiki/Empty_Page")
+    def test_physical_appearance_section_is_used(self):
+        sheet = sheet_from_lore(_lore("Michael Myers (Halloween)"))
+        self.assertEqual(sheet["label"], "michael")
+        self.assertIn("tall man", sheet["look"])
+        self.assertIn("Inhuman Strength", sheet["brief"])
+
+    def test_missing_appearance_section_fails(self):
         with self.assertRaises(FandomError) as ctx:
-            sheet_from_lore(lore)
-        self.assertIn("two sentences", str(ctx.exception).lower())
+            _lore("Jason Voorhees (Friday the 13th)")
+        self.assertIn("no Appearance section", str(ctx.exception))
+
+    def test_disambiguation_page_fails(self):
+        with self.assertRaises(FandomError) as ctx:
+            _lore("Freddy Krueger")
+        self.assertIn("disambiguation", str(ctx.exception))
 
     def test_duplicate_labels_fail(self):
-        lore_a = parse_page_html(
-            FANDOM_DRACULA.read_text(encoding="utf-8"),
-            url="https://horror.fandom.com/wiki/Dracula",
-        )
-        lore_b = parse_page_html(
-            FANDOM_DRACULA_FILM.read_text(encoding="utf-8"),
-            url="https://horror.fandom.com/wiki/Dracula_(film)",
-        )
+        lore = _lore("Pinhead (Hellraiser)")
         with self.assertRaises(RosterValidationError) as ctx:
-            propose_sheets([lore_a, lore_b])
+            propose_sheets([lore, lore])
         self.assertIn("duplicate", str(ctx.exception).lower())
-        self.assertIn("dracula", str(ctx.exception))
+        self.assertIn("pinhead", str(ctx.exception))
 
     def test_bulk_propose_then_import_plan(self):
-        lores = [
-            parse_page_html(
-                FANDOM_DRACULA.read_text(encoding="utf-8"),
-                url="https://horror.fandom.com/wiki/Dracula",
-            ),
-            parse_page_html(
-                FANDOM_WOLFMAN.read_text(encoding="utf-8"),
-                url="https://horror.fandom.com/wiki/Wolf_Man",
-            ),
-        ]
+        lores = [_lore("Pinhead (Hellraiser)"), _lore("Michael Myers (Halloween)")]
         characters = propose_sheets(lores)
-        self.assertEqual([c["label"] for c in characters], ["dracula", "wolf"])
+        self.assertEqual([c["label"] for c in characters], ["pinhead", "michael"])
         payload = sheets_payload(characters)
         self.assertIsInstance(payload, list)
         with tempfile.TemporaryDirectory() as tmp:
@@ -268,24 +289,38 @@ class CliTests(unittest.TestCase):
                 )
             self.assertEqual(code, 1)
 
-    def test_propose_cli_prints_url_on_fetch_failure(self):
+    def test_propose_cli_writes_bulk_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            url = "https://horror.fandom.com/wiki/Missing"
-            with mock.patch(
-                "roster.__main__.fetch_html",
-                side_effect=FandomError("connection refused"),
-            ):
+            with mock.patch("roster.fandom.fetch_api", side_effect=_recorded_api):
                 code = cli.main(
                     [
                         "propose",
                         "--n",
-                        "1",
+                        "2",
+                        "--wiki",
+                        WIKI,
                         "--source",
-                        url,
+                        "Pinhead (Hellraiser)",
+                        "--source",
+                        "https://villains.fandom.com/wiki/Michael_Myers_(Halloween)",
                         "--out",
                         str(out),
                     ]
+                )
+            self.assertEqual(code, 0)
+            labels = [c["label"] for c in json.loads(out.read_text(encoding="utf-8"))]
+            self.assertEqual(labels, ["pinhead", "michael"])
+
+    def test_propose_cli_fails_on_fetch_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out.json"
+            with mock.patch(
+                "roster.fandom.fetch_api",
+                side_effect=FandomError("HTTP 404 for https://villains.fandom.com/api.php"),
+            ):
+                code = cli.main(
+                    ["propose", "--n", "1", "--wiki", WIKI, "--source", "Nobody", "--out", str(out)]
                 )
             self.assertEqual(code, 1)
             self.assertFalse(out.exists())

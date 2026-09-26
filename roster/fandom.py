@@ -1,18 +1,23 @@
-"""Fetch and parse Fandom character pages over HTTP."""
+"""Read Fandom character sections through the MediaWiki api.php parse endpoint."""
 
 from __future__ import annotations
 
+import html
+import json
 import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 
 USER_AGENT = "horror-tube-roster/0.1 (+https://github.com/etheroo-globaled-tokyo-2026/horror-tube)"
 FETCH_TIMEOUT_SECONDS = 30
+
+APPEARANCE_RE = re.compile(r"^(physical\s+)?appearance$", re.IGNORECASE)
+POWERS_RE = re.compile(r"^powers\s+(and|&)\s+abilities$", re.IGNORECASE)
 
 
 class FandomError(ValueError):
@@ -20,141 +25,51 @@ class FandomError(ValueError):
 
 
 @dataclass(frozen=True)
-class PageLore:
-    url: str
+class PageRef:
+    host: str
     title: str
-    paragraphs: tuple[str, ...]
-    image_https_url: str
+
+    def __str__(self) -> str:
+        return f"{self.host}: {self.title}"
 
 
-_SKIP_TAGS = frozenset({"script", "style", "noscript", "nav", "footer", "header"})
+@dataclass(frozen=True)
+class PageLore:
+    ref: PageRef
+    title: str
+    appearance: str
+    powers: str
 
 
-class _FandomHTMLExtractor(HTMLParser):
-    """Pull title, intro paragraphs, and the first https content image from HTML."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._in_title = False
-        self._in_h1 = False
-        self._in_p = False
-        self._skip_depth = 0
-        self._title_bits: list[str] = []
-        self._h1_bits: list[str] = []
-        self._p_bits: list[str] = []
-        self._paragraphs: list[str] = []
-        self._images: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
-        if self._skip_depth > 0:
-            self._skip_depth += 1
-            return
-        attrs_map = {k: v for k, v in attrs}
-        class_attr = attrs_map.get("class") or ""
-        classes = set(class_attr.split())
-        if tag in _SKIP_TAGS or "navbox" in classes or "reference" in classes:
-            self._skip_depth = 1
-            return
-        if tag == "title":
-            self._in_title = True
-            return
-        if tag == "h1":
-            self._in_h1 = True
-            self._h1_bits = []
-            return
-        if tag == "p":
-            self._in_p = True
-            self._p_bits = []
-            return
-        if tag == "img":
-            src = attrs_map.get("src") or attrs_map.get("data-src") or ""
-            if src.startswith("//"):
-                src = "https:" + src
-            if src.lower().startswith("https://"):
-                self._images.append(src)
-
-    def handle_endtag(self, tag: str) -> None:
-        if self._skip_depth > 0:
-            self._skip_depth -= 1
-            return
-        if tag == "title":
-            self._in_title = False
-            return
-        if tag == "h1":
-            self._in_h1 = False
-            return
-        if tag == "p" and self._in_p:
-            self._in_p = False
-            text = _normalize_ws("".join(self._p_bits))
-            if text:
-                self._paragraphs.append(text)
-            self._p_bits = []
-    def handle_data(self, data: str) -> None:
-        if self._skip_depth > 0:
-            return
-        if self._in_title:
-            self._title_bits.append(data)
-            return
-        if self._in_h1:
-            self._h1_bits.append(data)
-            return
-        if self._in_p:
-            self._p_bits.append(data)
-
-    def result(self) -> tuple[str, list[str], list[str]]:
-        h1 = _normalize_ws("".join(self._h1_bits))
-        title_tag = _normalize_ws("".join(self._title_bits))
-        title = h1 or _strip_wiki_suffix(title_tag)
-        return title, self._paragraphs, self._images
+def _require_fandom_host(host: str, *, context: str) -> str:
+    host = host.strip().lower()
+    if not host.endswith(".fandom.com") or "/" in host:
+        raise FandomError(f"{context}: host must be a *.fandom.com wiki. Got: {host!r}")
+    return host
 
 
-_WS_RE = re.compile(r"\s+")
-_WIKI_SUFFIX_RE = re.compile(r"\s*\|.*$")
-
-
-def _normalize_ws(text: str) -> str:
-    return _WS_RE.sub(" ", text).strip()
-
-
-def _strip_wiki_suffix(title: str) -> str:
-    return _WIKI_SUFFIX_RE.sub("", title).strip()
-
-
-def resolve_source_url(source: str, *, wiki: Optional[str]) -> str:
+def resolve_page(source: str, *, wiki: Optional[str]) -> PageRef:
     raw = source.strip()
     if raw == "":
         raise FandomError("Source URL or page title must not be blank.")
-    lower = raw.lower()
-    if lower.startswith("https://") or lower.startswith("http://"):
-        return raw
+    if raw.lower().startswith(("https://", "http://")):
+        parsed = urllib.parse.urlparse(raw)
+        if not parsed.path.startswith("/wiki/") or parsed.path == "/wiki/":
+            raise FandomError(f"{raw}: expected a Fandom URL of the form https://<wiki>.fandom.com/wiki/<Title>.")
+        host = _require_fandom_host(parsed.netloc, context=raw)
+        title = urllib.parse.unquote(parsed.path[len("/wiki/"):]).replace("_", " ")
+        return PageRef(host=host, title=title)
     if wiki is None or wiki.strip() == "":
-        raise FandomError(
-            f"Page title {raw!r} requires --wiki (e.g. horror.fandom.com). "
-            "Pass a full https URL instead if you do not want --wiki."
-        )
-    host = wiki.strip()
-    if host.startswith("https://") or host.startswith("http://"):
-        parsed = urllib.parse.urlparse(host)
-        if parsed.netloc == "":
-            raise FandomError(f"--wiki is not a usable host or origin: {wiki!r}")
-        host = parsed.netloc
-    if "/" in host:
-        raise FandomError(
-            f"--wiki must be a Fandom host like horror.fandom.com. Got: {wiki!r}"
-        )
-    title_path = urllib.parse.quote(raw.replace(" ", "_"), safe=":_()/")
-    return f"https://{host}/wiki/{title_path}"
+        raise FandomError(f"Page title {raw!r} requires --wiki (e.g. villains.fandom.com).")
+    return PageRef(host=_require_fandom_host(wiki, context="--wiki"), title=raw)
 
 
-def fetch_html(url: str) -> str:
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": "text/html"},
-        method="GET",
-    )
+def fetch_api(host: str, params: dict[str, str]) -> dict[str, Any]:
+    query = urllib.parse.urlencode({**params, "format": "json", "formatversion": "2"})
+    url = f"https://{host}/api.php?{query}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
-            charset = response.headers.get_content_charset() or "utf-8"
             body = response.read()
     except urllib.error.HTTPError as exc:
         raise FandomError(f"HTTP {exc.code} for {url}: {exc.reason}") from exc
@@ -163,46 +78,116 @@ def fetch_html(url: str) -> str:
     except TimeoutError as exc:
         raise FandomError(f"Timed out fetching {url}") from exc
     try:
-        return body.decode(charset)
-    except UnicodeDecodeError as exc:
-        raise FandomError(f"Failed to decode HTML from {url}: {exc}") from exc
+        data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise FandomError(f"{url}: response is not JSON: {exc}") from exc
+    if "error" in data:
+        error = data["error"]
+        raise FandomError(f"{url}: api.php error {error.get('code')}: {error.get('info')}")
+    return data
 
 
-def parse_page_html(html: str, *, url: str) -> PageLore:
-    if html.strip() == "":
-        raise FandomError(f"{url}: page HTML is empty.")
-    extractor = _FandomHTMLExtractor()
-    extractor.feed(html)
-    extractor.close()
-    title, paragraphs, images = extractor.result()
-    if title == "":
-        raise FandomError(f"{url}: could not find a page title in the HTML.")
-    usable = [p for p in paragraphs if len(p) >= 20]
-    image = ""
-    for candidate in images:
-        lower = candidate.lower()
-        if any(skip in lower for skip in ("/favicon", "data:image", "site-logo", "wordmark")):
-            continue
-        if lower.startswith("https://"):
-            image = candidate
-            break
-    return PageLore(
-        url=url,
-        title=title,
-        paragraphs=tuple(usable),
-        image_https_url=image,
+def _plain(text: str) -> str:
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", "", text)).split())
+
+
+_SKIP_TAGS = frozenset({"script", "style", "noscript", "sup", "table", "figure", "aside"})
+_VOID_TAGS = frozenset({"br", "img", "hr", "wbr", "input", "meta", "link", "source"})
+_BLOCK_TAGS = frozenset({"p", "li"})
+
+
+class _BlockText(HTMLParser):
+    """Collect text of each outermost <p> or <li> block in a section fragment."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[str] = []
+        self._skip_depth = 0
+        self._block_depth = 0
+        self._buf: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        if tag in _VOID_TAGS:
+            return
+        if self._skip_depth > 0 or tag in _SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if tag in _BLOCK_TAGS:
+            self._block_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _VOID_TAGS:
+            return
+        if self._skip_depth > 0:
+            self._skip_depth -= 1
+            return
+        if tag in _BLOCK_TAGS and self._block_depth > 0:
+            self._block_depth -= 1
+            if self._block_depth == 0:
+                text = " ".join("".join(self._buf).split())
+                if text:
+                    self.blocks.append(text)
+                self._buf = []
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0 and self._block_depth > 0:
+            self._buf.append(data)
+
+
+def is_disambiguation(parse: dict[str, Any]) -> bool:
+    if "disambiguation" in parse.get("properties", {}):
+        return True
+    return any("disambiguation" in c["category"].lower() for c in parse.get("categories", []))
+
+
+def _find_section(parse: dict[str, Any], pattern: re.Pattern[str], *, name: str, ref: PageRef) -> str:
+    for section in parse["sections"]:
+        if pattern.match(_plain(section["line"])):
+            return section["index"]
+    lines = ", ".join(_plain(s["line"]) for s in parse["sections"]) or "(none)"
+    raise FandomError(f"{ref}: no {name} section. Sections: {lines}")
+
+
+def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
+    data = fetch_api(
+        ref.host,
+        {
+            "action": "parse",
+            "pageid": str(pageid),
+            "prop": "text",
+            "section": index,
+            "disableeditsection": "1",
+            "disablelimitreport": "1",
+        },
     )
+    parser = _BlockText()
+    parser.feed(data["parse"]["text"])
+    parser.close()
+    if not parser.blocks:
+        raise FandomError(f"{ref}: {name} section {index} has no paragraph or list text.")
+    return parser.blocks[0]
 
 
-def fetch_page_lore(source: str, *, wiki: Optional[str]) -> PageLore:
-    url = resolve_source_url(source, wiki=wiki)
-    try:
-        html = fetch_html(url)
-    except FandomError:
-        raise
-    except Exception as exc:
-        raise FandomError(f"Failed to fetch {url}: {exc}") from exc
-    return parse_page_html(html, url=url)
+def fetch_page_lore(ref: PageRef) -> PageLore:
+    parse = fetch_api(
+        ref.host,
+        {
+            "action": "parse",
+            "page": ref.title,
+            "prop": "sections|properties|categories",
+            "redirects": "1",
+        },
+    )["parse"]
+    if is_disambiguation(parse):
+        raise FandomError(f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page.")
+    appearance = _find_section(parse, APPEARANCE_RE, name="Appearance", ref=ref)
+    powers = _find_section(parse, POWERS_RE, name="Powers and abilities", ref=ref)
+    return PageLore(
+        ref=ref,
+        title=parse["title"],
+        appearance=_section_text(ref, parse["pageid"], appearance, name="Appearance"),
+        powers=_section_text(ref, parse["pageid"], powers, name="Powers and abilities"),
+    )
 
 
 def require_source_count(sources: Sequence[str], *, n: int) -> list[str]:
@@ -213,7 +198,6 @@ def require_source_count(sources: Sequence[str], *, n: int) -> list[str]:
         raise FandomError("Source list contains a blank entry.")
     if len(cleaned) != n:
         raise FandomError(
-            f"--n is {n} but {len(cleaned)} source(s) were provided. "
-            "They must match exactly."
+            f"--n is {n} but {len(cleaned)} source(s) were provided. They must match exactly."
         )
     return cleaned
