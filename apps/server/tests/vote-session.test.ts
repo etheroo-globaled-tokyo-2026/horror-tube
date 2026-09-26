@@ -48,6 +48,9 @@ function testLoop(): GameLoop {
       async placeBet() {
         throw new Error("vote tests must not place a bet.");
       },
+      async cancelBattle() {
+        throw new Error("vote tests must not cancel a battle.");
+      },
     },
     skipSettlement: true,
   });

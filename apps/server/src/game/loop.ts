@@ -183,7 +183,7 @@ export class GameLoop {
       return;
     }
     if (this.phase === "bet") {
-      this.maybeLeaveBet(now);
+      await this.maybeLeaveBet(now);
       return;
     }
     if (this.phase === "fight" && this.endsAt !== null && now >= this.endsAt) {
@@ -273,6 +273,11 @@ export class GameLoop {
         `bet is only allowed in the bet phase. Current phase: ${this.phase}.`,
       );
     }
+    if (this.error !== null) {
+      throw new Error(
+        `bet is refused after a video failure: ${this.error}`,
+      );
+    }
     if (side !== 0 && side !== 1) {
       throw new Error(`bet side must be 0 or 1. Got: ${String(side)}.`);
     }
@@ -332,7 +337,11 @@ export class GameLoop {
     this.videoUrl = url.trim();
     this.frameUrl = frameUrl.trim();
     this.videoDurationMs = durationMs;
-    this.maybeLeaveBet(this.now());
+    // Success path only advances to fight (or waits for BET_MIN_SECONDS); it does not failVideo.
+    void this.maybeLeaveBet(this.now()).catch((cause: unknown) => {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(`maybeLeaveBet after setVideoReady failed: ${detail}`);
+    });
   }
 
   /**
@@ -353,11 +362,18 @@ export class GameLoop {
       );
     }
     this.outcome = { winner, damage };
-    this.maybeLeaveBet(this.now());
+    void this.maybeLeaveBet(this.now()).catch((cause: unknown) => {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      console.error(`maybeLeaveBet after setOutcome failed: ${detail}`);
+    });
   }
 
-  /** Mark video job failed; refunds are recorded as pool cleared and error set. */
-  failVideo(message: string): void {
+  /**
+   * Mark the video job failed: clear the in-memory pool, refuse further bets,
+   * cancel the on-chain battle (claimable refunds), and leave `bet` for `over`
+   * so `resetFromOver` can start a new season. #114.
+   */
+  async failVideo(message: string): Promise<void> {
     if (this.phase !== "bet") {
       throw new Error(
         `failVideo is only allowed in the bet phase. Current phase: ${this.phase}.`,
@@ -366,11 +382,29 @@ export class GameLoop {
     if (message.trim() === "") {
       throw new Error("failVideo message must be non-empty.");
     }
+    const battleId = this.onChainBattleId;
     this.error = message.trim();
     this.pool = [0, 0];
     this.videoUrl = null;
     this.videoDurationMs = null;
+    this.onChainBattleId = null;
+    this.betOpenedAt = null;
+    this.endsAt = null;
+    this.phase = "over";
     this.emit();
+    if (battleId !== null) {
+      try {
+        const hash = await this.battleBetting.cancelBattle(battleId);
+        console.log(
+          `BattleBetting.cancelBattle battleId=${String(battleId)} tx=${hash} (video failed)`,
+        );
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        console.error(
+          `BattleBetting.cancelBattle failed after video error (battleId=${String(battleId)}): ${detail}`,
+        );
+      }
+    }
   }
 
   resetFromOver(): void {
@@ -478,12 +512,12 @@ export class GameLoop {
     return candidates;
   }
 
-  private maybeLeaveBet(now: number): void {
+  private async maybeLeaveBet(now: number): Promise<void> {
     if (this.phase !== "bet" || this.betOpenedAt === null) return;
     if (this.error !== null) return;
     if (this.videoUrl === null || this.videoDurationMs === null) {
       if (now - this.betOpenedAt >= this.config.videoTimeoutSeconds * 1000) {
-        this.failVideo(
+        await this.failVideo(
           `Video was not ready within VIDEO_TIMEOUT_SECONDS (${String(this.config.videoTimeoutSeconds)}). Bets refunded.`,
         );
       }
