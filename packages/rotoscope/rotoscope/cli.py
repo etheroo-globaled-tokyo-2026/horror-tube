@@ -24,12 +24,13 @@ def mac_backends(cfg: Config) -> tuple[Segmenter, HandFinder, PeopleDrawer]:
     guard."""
     devices.block_mps_fallback()
     from rotoscope.backends.apple_vision import AppleVision
-    from rotoscope.backends.sam31 import Sam31
+    from rotoscope.backends.mlx_sam31 import MlxSam31
     from rotoscope.draw.people import V7Drawer
 
-    models = Path(os.environ.get("ROTO_MODELS", Path.home() / ".cache" / "rotoscope"))
+    models = Path(os.environ.get("ROTOSCOPE_MODELS", Path.home() / ".cache" / "rotoscope" / "mediapipe"))
+    log.info("loading SAM 3.1, Apple Vision and the people drawing (MediaPipe files in %s)", models)
     vision = AppleVision()
-    return Sam31(), vision, V7Drawer(vision, models / "mediapipe", cfg.video.fps)
+    return MlxSam31(), vision, V7Drawer(vision, models, cfg.video.fps)
 
 
 def run(args: argparse.Namespace, cfg: Config) -> int:
@@ -50,8 +51,7 @@ def run(args: argparse.Namespace, cfg: Config) -> int:
 
 
 def serve(args: argparse.Namespace, cfg: Config) -> int:
-    segmenter, hands, drawer = mac_backends(cfg)
-    app = create_app(cfg, segmenter, hands, drawer, devices.accelerator())
+    app = create_app(cfg, lambda: mac_backends(cfg), devices.accelerator())
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 
