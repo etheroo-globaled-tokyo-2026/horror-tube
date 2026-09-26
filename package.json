@@ -16,7 +16,6 @@
     "contracts:test:fork": "pnpm --filter @horror-tube/contracts run test:fork",
     "contracts:deploy": "pnpm --filter @horror-tube/contracts run deploy",
     "contracts:e2e": "pnpm --filter @horror-tube/contracts run e2e",
-    "betting:gas-owner": "pnpm --filter @horror-tube/betting run gas-owner",
     "betting:deploy": "pnpm --filter @horror-tube/betting run deploy",
     "betting:pool": "pnpm --filter @horror-tube/betting run pool",
     "betting:e2e": "pnpm --filter @horror-tube/betting run e2e",

@@ -37,7 +37,7 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; `POST /bet` grows the in-memory pool only) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`; `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; `POST /bet` calls `BattleBetting.placeBet`, then mirrors stake units into the in-memory pool) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`; `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`) → next bout, until one is left.
 
 ## The wallet
 
@@ -49,7 +49,7 @@ reads the meter:
 - `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
-- Bets and claims (**not built**: no Move contract yet; `POST /bet` only adds to the in-memory pool, no USDC debit): the plan is
+- Bets and claims (Sepolia `BattleBetting.placeBet` via `POST /bet`; Sui Move USDC path still planned): the plan is
   `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`. No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
   coin).
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.

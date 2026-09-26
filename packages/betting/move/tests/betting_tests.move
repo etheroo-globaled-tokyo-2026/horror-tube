@@ -13,7 +13,6 @@ public struct OTHER_COIN has drop {}
 
 const ADMIN: address = @0xAD;
 const OPERATOR: address = @0x0B;
-const SPONSOR: address = @0x5B;
 const ALICE: address = @0xA1;
 const BOB: address = @0xB0;
 const CAROL: address = @0xC0;
@@ -27,7 +26,7 @@ fun setup(): (Scenario, Clock) {
     betting::init_for_testing(scenario.ctx());
     scenario.next_tx(ADMIN);
     let admin = scenario.take_from_sender<AdminCap>();
-    betting::create_house<TEST_USDC>(&admin, FEE_BPS, MIN_BET, SPONSOR, scenario.ctx());
+    betting::create_house<TEST_USDC>(&admin, FEE_BPS, MIN_BET, scenario.ctx());
     scenario.next_tx(ADMIN);
     let mut house = scenario.take_shared<House<TEST_USDC>>();
     let cap = house.issue_operator_cap(&admin, scenario.ctx());
@@ -49,19 +48,8 @@ fun open(scenario: &mut Scenario, clock: &Clock, battle_id: u64): ID {
     id
 }
 
-fun bet_as(
-    scenario: &mut Scenario,
-    clock: &Clock,
-    pool_id: ID,
-    bettor: address,
-    sponsor: address,
-    side: u64,
-    amount: u64,
-) {
-    let rgp = scenario.ctx().reference_gas_price();
-    scenario.next_with_context(
-        ts::ctx_builder_from_sender(bettor).set_reference_gas_price(rgp).set_sponsor(sponsor),
-    );
+fun bet(scenario: &mut Scenario, clock: &Clock, pool_id: ID, bettor: address, side: u64, amount: u64) {
+    scenario.next_tx(bettor);
     let house = scenario.take_shared<House<TEST_USDC>>();
     let mut pool = scenario.take_shared_by_id<Pool<TEST_USDC>>(pool_id);
     let payment = coin::mint_for_testing<TEST_USDC>(amount, scenario.ctx());
@@ -69,10 +57,6 @@ fun bet_as(
     transfer::public_transfer(ticket, bettor);
     ts::return_shared(pool);
     ts::return_shared(house);
-}
-
-fun bet(scenario: &mut Scenario, clock: &Clock, pool_id: ID, bettor: address, side: u64, amount: u64) {
-    bet_as(scenario, clock, pool_id, bettor, SPONSOR, side, amount);
 }
 
 fun close(scenario: &mut Scenario, clock: &Clock, pool_id: ID) {
@@ -158,26 +142,6 @@ fun winners_split_the_pool_after_a_fee_from_the_losing_side() {
     finish(scenario, clock);
 }
 
-#[test, expected_failure(abort_code = betting::EBetNotSponsored, location = betting)]
-fun a_bet_without_a_sponsor_aborts() {
-    let (mut scenario, clock) = setup();
-    let pool = open(&mut scenario, &clock, 1);
-    scenario.next_tx(ALICE);
-    let house = scenario.take_shared<House<TEST_USDC>>();
-    let mut pool = scenario.take_shared_by_id<Pool<TEST_USDC>>(pool);
-    let payment = coin::mint_for_testing<TEST_USDC>(MIN_BET, scenario.ctx());
-    let _ticket = house.place_bet(&mut pool, 0, payment, &clock, scenario.ctx());
-    abort
-}
-
-#[test, expected_failure(abort_code = betting::EBetNotSponsored, location = betting)]
-fun a_bet_from_another_sponsor_aborts() {
-    let (mut scenario, clock) = setup();
-    let pool = open(&mut scenario, &clock, 1);
-    bet_as(&mut scenario, &clock, pool, ALICE, @0xBAD, 0, MIN_BET);
-    abort
-}
-
 #[test, expected_failure(abort_code = betting::EBetBelowMinimum, location = betting)]
 fun a_bet_below_the_minimum_aborts() {
     let (mut scenario, clock) = setup();
@@ -250,7 +214,7 @@ fun an_operator_cannot_settle_another_houses_pool() {
     let house_id = ts::most_recent_id_shared<House<TEST_USDC>>().destroy_some();
     scenario.next_tx(ADMIN);
     let admin = scenario.take_from_sender<AdminCap>();
-    betting::create_house<TEST_USDC>(&admin, FEE_BPS, MIN_BET, SPONSOR, scenario.ctx());
+    betting::create_house<TEST_USDC>(&admin, FEE_BPS, MIN_BET, scenario.ctx());
     scenario.next_tx(ADMIN);
     let mut other = scenario.take_shared<House<TEST_USDC>>();
     let other_cap = other.issue_operator_cap(&admin, scenario.ctx());
@@ -334,7 +298,7 @@ fun an_operator_cap_for_another_house_is_rejected() {
     let (mut scenario, clock) = setup();
     scenario.next_tx(ADMIN);
     let admin = scenario.take_from_sender<AdminCap>();
-    betting::create_house<OTHER_COIN>(&admin, FEE_BPS, MIN_BET, SPONSOR, scenario.ctx());
+    betting::create_house<OTHER_COIN>(&admin, FEE_BPS, MIN_BET, scenario.ctx());
     scenario.return_to_sender(admin);
     scenario.next_tx(OPERATOR);
     let mut other = scenario.take_shared<House<OTHER_COIN>>();

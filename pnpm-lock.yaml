@@ -161,6 +161,9 @@ importers:
       '@horror-tube/fight-media':
         specifier: workspace:*
         version: link:../fight-media
+      dotenv:
+        specifier: ^18.0.3
+        version: 18.0.3
     devDependencies:
       '@types/node':
         specifier: ^26.6.2

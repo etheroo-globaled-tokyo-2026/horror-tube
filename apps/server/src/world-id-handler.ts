@@ -1,11 +1,8 @@
 import {
-  actionForSlot,
-  assertAllowedAction,
   createIdkitRequestContext,
+  enterRoomAction,
   loadWorldIdEnv,
-  parseProofOfHumanResult,
   verifyProofOfHuman,
-  type GateSlot,
   type IdkitRequestContext,
   type VerifyFetch,
   type VerifiedHuman,
@@ -39,27 +36,9 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function parseGateSlot(raw: string): GateSlot {
-  let body: { slot?: unknown };
-  try {
-    body = JSON.parse(raw) as { slot?: unknown };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`slot body must be JSON. Underlying: ${message}`);
-  }
-  if (body.slot === "judge") return "judge";
-  if (body.slot === 1 || body.slot === 2 || body.slot === 3 || body.slot === 4 || body.slot === 5) {
-    return body.slot;
-  }
-  throw new Error("slot must be 1, 2, 3, 4, 5, or judge.");
-}
-
-export function createEnterRoomRequest(
-  slot: GateSlot,
-  env: NodeJS.ProcessEnv = process.env,
-): IdkitRequestContext {
+export function createEnterRoomRequest(env: NodeJS.ProcessEnv = process.env): IdkitRequestContext {
   loadWorldIdEnv(env);
-  return createIdkitRequestContext({ action: actionForSlot(slot, env), env });
+  return createIdkitRequestContext({ action: enterRoomAction(), env });
 }
 
 export async function verifyEnterRoomProof(
@@ -68,13 +47,11 @@ export async function verifyEnterRoomProof(
 ): Promise<VerifiedHuman> {
   const env = deps.env ?? process.env;
   const worldId = loadWorldIdEnv(env);
-  const parsed = parseProofOfHumanResult(idkitResult);
-  assertAllowedAction(parsed.action, env);
   const fetchImpl = deps.fetch ?? (globalThis.fetch as VerifyFetch);
   return verifyProofOfHuman({
     rpId: worldId.rpId,
     environment: worldId.environment,
-    action: parsed.action,
+    action: enterRoomAction(),
     signal: null,
     idkitResult,
     fetch: fetchImpl,
@@ -92,16 +69,8 @@ export async function handleWorldIdRequest(
   const env = deps.env ?? process.env;
 
   if (urlPath === "/world-id/request" && method === "POST") {
-    let slot: GateSlot;
     try {
-      slot = parseGateSlot(await readBody(req));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendText(res, 400, message);
-      return true;
-    }
-    try {
-      const context = createEnterRoomRequest(slot, env);
+      const context = createEnterRoomRequest(env);
       sendJson(res, 200, context as unknown as Record<string, unknown>);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

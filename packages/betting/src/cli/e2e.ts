@@ -45,10 +45,6 @@ console.log(`Battle ${battleId}, pool ${pool}`);
 await operator.openPool(battleId, BigInt(Date.now() + 10 * 60_000));
 console.log(`bet side 0: ${await player.run(betTx(config, pool, 0, 2n * minBet))}`);
 console.log(`bet side 1: ${await player.run(betTx(config, pool, 1, minBet))}`);
-await assert.rejects(
-  execute(client, admin, betTx(config, pool, 0, minBet)),
-  /EBetNotSponsored|sponsor/u,
-);
 
 await operator.closeBetting(battleId);
 await operator.settle(battleId, 0);

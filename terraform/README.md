@@ -198,8 +198,6 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
 | `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `production`) |
-| `WORLD_ID_PRACTICE_ACTIONS` | `TF_VAR_world_id_practice_actions` | from `.env`. Five comma-separated actions |
-| `WORLD_ID_JUDGE_ACTION` | `TF_VAR_world_id_judge_action` | from `.env`. Reserved for the judge scan |
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
@@ -222,7 +220,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 
 The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
-`@horror-tube/fight` (narration + fal video) is in the App Platform image. Those fight env vars are injected into `process.env` the same way as other App runtime secrets — not from a `.env` on the instance. Missing required values fail closed naming the variable. Both narration API key vars are present on the app; apply requires the key that matches `NARRATION_PROVIDER` and may pass an empty string for the unused one. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `BATTLE_BETTING_ADDRESS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` are runtime env because settle writes ENS text.
+`@horror-tube/fight` (narration + fal video) is in the App Platform image. Those fight env vars are injected into `process.env` the same way as other App runtime secrets — not from a `.env` on the instance. Missing required values fail closed naming the variable. Both narration API key vars are present on the app; apply requires the key that matches `NARRATION_PROVIDER` and may pass an empty string for the unused one. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `OPERATOR_ADDRESS`, `TREASURY_ADDRESS`, `BET_FEE_BPS`, `MIN_BET_WEI`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`) stay off the app spec — the container process does not read them. `BATTLE_BETTING_ADDRESS`, `SEPOLIA_RPC_URL`, and `AGENT_PRIVATE_KEY` are runtime env because the game opens battles and places bets, and settle writes ENS text.
 
 Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for the backend and the provider Spaces env, and keeps icons `SPACES_*` on `TF_VAR_spaces_*`:
 
@@ -252,8 +250,6 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
-  : "${WORLD_ID_PRACTICE_ACTIONS:?WORLD_ID_PRACTICE_ACTIONS is required. See .env.example.}"
-  : "${WORLD_ID_JUDGE_ACTION:?WORLD_ID_JUDGE_ACTION is required. See .env.example.}"
   : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
@@ -298,8 +294,6 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
   export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
-  export TF_VAR_world_id_practice_actions="$WORLD_ID_PRACTICE_ACTIONS"
-  export TF_VAR_world_id_judge_action="$WORLD_ID_JUDGE_ACTION"
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
