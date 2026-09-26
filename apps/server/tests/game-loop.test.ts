@@ -238,6 +238,20 @@ async function flushFightJob(): Promise<void> {
   }
 }
 
+async function loggedErrors(run: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    lines.push(args.map((arg) => String(arg)).join(" "));
+  };
+  try {
+    await run();
+  } finally {
+    console.error = original;
+  }
+  return lines;
+}
+
 const opens = (betCalls: string[]): string[] => betCalls.filter((c) => c.startsWith("open:"));
 
 const configEnv = {
@@ -499,6 +513,7 @@ describe("GameLoop phases", () => {
     assert.equal(settled.chars[1]?.alive, false);
     assert.equal(settled.chars[0]?.kills, 1);
     assert.equal(settled.chars[0]?.damage, 3);
+    await flushFightJob();
     assert.deepEqual(deps.calls, ["injuries", "status", "settle:99"]);
 
     await step(3_000);
@@ -535,74 +550,63 @@ describe("GameLoop phases", () => {
     assert.equal(reads(), before);
   });
 
-  it("keeps a failed pool settle on the round with the battle id and resumes at settle", async () => {
-    let settleFails = true;
+  it("logs a failed pool settle and still opens the next bout", async () => {
     const deps = loopDeps();
     deps.chainWritePorts.settleBattle = async (battleId) => {
-      if (settleFails) {
-        throw new Error(
-          `Battle ${battleId}: settle on pool 0xpool-${battleId} for side 0 failed. rpc timeout`,
-        );
-      }
-      deps.calls.push(`settle:${battleId}`);
-      return "0xsettle";
+      throw new Error(
+        `Battle ${battleId}: settle on pool 0xpool-${battleId} for side 0 failed. rpc timeout`,
+      );
     };
     const { loop, step } = await startedLoop({ config: fastConfig, deps });
-    await readyAlphaWin(loop, "settle-on");
-    await startPlayback(loop);
-    await step(1_000);
-    await step(1);
+    const lines = await loggedErrors(async () => {
+      await readyAlphaWin(loop, "settle-on");
+      await startPlayback(loop);
+      await step(1_000);
+      await step(1);
+      await flushFightJob();
+    });
     assert.equal(loop.getState().phase, "settle");
-    assert.equal(loop.getState().endsAt, null);
+    assert.equal(loop.getState().error, null);
+    assert.notEqual(loop.getState().endsAt, null);
     assert.match(
-      loop.getState().error ?? "",
-      /settle step settlement failed \(battleId=99\)\. Battle 99: settle on pool 0xpool-99/u,
+      lines.join("\n"),
+      /ENS settle failed queueId=settle-on:.*settle step settlement failed \(battleId=99\).*0xpool-99/u,
     );
     const saved = await deps.battleQueueStore.get("settle-on");
     assert.equal(saved?.statusTxHash, "0xstatus");
     assert.equal(saved?.settlementTxHash, null);
-    await step(10_000);
-    assert.equal(loop.getState().phase, "settle");
-
-    settleFails = false;
-    await loop.retrySettle();
+    await step(1_000);
+    assert.equal(loop.getState().phase, "pick");
+    assert.equal(loop.getState().round, 2);
     assert.equal(loop.getState().error, null);
-    assert.equal((await deps.battleQueueStore.get("settle-on"))?.settlementTxHash, "0xsettle");
-    assert.deepEqual(deps.calls, ["injuries", "status", "settle:99"]);
   });
 
-  it("keeps a failed ENS write on the round and resumes it", async () => {
-    let statusFails = true;
+  it("logs a failed ENS write and still opens the next bout", async () => {
     const deps = loopDeps();
     deps.chainWritePorts.writeLoserStatusDead = async () => {
-      if (statusFails) throw new Error("rpc timeout on status write");
-      deps.calls.push("status");
-      return "0xstatus";
+      throw new Error("rpc timeout on status write");
     };
     const { loop, step } = await startedLoop({ config: fastConfig, deps });
-    await readyAlphaWin(loop, "fail-status");
-    await startPlayback(loop);
-    await step(1_000);
-    await step(1);
+    const lines = await loggedErrors(async () => {
+      await readyAlphaWin(loop, "fail-status");
+      await startPlayback(loop);
+      await step(1_000);
+      await step(1);
+      await flushFightJob();
+    });
     assert.equal(loop.getState().phase, "settle");
-    assert.equal(loop.getState().endsAt, null);
-    assert.match(loop.getState().error ?? "", /status write/u);
+    assert.equal(loop.getState().error, null);
+    assert.notEqual(loop.getState().endsAt, null);
+    assert.match(lines.join("\n"), /ENS settle failed queueId=fail-status:.*rpc timeout on status write/u);
     const saved = await deps.battleQueueStore.get("fail-status");
     assert.equal(saved?.injuriesTxHash, "0xinjuries");
     assert.equal(saved?.statusTxHash, null);
     assert.equal(saved?.bettingClosed, true);
     assert.equal(saved?.playbackFinished, true);
-    await step(10_000);
-    assert.equal(loop.getState().phase, "settle");
-
-    statusFails = false;
-    await loop.retrySettle();
-    assert.equal(loop.getState().error, null);
-    assert.equal((await deps.battleQueueStore.get("fail-status"))?.statusTxHash, "0xstatus");
-    assert.deepEqual(deps.calls, ["injuries", "status", "settle:99"]);
     await step(1_000);
     assert.equal(loop.getState().phase, "pick");
     assert.equal(loop.getState().round, 2);
+    assert.equal(loop.getState().error, null);
   });
 
   it("refuses an agent result that names a different winner than the bout", async () => {
@@ -958,36 +962,31 @@ describe("betting cutoff", () => {
 });
 
 describe("chain call retries", () => {
-  it("a retried settle holds the round until it finishes and keeps its error on that bout", async () => {
-    const pending = { reject: (_cause: Error): void => {} };
-    let writeStatus = async (): Promise<string> => {
-      throw new Error("rpc timeout on status write");
-    };
+  it("opens the next bout while the pool settle has not finished", async () => {
+    let rejectWrite: (cause: Error) => void = () => {};
     const deps = loopDeps();
-    deps.chainWritePorts.writeLoserStatusDead = () => writeStatus();
+    deps.chainWritePorts.settleBattle = () =>
+      new Promise<string>((_resolve, reject) => {
+        rejectWrite = reject;
+      });
     const { loop, step } = await startedLoop({ config: fastConfig, deps });
     await readyAlphaWin(loop, "retry-row");
     await startPlayback(loop);
     await step(1_000);
     await step(1);
-    assert.match(loop.getState().error ?? "", /rpc timeout on status write/u);
-
-    writeStatus = () =>
-      new Promise<string>((_resolve, reject) => {
-        pending.reject = reject;
-      });
-    const retry = loop.retrySettle();
-    await flushFightJob();
-    await step(60_000);
-    assert.equal(loop.getState().phase, "settle", "tick must not start the next bout mid-retry");
-    await assert.rejects(() => loop.retrySettle(), /already running/u);
-
-    pending.reject(new Error("rpc timeout on the retry"));
-    await retry;
-    const state = loop.getState();
-    assert.equal(state.round, 1);
-    assert.equal(state.phase, "settle");
-    assert.match(state.error ?? "", /rpc timeout on the retry/u);
+    assert.equal(loop.getState().phase, "settle");
+    assert.equal(loop.getState().error, null);
+    await step(1_000);
+    assert.equal(loop.getState().phase, "pick");
+    assert.equal(loop.getState().round, 2);
+    assert.equal(loop.getState().error, null);
+    const lines = await loggedErrors(async () => {
+      rejectWrite(new Error("rpc timeout on the retry"));
+      await flushFightJob();
+    });
+    assert.match(lines.join("\n"), /ENS settle failed queueId=retry-row:.*rpc timeout on the retry/u);
+    assert.equal(loop.getState().error, null);
+    assert.equal(loop.getState().phase, "pick");
     assert.equal(opens(deps.betCalls).length, 1);
   });
 

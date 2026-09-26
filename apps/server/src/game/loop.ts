@@ -967,27 +967,25 @@ export class GameLoop {
     this.phase = "settle";
     this.endsAt = now + this.config.settleSeconds * 1000;
     this.emit();
-    await this.writeQueuedEns(queued);
+    void this.writeQueuedEns(queued);
   }
 
   private async writeQueuedEns(queued: BattleQueueRecord): Promise<void> {
     const queueId = queued.id;
-    let record = markPlaybackFinished(markBettingClosed(queued));
-    await this.battleQueueStore.save(record);
     try {
+      let record = markPlaybackFinished(markBettingClosed(queued));
+      await this.battleQueueStore.save(record);
       console.log(`ENS settle start queueId=${record.id} battleId=${record.battleId}`);
       record = await settleQueuedBattle(record, this.chainWritePorts, this.battleQueueStore);
-      this.error = null;
       console.log(
         `ENS settle done queueId=${record.id} injuriesTx=${record.injuriesTxHash} statusTx=${record.statusTxHash} settlementTx=${record.settlementTxHash}`,
       );
+      if (this.queuedAgentResultId !== queueId) return;
+      this.error = null;
       this.emit();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       console.error(`ENS settle failed queueId=${queueId}: ${message}`);
-      this.error = message;
-      this.endsAt = null;
-      this.emit();
     }
   }
 
