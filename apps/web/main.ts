@@ -72,7 +72,7 @@ function hintText(): void {
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
+          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY${W8.qrUri === "" ? "" : ` <a href="${esc(W8.qrUri)}" target="_blank" rel="noopener">OPEN LINK</a> <button data-copy-link>COPY LINK</button>`}`
           : W8.fail !== ""
             ? `NOT IN · TRY AGAIN ${b("ENTER")}`
             : W8.step === "done" && S.noteKind === "bad"
@@ -315,9 +315,20 @@ function openCoinKey(part: CoinBoxPart): void {
   if (walkRef.n >= 0) walkTo(WALK.length);
   useCoinPart(part);
 }
+async function copyWorldIdLink(button: HTMLElement): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(W8.qrUri);
+    button.textContent = "COPIED";
+  } catch (err) {
+    button.textContent = "COPY FAILED";
+    console.error(`Copy World ID link failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 $("#hint").addEventListener("click", (e) => {
   const coin = e.target instanceof Element ? e.target.closest("[data-coin]") : null;
   if (coin instanceof HTMLElement) insertCoin(Number(coin.dataset.coin));
+  const copy = e.target instanceof Element ? e.target.closest("[data-copy-link]") : null;
+  if (copy instanceof HTMLElement) void copyWorldIdLink(copy);
 });
 $("#no-orb").addEventListener("click", noOrb);
 $("#forget").addEventListener("click", () => {
