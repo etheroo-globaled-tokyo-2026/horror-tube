@@ -360,7 +360,6 @@ export class MemoryBattleQueueStore implements BattleQueueStore {
     this.videoById.set(id, trimmed);
   }
 
-  // Map keeps first-insert order, matching battle_results.created_at order in Postgres.
   async getLatestVideoUrl(): Promise<string | null> {
     let latest: string | null = null;
     for (const id of this.rows.keys()) {

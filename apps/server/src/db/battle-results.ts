@@ -170,7 +170,7 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
     }
   }
 
-  // Order by bout creation: settle writes bump updated_at on older rows.
+  // WARNING: order by created_at, not updated_at. Settle writes bump updated_at on older bouts.
   async getLatestVideoUrl(): Promise<string | null> {
     const result = await this.db.query<{ video_url: string }>(
       `SELECT video_url
