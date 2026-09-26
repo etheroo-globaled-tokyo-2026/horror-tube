@@ -1,7 +1,7 @@
 import { hashSignal } from "@worldcoin/idkit-core/hashing";
 import { z } from "zod";
 
-import type { WorldIdEnvironment } from "./env.js";
+import { worldIdEnvironmentSchema, type WorldIdEnvironment } from "./env.js";
 
 export const WORLD_ID_VERIFY_URL_BASE = "https://developer.world.org/api/v4/verify";
 export const PROOF_OF_HUMAN_IDENTIFIER = "proof_of_human";
@@ -49,7 +49,7 @@ const proofOfHumanResultSchema = z.object({
     .optional(),
   nonce: z.string().min(1),
   action: z.string().min(1),
-  environment: z.enum(["production", "staging"]).optional(),
+  environment: worldIdEnvironmentSchema.optional(),
   responses: z.tuple([proofOfHumanResponseSchema], {
     error: `responses must hold exactly one ${PROOF_OF_HUMAN_IDENTIFIER} response`,
   }),
@@ -61,7 +61,7 @@ const verifySuccessSchema = z.object({
   success: z.literal(true),
   action: z.string().optional(),
   nullifier: uint256Hex.optional(),
-  environment: z.enum(["production", "staging", "sandbox"]),
+  environment: worldIdEnvironmentSchema,
   results: z.array(
     z.object({
       identifier: z.string(),

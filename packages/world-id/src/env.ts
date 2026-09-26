@@ -1,4 +1,7 @@
-export type WorldIdEnvironment = "production" | "staging";
+import { z } from "zod";
+
+export const worldIdEnvironmentSchema = z.enum(["production", "staging", "sandbox"]);
+export type WorldIdEnvironment = z.infer<typeof worldIdEnvironmentSchema>;
 
 export type WorldIdEnv = {
   appId: string;
@@ -34,12 +37,14 @@ export function loadWorldIdEnv(env: NodeJS.ProcessEnv = process.env): WorldIdEnv
       "WORLD_ID_SIGNING_KEY must be a 32-byte hex key from the Developer Portal. See .env.example.",
     );
   }
-  const environment = requireEnv("WORLD_ID_ENVIRONMENT", env.WORLD_ID_ENVIRONMENT);
-  if (environment !== "production" && environment !== "staging") {
+  const rawEnvironment = requireEnv("WORLD_ID_ENVIRONMENT", env.WORLD_ID_ENVIRONMENT);
+  const parsedEnvironment = worldIdEnvironmentSchema.safeParse(rawEnvironment);
+  if (!parsedEnvironment.success) {
     throw new Error(
-      `WORLD_ID_ENVIRONMENT must be production or staging. Got ${environment}. See .env.example.`,
+      `WORLD_ID_ENVIRONMENT must be one of ${worldIdEnvironmentSchema.options.join(", ")}. Got ${rawEnvironment}. See .env.example.`,
     );
   }
+  const environment = parsedEnvironment.data;
   if (environment === "staging") {
     const stagingToken = requireEnv("WORLD_ID_STAGING_TOKEN", env.WORLD_ID_STAGING_TOKEN);
     return { appId, rpId, signingKeyHex, environment, stagingToken };

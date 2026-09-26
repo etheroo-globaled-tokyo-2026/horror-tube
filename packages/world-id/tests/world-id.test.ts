@@ -112,7 +112,7 @@ test("loadWorldIdEnv names each missing or blank variable and .env.example", () 
   assert.throws(() => loadWorldIdEnv({ ...testEnv(), WORLD_ID_SIGNING_KEY: "0x12" }), /32-byte/);
   assert.throws(
     () => loadWorldIdEnv({ ...testEnv(), WORLD_ID_ENVIRONMENT: "dev" }),
-    /production or staging/,
+    /WORLD_ID_ENVIRONMENT must be one of .*Got dev.*\.env\.example/,
   );
   assert.deepEqual(loadWorldIdEnv(testEnv()), {
     appId: APP_ID,
@@ -231,6 +231,34 @@ test("staging verification needs a token and sends it to the portal", async () =
     },
   });
   assert.equal(sent, "tok");
+});
+
+test("sandbox verification needs no token and never sends the staging header", async () => {
+  const action = enterRoomAction();
+  const sandbox = { ...testEnv(), WORLD_ID_ENVIRONMENT: "sandbox" };
+  assert.deepEqual(loadWorldIdEnv(sandbox), {
+    appId: APP_ID,
+    rpId: RP_ID,
+    signingKeyHex: SIGNING_KEY,
+    environment: "sandbox",
+  });
+  assert.equal(createIdkitRequestContext({ action, env: sandbox }).environment, "sandbox");
+  let headers: Record<string, string> | undefined;
+  const verified = await verifyProofOfHuman({
+    rpId: RP_ID,
+    environment: "sandbox",
+    stagingToken: "tok",
+    action,
+    signal: WALLET,
+    idkitResult: { ...v4Result(action), environment: "sandbox" },
+    fetch: async (_url, init) => {
+      headers = init.headers;
+      const body = JSON.stringify({ ...portalSuccess(action), environment: "sandbox" });
+      return { ok: true, status: 200, text: async () => body };
+    },
+  });
+  assert.deepEqual(headers, { "content-type": "application/json" });
+  assert.deepEqual(verified, { action, nullifier: NULLIFIER_DECIMAL });
 });
 
 test("verifyProofOfHuman rejects before calling the portal on local mismatches", async () => {
