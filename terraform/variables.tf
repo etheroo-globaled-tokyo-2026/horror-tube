@@ -155,18 +155,8 @@ variable "wallet_secret_pepper" {
   sensitive   = true
 }
 
-variable "world_id_api_url" {
-  description = "WORLD_ID_API_URL origin for POST /api/v4/verify. Set via TF_VAR_world_id_api_url from .env. Required; no default."
-  type        = string
-}
-
 variable "world_id_environment" {
-  description = "WORLD_ID_ENVIRONMENT (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
-  type        = string
-}
-
-variable "world_id_wallet_action" {
-  description = "WORLD_ID_WALLET_ACTION the wallet login proof must use. Set via TF_VAR_world_id_wallet_action from .env. Required; no default."
+  description = "WORLD_ID_ENVIRONMENT for the app (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
   type        = string
 }
 

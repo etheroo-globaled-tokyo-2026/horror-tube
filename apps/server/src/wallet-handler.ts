@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
+import type { VerifyFetch } from "@horror-tube/world-id";
 import * as v from "valibot";
 
 import { requiredEnv } from "./env.js";
@@ -14,7 +15,7 @@ import {
   type ShinamiPort,
 } from "./shinami-port.js";
 import { assertSponsorableKind } from "./tx-policy.js";
-import { verifyWorldIdProof } from "./world-verify.js";
+import { verifyEnterRoomProof } from "./world-id-handler.js";
 
 const BODY_LIMIT = 1_000_000;
 
@@ -226,15 +227,6 @@ export function createWalletHandlerFromEnv(
   const accessKey = requiredEnv("SHINAMI_ACCESS_KEY", env);
   const pepper = requiredEnv("WALLET_SECRET_PEPPER", env);
   const usdcType = requiredEnv("SUI_USDC_TYPE", env);
-  const rpId = requiredEnv("WORLD_ID_RP_ID", env);
-  const worldApiUrl = requiredEnv("WORLD_ID_API_URL", env);
-  const walletAction = requiredEnv("WORLD_ID_WALLET_ACTION", env);
-  const environment = requiredEnv("WORLD_ID_ENVIRONMENT", env);
-  if (environment !== "production" && environment !== "staging") {
-    throw new Error(
-      `WORLD_ID_ENVIRONMENT must be production or staging. Got ${JSON.stringify(environment)}. See .env.example.`,
-    );
-  }
   let bettingPackageId: string | undefined;
   try {
     bettingPackageId = readOptional("BETTING_PACKAGE_ID", env);
@@ -244,12 +236,28 @@ export function createWalletHandlerFromEnv(
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(`SUI_USDC_TYPE or BETTING_PACKAGE_ID is invalid. Underlying: ${detail}`);
   }
+  const fetchAdapter: VerifyFetch = (input, init) => fetchImpl(input, init);
   return createWalletHandler({
     pepper,
     usdcType,
     bettingPackageId,
-    verifyProof: (rawBody: string) =>
-      verifyWorldIdProof(rawBody, rpId, worldApiUrl, walletAction, environment, fetchImpl),
+    verifyProof: async (rawBody: string) => {
+      try {
+        const verified = await verifyEnterRoomProof(JSON.parse(rawBody), {
+          env,
+          fetch: fetchAdapter,
+        });
+        return verified.nullifier;
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        if (err instanceof SyntaxError) {
+          throw new HttpError(400, `Request body is not JSON. Underlying: ${message}`);
+        }
+        const status = /HTTP 5\d\d|non-JSON/u.test(message) ? 502 : 401;
+        throw new HttpError(status, message);
+      }
+    },
     shinami: shinamiPort(accessKey),
   });
 }
