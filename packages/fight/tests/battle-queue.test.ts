@@ -56,7 +56,7 @@ function trackingPorts(calls: string[]): ChainWritePorts {
       calls.push("status");
       return "0xstatus";
     },
-    async settleBattle(battleId) {
+    async settleBattle(battleId, _side) {
       calls.push(`settle:${battleId}`);
       return "0xsettle";
     },
@@ -204,7 +204,7 @@ describe("settleQueuedBattle", () => {
       async writeLoserStatusDead() {
         throw new Error("rpc timeout on status write");
       },
-      async settleBattle() {
+      async settleBattle(_battleId, _side) {
         return "0xshould-not-run";
       },
     };

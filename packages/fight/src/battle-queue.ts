@@ -8,7 +8,7 @@ export type { Shot };
  */
 export type BattleQueueRecord = {
   id: string;
-  /** On-chain BattleBetting battle id (decimal string). */
+  /** Sui pool battle id (UUID string). */
   battleId: string;
   fighterASubname: string;
   fighterBSubname: string;
@@ -59,7 +59,11 @@ export type ChainWritePorts = {
     subname: string;
     ensLine: string;
   }) => Promise<string>;
-  settleBattle: (battleId: string) => Promise<string>;
+  /**
+   * Settle the Sui pool for this battle with the winning side (0 = fighter A,
+   * 1 = fighter B). Called after the loser ENS status is dead.
+   */
+  settleBattle: (battleId: string, winningSide: 0 | 1) => Promise<string>;
 };
 
 export type BattleQueueStore = {
@@ -209,7 +213,17 @@ export async function settleQueuedBattle(
       return current;
     }
     try {
-      const hash = await ports.settleBattle(current.battleId);
+      const winningSide: 0 | 1 =
+        current.winnerSubname === current.fighterASubname
+          ? 0
+          : current.winnerSubname === current.fighterBSubname
+            ? 1
+            : (() => {
+                throw new BattleQueueError(
+                  `settleBattle: winner ${JSON.stringify(current.winnerSubname)} is neither fighterA ${JSON.stringify(current.fighterASubname)} nor fighterB ${JSON.stringify(current.fighterBSubname)}.`,
+                );
+              })();
+      const hash = await ports.settleBattle(current.battleId, winningSide);
       assertTxHash(hash, "settlement");
       current = { ...current, settlementTxHash: hash };
       await store.save(current);

@@ -35,22 +35,35 @@ function testLoop(): GameLoop {
       async writeLoserStatusDead() {
         throw new Error("vote tests must not write status.");
       },
-      async settleBattle() {
+      async settleBattle(_battleId, _side) {
         throw new Error("vote tests must not settle a battle.");
       },
     },
     battleBetting: {
-      async minBet() {
-        throw new Error("vote tests must not read minBet.");
+      config: {
+        network: "testnet",
+        grpcUrl: "https://example.invalid",
+        packageId: "0xpkg",
+        houseId: "0xhouse",
+        coinType: "0x2::sui::SUI",
+      },
+      poolIdFor() {
+        throw new Error("vote tests must not derive a pool id.");
       },
       async openBattle() {
         throw new Error("vote tests must not open a battle.");
       },
-      async placeBet() {
-        throw new Error("vote tests must not place a bet.");
-      },
       async cancelBattle() {
         throw new Error("vote tests must not cancel a battle.");
+      },
+      async closeBetting() {
+        throw new Error("vote tests must not close betting.");
+      },
+      async settle() {
+        throw new Error("vote tests must not settle a pool.");
+      },
+      async readPoolTotals() {
+        throw new Error("vote tests must not read a pool.");
       },
     },
     fightJob: async () => {
