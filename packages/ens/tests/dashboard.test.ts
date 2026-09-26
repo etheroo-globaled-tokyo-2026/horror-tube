@@ -17,6 +17,8 @@ import {
   MIN_LOG_BLOCK,
   characterSheetFromTexts,
   decodeRegisterLabel,
+  isRateLimitError,
+  labelsFromTransferTxHashes,
   recentLogScanChunks,
   type CharacterSheet,
 } from "../scripts/roster.js";
@@ -73,6 +75,73 @@ describe("dashboard recent log windows (unit, no network)", () => {
     assert.equal(chunks.length, 1);
     assert.equal(chunks[0]!.fromBlock, MIN_LOG_BLOCK);
     assert.equal(chunks[0]!.toBlock, 100n);
+  });
+});
+
+describe("roster getTransaction rate limits (unit, no network)", () => {
+  const registerInput = (label: string): Hex =>
+    encodeFunctionData({
+      abi: userRegistryAbi,
+      functionName: "register",
+      args: [
+        label,
+        "0x1111111111111111111111111111111111111111",
+        "0x0000000000000000000000000000000000000000",
+        "0x2222222222222222222222222222222222222222",
+        1n,
+        1234567890n,
+      ],
+    });
+
+  it("isRateLimitError recognizes HTTP 429", () => {
+    assert.equal(
+      isRateLimitError(new Error("HTTP request failed. Status: 429")),
+      true,
+    );
+    assert.equal(
+      isRateLimitError(Object.assign(new Error("rate limited"), { status: 429 })),
+      true,
+    );
+    assert.equal(isRateLimitError(new Error("HTTP request failed. Status: 500")), false);
+  });
+
+  it("retries 429 on getTransaction and discovery still returns labels", async () => {
+    const hashPinhead =
+      "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
+    const hashChucky =
+      "0x2222222222222222222222222222222222222222222222222222222222222222" as Hex;
+    const pinheadInput = registerInput("pinhead");
+    const chuckyInput = registerInput("chucky");
+    let pinheadAttempts = 0;
+    const sleeps: number[] = [];
+
+    const labels = await labelsFromTransferTxHashes([hashPinhead, hashChucky], {
+      gapMs: 0,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+      getTransaction: async ({ hash }) => {
+        if (hash === hashPinhead) {
+          pinheadAttempts += 1;
+          if (pinheadAttempts === 1) {
+            throw Object.assign(new Error("HTTP request failed. Status: 429"), {
+              status: 429,
+            });
+          }
+          return { input: pinheadInput };
+        }
+        if (hash === hashChucky) {
+          return { input: chuckyInput };
+        }
+        throw new Error(`unexpected hash ${hash}`);
+      },
+      getStatus: async () => 2,
+    });
+
+    assert.deepEqual(labels, ["chucky", "pinhead"]);
+    assert.equal(pinheadAttempts, 2);
+    assert.ok(sleeps.length >= 1);
+    assert.ok(sleeps[0]! > 0);
   });
 });
 
