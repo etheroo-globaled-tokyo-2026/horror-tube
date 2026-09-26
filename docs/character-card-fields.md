@@ -79,5 +79,7 @@ Omit `status` when the name is already known living. Never send dropped RPG keys
 
 ## Permission split
 
-- Roster key: `display_name`, `look`, `brief`, `injury_places`, `icon`. Cannot set `status` or `injuries`.
-- Agent: `status`, `injuries` only. Cannot rewrite `display_name`, `look`, `brief`, or `injury_places`.
+- Bootstrap/admin (`PRIVATE_KEY`): registration, `grantSetterRoles`, and import-time
+  `display_name` / `injury_places` (roster key is not granted those setters).
+- Roster key (`ROSTER_PRIVATE_KEY`): `look`, `brief`, `icon`. Cannot set `status` or `injuries`.
+- Agent (`AGENT_PRIVATE_KEY`): `status`, `injuries` only. Cannot rewrite `look`, `brief`, or `icon`.

@@ -163,4 +163,6 @@ has no unregister for a second-level `.eth` name.
 
 - Character labels beyond ensuring a UserRegistry on the parent (see
   `docs/roster-json.md` and `python -m roster register`)
-- PermissionedResolver grants beyond the parent owner ALL_ROLES bootstrap
+- Character text-key grants (`grantSetterRoles` for roster/agent) live in
+  `packages/ens/scripts/character-subnames.ts` / issue #61, not in the parent
+  `.eth` register script
