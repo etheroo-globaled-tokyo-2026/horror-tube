@@ -35,6 +35,7 @@ import {
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
 import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
+import { collapse, drawPower, powerStage } from "./room-power.ts";
 
 export const TW = 640,
   TH = 480;
@@ -653,7 +654,9 @@ export function drawTV(): void {
     g.fillStyle = color;
     g.fillRect(0, y, W, h);
   };
-  if (S.phase === "gate") {
+  const powered = powerStage(now) !== "";
+  if (powered) noise = drawPower(g, W, H, now);
+  else if (S.phase === "gate") {
     noise = 0.5;
     if (W8.step === "scan") {
       noise = 0.1;
@@ -726,13 +729,7 @@ export function drawTV(): void {
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
-      const k = LOW ? 1 : Math.min(1, (now - W8.at) / 320);
-      if (W8.step === "off" && k < 1) {
-        const h = Math.max(2, H * (1 - k * 2)),
-          w = k < 0.5 ? W : W * (1 - (k - 0.5) * 2);
-        g.fillStyle = COL.bone;
-        g.fillRect((W - w) / 2, (H - h) / 2, Math.max(4, w), h);
-      }
+      if (W8.step === "off") collapse(g, W, H, LOW ? 1 : (now - W8.at) / 320);
     }
   } else if (S.view === 2) {
     fill(COL.char);
@@ -901,11 +898,11 @@ export function drawTV(): void {
       }
     }
   }
-  if (S.phase !== "gate" && T.say && now < T.sayUntil) {
+  if (S.phase !== "gate" && !powered && T.say && now < T.sayUntil) {
     band(H - 80, 56);
     text(T.say, H - 42, 26, COL.bone, "DotGothic16", 400);
   }
-  if (S.phase !== "gate") {
+  if (S.phase !== "gate" && !powered) {
     g.globalAlpha = 0.8;
     g.textAlign = "right";
     g.font = "700 18px Silkscreen";

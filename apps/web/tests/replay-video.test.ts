@@ -23,10 +23,7 @@ describe("fetchReplayVideoUrl", () => {
         JSON.stringify({ ok: false, error: "no fight video is stored. Play a bout first." }),
         { status: 404, headers: { "content-type": "application/json" } },
       );
-    await assert.rejects(
-      () => fetchReplayVideoUrl(fetchImpl),
-      /no fight video is stored/u,
-    );
+    await assert.rejects(() => fetchReplayVideoUrl(fetchImpl), /no fight video is stored/u);
   });
 });
 
@@ -62,10 +59,10 @@ describe("playReplayVideo", () => {
     let src: string | null = null;
     const notes: string[] = [];
     const fetchImpl: typeof fetch = async () =>
-      new Response(
-        JSON.stringify({ ok: false, error: "no fight video is stored." }),
-        { status: 404, headers: { "content-type": "application/json" } },
-      );
+      new Response(JSON.stringify({ ok: false, error: "no fight video is stored." }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
     await playReplayVideo(
       {
         get currentSrc() {

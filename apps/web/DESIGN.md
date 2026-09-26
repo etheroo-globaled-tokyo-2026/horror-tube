@@ -13,10 +13,12 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 | `round-client.ts` | Same-origin `GET /round`, SSE `/events`, `POST /playback-start`.                                            |
 | `wallet.ts`       | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers.                                       |
 | `coinbox.ts`      | The slot meter: credit window, coin dial, PAY BY PHONE sticker, padlocked drawer.                           |
-| `sfx.ts`          | Every sound, made live with Web Audio. No sound files.                                                      |
+| `room-power.ts`   | The remote's POWER key (`O`): the set dies, films you from the TV, and a face lunges at you when you turn.  |
+| `sfx.ts`          | Sounds made live with Web Audio, plus `sample()` for the POWER scare files in `assets/scare/`.              |
 | `sprites.ts`      | `paint` (pixel art) and the line helpers.                                                                   |
 | `logo.ts`         | The logo on a canvas: `drawLogo` (two lines) and `drawLogoLine` (one line).                                 |
 | `brand.html`      | Store art: the 512 × 512 logo and the 1280 × 720 cover. Click an image to save it.                          |
+| `assets/scare/`   | The POWER scare face and sounds, generated once with fal (`flux-pro/v1.1`, `elevenlabs/sound-effects/v2`).  |
 | `ht.css`          | Tokens, the cursors, and the wallet modal theme.                                                            |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
