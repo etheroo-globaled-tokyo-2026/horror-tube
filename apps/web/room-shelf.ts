@@ -15,7 +15,7 @@ import {
   veneer,
 } from "./room-materials.ts";
 import { camera, renderer, scene, textTex } from "./room-render.ts";
-import { LOW, num, T, W8, wrap, Z, walkRef, type G } from "./room-state.ts";
+import { fitFont, lines, LOW, num, T, W8, wrap, Z, walkRef, type G } from "./room-state.ts";
 
 export const VW = 320,
   VH = 544;
@@ -78,15 +78,21 @@ export function drawTape(ch: Character): void {
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
   g.fillText("RESIDENT FILE", 24, 298);
+  const injuries = ch.injuries || "None recorded.",
+    bottom = ch.alive ? VH - 20 : VH - 40;
+  const lh = fitFont(g, "DotGothic16", 18, 10, (lh) => {
+    const n = lines(g, ch.brief, VW - 48).length + lines(g, injuries, VW - 48).length;
+    return 324 + 34 + (n - 1) * lh <= bottom;
+  });
+  const font = g.font;
   g.fillStyle = COL.bone;
-  g.font = "18px DotGothic16";
-  const y = wrap(g, ch.brief, 24, 324, VW - 48, 23);
+  const y = wrap(g, ch.brief, 24, 324, VW - 48, lh);
   g.fillStyle = COL.rust;
   g.font = "700 14px Silkscreen";
   g.fillText("INJURIES", 24, y + 8);
   g.fillStyle = ch.injuries ? COL.bone : COL.grime;
-  g.font = "18px DotGothic16";
-  wrap(g, ch.injuries || "None recorded.", 24, y + 34, VW - 48, 23);
+  g.font = font;
+  wrap(g, injuries, 24, y + 34, VW - 48, lh);
   if (!ch.alive) {
     g.textAlign = "center";
     g.fillStyle = COL.grime;
@@ -304,10 +310,7 @@ export function updateShelf(shown: Character | null): void {
   shelf.visible = S.phase !== "gate" || W8.step === "done";
   for (const slot of slots) {
     const ch = S.chars[slot.id];
-    slot.mesh.visible =
-      shelf.visible &&
-      !!ch &&
-      shown !== ch;
+    slot.mesh.visible = shelf.visible && !!ch && shown !== ch;
     if (!ch) continue;
     const key = ch.ens + ch.alive;
     if (slot.key !== key) drawSpine(slot, ch);
