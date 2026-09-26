@@ -5,7 +5,7 @@ import { loadRepoDotenv } from "./env.js";
 import { migrate } from "./db/migrate.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-loadRepoDotenv(join(repoRoot, ".env"));
+loadRepoDotenv(repoRoot);
 
 async function main(): Promise<void> {
   const result = await migrate();
