@@ -7,11 +7,7 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit) and **ENS** (ENSv2).
 
 ## Art direction
 
-Based on *FAITH: The Unholy Trinity* (https://store.steampowered.com/app/1179080/FAITH_The_Unholy_Trinity/).
-
-- Black background.
-- Thin, glowing line art in one color per subject (blood red, cold blue, rust brown).
-- Rough, low-res, pixel look, like an old computer. No gradients, no glossy UI.
+See `design/DESIGN.md`.
 
 ## Components
 
@@ -24,10 +20,7 @@ Based on *FAITH: The Unholy Trinity* (https://store.steampowered.com/app/1179080
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+. The user can use a browser wallet.
 2. **Connect wallet**: `check_funds(wallet)` checks that the wallet has enough test ETH to bet.
-3. **Main screen**:
-   - Top: the current battle. When no battle is live, the last battle plays again on a loop, with a very clear "REC" (camcorder recording) effect.
-   - Below: a panel of living and dead characters. The panel uses the app's art style.
-   - **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
+3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)
 6. **Story**: the LLM gets the story prompt, the character state, and lore text for each character (from the database or fandom.com).
@@ -36,12 +29,12 @@ Based on *FAITH: The Unholy Trinity* (https://store.steampowered.com/app/1179080
 7. **Open betting**: the contract state changes. Voting closes and betting opens for the next battle. (Open: see question 1.)
 8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends.
    The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
-9. **Show video**: the fight video plays at the top of the main screen.
+9. **Show video**: the fight video plays.
 10. **Update ENS**:
     - The loser's subname moves to the dead pool. (Open: see question 3.)
     - The winner takes damage. Its ENS text records update.
     - The contract reads the loser's ENS status. If it is `dead`, bets on the other fighter win, and the winners can claim.
-11. Go back to the vote on the main screen (step 3), until one character is left.
+11. Go back to the vote (step 3), until one character is left.
 
 **Known limit:** the server knows the winner while people bet, and the winner is only in the database. People must trust us. This is OK for the demo.
 
