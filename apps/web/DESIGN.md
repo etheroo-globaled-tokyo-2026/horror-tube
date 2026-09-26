@@ -7,19 +7,20 @@ You sit alone in a rusty room in front of an old TV, with a TV remote in your ha
 
 | File                    | What it is                                                            |
 | ----------------------- | --------------------------------------------------------------------- |
-| `index.html`            | The 3D room (Three.js from jsDelivr), the TV picture and the remote.  |
-| `game.js`               | The simulated game from `docs/PLAN.md`. No layout.                    |
-| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`. Vite serves the TypeScript. |
-| `sprites.js`            | `HT.paint` (pixel art) and `HT.portrait` (the 16 head sprites).       |
-| `ht.css`                | Tokens, plus the World ID and wallet gate styles.                     |
+| `main.ts`               | The 3D room (Three.js from npm), the TV picture and the remote.       |
+| `game.ts`               | The simulated game from `docs/PLAN.md`. No layout.                    |
+| `wallet.ts`             | The Sui burner wallet: `getGameWallet()`, USDC balance and transfers. |
+| `coinbox.ts`            | The coin box: meter, coin slot, PAY BY PHONE sticker, coin return.    |
+| `sprites.ts`            | `paint` (pixel art) and `portrait` (the 16 head sprites).             |
+| `ht.css`                | Tokens, plus the World ID gate and coin box panel styles.             |
 | `system.html`           | The specimen page for the tokens.                                     |
 | `assets/demo-fight.mp4` | The demo fight: Frankenstein vs Dracula. Frankenstein wins.           |
 
 Run `pnpm dev` at the repo root and open `http://localhost:8123/`.
 
-## The flow (game.js)
+## The flow (game.ts)
 
-World ID (Orb, 18+) → wallet (a burner wallet, USDC on Sui testnet, `check_funds`, with an empty-wallet path: vote only) → **vote** (free, top two living
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free, top two living
 fight) → **story** (the LLM writes the fight; the winner and damage are known from here) → **bet** (while the video
 renders) → **fight** (the video plays) → **settle** (loser `status=dead`, winner takes damage and may lose a capability,
 winners **claim**) → vote again, until one is left.
@@ -90,14 +91,14 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 
 - **Read:** the camera looks down at a paper waiver on the table, below the TV. The TV shows static. No remote yet.
 - **Sign:** ENTER, or click the paper. A signature draws on the line. The TV shows the World ID QR code (Orb only).
-- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the wallet step.
+- **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the TV.
 - **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
   NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
-- **Returning user:** a verified user skips the waiver and starts at the wallet step.
+- **Returning user:** a verified user skips the waiver and starts at the TV.
 - **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
-Not done yet: the wallet step is still the old full-screen panel. It goes away: after VERIFIED, cut straight to the TV.
+There is no wallet step: the burner wallet is made in the background.
 Money lives on the coin box (below). Vote and bet stay on the remote.
 
 ## The room
@@ -134,7 +135,10 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
 - **Empty:** the meter reads `CREDIT 0.00`. You can vote. A and B on the remote do nothing, and the TV says `NO STAKE`.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
-- Demo: the house drops the first coin, one time per World ID human (the faucet).
+- Keys: `D` the coin slot, `P` the sticker, `W` the coin return. Stakes are 1, 3 and 5 USDC.
+- The coin return needs a little SUI for gas in the in-game wallet. Until the faucet exists it says the return is
+  jammed.
+- Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
 
 ## Colour
 
