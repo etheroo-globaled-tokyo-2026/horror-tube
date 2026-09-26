@@ -57,8 +57,7 @@ export function drawPaper(now: number): void {
   g.lineWidth = 1.5;
   [
     "I am 18 or older.",
-    "I am one person,",
-    "with one vote.",
+    "I am one person.",
     "I will watch people die,",
     "and I will bet on it.",
     "I watch at my own risk.",

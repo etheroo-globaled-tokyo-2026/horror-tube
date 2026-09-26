@@ -3,10 +3,8 @@ import {
   $,
   DUR,
   S,
-  countdown,
   hooks,
   loadBettingIds,
-  pick,
   refreshClaimable,
   setWallet,
   usd,
@@ -93,11 +91,7 @@ function hintText(): void {
               : W8.step === "done"
                 ? "WARMING UP"
                 : `NEXT ${b("ENTER")}`
-      : S.phase === "vote" && !S.cast
-        ? `PICK ${S.slots === 1 ? "ONE" : "TWO"} · NUMBER ${b("OK")}`
-        : S.phase === "countdown" && !S.cast
-          ? `LAST CALL · PICK ${S.slots === 1 ? "ONE" : "TWO"} · ${b("OK")}`
-          : S.phase === "bet" && !S.bet && S.poolId === null
+      : S.phase === "bet" && !S.bet && S.poolId === null
             ? "OPENING THE BOOK"
             : S.phase === "bet" && !S.bet && S.credit > 0
             ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
@@ -120,13 +114,7 @@ function press(id: string): void {
   led.material.color.set(COL.blood);
   setTimeout(() => led.material.color.set(COL.bloodDeep), 120);
   if (S.phase === "gate") return;
-  if (/^\d$/.test(id)) {
-    if ((S.phase === "vote" || S.phase === "countdown") && !S.cast) {
-      T.reveal = -1;
-      T.held = -1;
-      T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
-    }
-  } else if (id === "clr") {
+  if (id === "clr") {
     T.buf = "";
     T.held = -1;
   } else if (id === "ok") ok();
@@ -137,22 +125,7 @@ function press(id: string): void {
   hintText();
 }
 function ok(): void {
-  if ((S.phase === "vote" || S.phase === "countdown") && !S.cast && T.buf.length === 2) {
-    const ch = S.chars[Number(T.buf) - 1];
-    if (
-      !ch ||
-      !ch.alive ||
-      S.picks.includes(ch.id) ||
-      (S.champion !== null && ch.id === S.champion)
-    )
-      return sfx.deny();
-    pick(ch.id);
-    sfx.pick();
-    T.buf = "";
-    T.reveal = ch.id;
-    T.revealUntil = performance.now() + 3200;
-    if (S.picks.length >= S.slots) $("#h-cast").click();
-  } else if (S.claim) {
+  if (S.claim) {
     $("#h-claim").click();
     sfx.coins(14);
     say("Collected.");
@@ -300,13 +273,11 @@ const WALK: WalkStep[] = [
     ],
     remote: false,
   },
-  { say: "THE REMOTE. VOTE FOR TWO. THEY FIGHT.", view: () => null, remote: true },
   { say: "THE METER. FEED IT TO BET.", view: () => coinBox?.view("meter") ?? null, remote: false },
   { say: "HOLD A OR B. BET ON WHO WALKS OUT.", view: () => null, remote: true },
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
-  countdown.hold = walkRef.n >= 0;
   hintText();
 }
 function zoom(at: CoinBoxView | null, pick = false): void {
@@ -586,8 +557,6 @@ renderer.setAnimationLoop(() => {
 });
 
 const PHASE_SOUND = new Map<Phase, () => void>([
-  ["vote", sfx.bell],
-  ["countdown", sfx.static],
   ["bet", sfx.static],
   ["fight", sfx.fight],
   ["settle", () => sfx.sting(!!S.bet && S.result < 0)],
@@ -603,10 +572,8 @@ hooks.render = () => {
   renderPlaceholders();
   if (S.phase === "gate") return hintText();
   if (T.phase !== S.phase) {
-    const was = T.phase;
     T.phase = S.phase;
     T.buf = "";
-    if (was === "vote" && S.phase === "countdown") say("Quorum reached. Voting closes soon.", 4200);
     if (S.phase === "bet") T.stake = 1;
     holdEnd();
     PHASE_SOUND.get(S.phase)?.();

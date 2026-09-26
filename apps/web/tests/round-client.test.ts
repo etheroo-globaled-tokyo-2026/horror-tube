@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { formatPoolOdds } from "../odds.ts";
-import { postVote, type ServerRoundState } from "../round-client.ts";
+import { postPlaybackStart, type ServerRoundState } from "../round-client.ts";
 import { WALLET_SESSION_KEY, type SessionStore } from "../wallet.ts";
 
 function memoryStore(session: string | null = null): SessionStore {
@@ -34,10 +34,10 @@ describe("formatPoolOdds", () => {
   });
 });
 
-describe("postVote", () => {
+describe("postPlaybackStart", () => {
   it("refuses before fetch when the World ID session is missing", async () => {
     await assert.rejects(
-      () => postVote([0, 1], memoryStore(null)),
+      () => postPlaybackStart("battle-1", memoryStore(null)),
       /World ID session is required/u,
     );
   });
@@ -46,22 +46,17 @@ describe("postVote", () => {
     const store = memoryStore("signed-session");
     const state: ServerRoundState = {
       round: 1,
-      phase: "vote",
+      phase: "bet",
       endsAt: null,
       champion: null,
-      slots: 2,
-      voters: 1,
-      quorum: 2,
-      votes: { 0: 1, 1: 1 },
-      tally: null,
-      fighters: null,
-      battleId: null,
-      poolId: null,
+      fighters: [0, 1],
+      battleId: "battle-1",
+      poolId: "0xpool",
       pool: [0, 0],
       winner: null,
-      videoUrl: null,
-      videoStartedAt: null,
-      bettingClosesAt: null,
+      videoUrl: "https://cdn.example/v.mp4",
+      videoStartedAt: 1_000,
+      bettingClosesAt: 6_000,
       frameUrl: null,
       error: null,
       chars: [],
@@ -70,15 +65,15 @@ describe("postVote", () => {
     globalThis.fetch = (async (_input, init) => {
       const headers = new Headers(init?.headers);
       assert.equal(headers.get("authorization"), "Bearer signed-session");
-      assert.equal(init?.body, JSON.stringify({ picks: [0, 1] }));
+      assert.equal(init?.body, JSON.stringify({ battleId: "battle-1" }));
       return new Response(JSON.stringify({ ok: true, state }), {
         status: 200,
         headers: { "content-type": "application/json" },
       });
     }) as typeof fetch;
     try {
-      const got = await postVote([0, 1], store);
-      assert.equal(got.voters, 1);
+      const got = await postPlaybackStart("battle-1", store);
+      assert.equal(got.bettingClosesAt, 6_000);
     } finally {
       globalThis.fetch = prev;
     }
@@ -86,20 +81,15 @@ describe("postVote", () => {
 });
 
 describe("RoundState client contract", () => {
-  it("accepts countdown phase and slots 1|2 from the server", () => {
+  it("accepts bet|fight|settle|over phases from the server", () => {
     const state: ServerRoundState = {
       round: 2,
-      phase: "countdown",
-      endsAt: Date.now() + 15_000,
+      phase: "bet",
+      endsAt: null,
       champion: 0,
-      slots: 1,
-      voters: 2,
-      quorum: 2,
-      votes: { 1: 2, 2: 1 },
-      tally: null,
-      fighters: null,
-      battleId: null,
-      poolId: null,
+      fighters: [0, 1],
+      battleId: "battle-2",
+      poolId: "0xpool",
       pool: [0, 0],
       winner: null,
       videoUrl: null,
@@ -112,10 +102,9 @@ describe("RoundState client contract", () => {
         { id: 1, alive: true, kills: 0, damage: 0 },
       ],
     };
-    assert.equal(state.phase, "countdown");
-    assert.equal(state.slots, 1);
+    assert.equal(state.phase, "bet");
     assert.equal(state.champion, 0);
+    assert.deepEqual(state.fighters, [0, 1]);
     assert.equal(state.videoUrl, null);
-    assert.equal(state.frameUrl, null);
   });
 });
