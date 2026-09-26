@@ -5,7 +5,7 @@ import { cryptoRandomInt } from "@horror-tube/fight/rotation";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
-import { createPgClient } from "./db/pg-client.js";
+import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts } from "./ens-chain-write.js";
 import {
   loadRepoDotenv,
@@ -35,8 +35,7 @@ const skipSettlement = readSkipBattleSettlement();
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
 
-const pg = createPgClient();
-await pg.connect();
+const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
 const chainWritePorts = createEnsChainWritePorts();
 
@@ -68,9 +67,15 @@ setInterval(() => {
     return;
   }
   tickBusy = true;
-  void game.tick().finally(() => {
-    tickBusy = false;
-  });
+  void game
+    .tick()
+    .catch((cause: unknown) => {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`game tick failed: ${message}`);
+    })
+    .finally(() => {
+      tickBusy = false;
+    });
 }, tickMs);
 
 console.log(

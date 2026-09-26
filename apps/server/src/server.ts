@@ -275,6 +275,24 @@ async function handleRequest(
         }
         return;
       }
+      if (method === "POST" && path === "/retry-settle") {
+        try {
+          await opts.game.retrySettle();
+          const payload = JSON.stringify({
+            ok: true,
+            state: opts.game.getState(),
+          });
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": Buffer.byteLength(payload),
+          });
+          res.end(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
     }
 
     const handled = await handleWorldIdRequest(req, res, opts.worldId ?? {});

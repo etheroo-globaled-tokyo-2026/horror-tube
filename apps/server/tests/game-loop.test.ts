@@ -296,6 +296,75 @@ describe("GameLoop phases", () => {
     assert.deepEqual(settle.calls, ["injuries", "status", "settle:99"]);
   });
 
+  it("keeps a failed ENS write on the round and resumes it", async () => {
+    let now = 0;
+    let statusFails = true;
+    const calls: string[] = [];
+    const store = new MemoryBattleQueueStore();
+    const ports: ChainWritePorts = {
+      async writeWinnerInjuries() {
+        calls.push("injuries");
+        return "0xinjuries";
+      },
+      async writeLoserStatusDead() {
+        if (statusFails) {
+          throw new Error("rpc timeout on status write");
+        }
+        calls.push("status");
+        return "0xstatus";
+      },
+      async settleBattle(battleId) {
+        calls.push(`settle:${battleId}`);
+        return "0xsettle";
+      },
+    };
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: store,
+      chainWritePorts: ports,
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "ens-fail" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "fail-status" }));
+    loop.setOutcome(0, 0);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1);
+    now += 1_000;
+    await loop.tick(now);
+    now += 1;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "settle");
+    assert.equal(loop.getState().endsAt, null);
+    assert.match(loop.getState().error ?? "", /status write/u);
+    const saved = await store.get("fail-status");
+    assert.equal(saved?.injuriesTxHash, "0xinjuries");
+    assert.equal(saved?.statusTxHash, null);
+    assert.equal(saved?.bettingClosed, true);
+    assert.equal(saved?.playbackFinished, true);
+    now += 10_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "settle");
+    statusFails = false;
+    await loop.retrySettle();
+    assert.equal(loop.getState().error, null);
+    assert.equal((await store.get("fail-status"))?.statusTxHash, "0xstatus");
+    assert.deepEqual(calls, ["injuries", "status"]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+  });
+
   it("refuses an agent result that names a different winner than the bout", async () => {
     let now = 0;
     const settle = unusedSettleDeps(true);

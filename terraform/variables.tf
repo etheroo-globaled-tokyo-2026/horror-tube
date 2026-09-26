@@ -67,8 +67,20 @@ variable "game_port" {
 }
 
 variable "ens_label" {
-  description = "ENS_LABEL baked into the Vite client at image BUILD_TIME (apps/web/game.ts). Set via TF_VAR_ens_label from .env. Required; no default."
+  description = "ENS_LABEL for the Vite client (build) and the game server (runtime settle). Set via TF_VAR_ens_label from .env. Required; no default."
   type        = string
+}
+
+variable "sepolia_rpc_url" {
+  description = "SEPOLIA_RPC_URL the game server uses for ENS text writes at settle. Set via TF_VAR_sepolia_rpc_url from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "agent_private_key" {
+  description = "AGENT_PRIVATE_KEY for ENS status and injuries writes. Set via TF_VAR_agent_private_key from .env. Required; no default. Never commit. Not the bootstrap PRIVATE_KEY."
+  type        = string
+  sensitive   = true
 }
 
 variable "vite_sepolia_rpc_url" {
