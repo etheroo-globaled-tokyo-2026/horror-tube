@@ -10,7 +10,7 @@ Fight videos are generated with fal MiniMax H3 Max:
 - Image-to-video (later bouts): https://fal.ai/models/minimax/h3-max/image-to-video — operator value for `FAL_IMAGE_TO_VIDEO_MODEL`; field `image_url`
 - Result: an mp4 at `video.url` on a `fal.media` host
 
-Those fal URLs expire. `@horror-tube/fight` `runFightTurn` downloads the mp4 bytes, then calls `uploadFightVideo` so Spaces holds a durable copy. **Do not store the fal URL as `RoundState.videoUrl`.** After upload it extracts the last frame with ffmpeg and calls `uploadFightFrame` for `RoundState.frameUrl`.
+Those fal URLs expire. `@horror-tube/fight` `runFightTurn` downloads the mp4 bytes, then calls `uploadFightVideo` so Spaces holds a durable copy. **Do not store the fal URL as `RoundState.videoUrl`.** Before the demon sound and the rotoscope change the video, it extracts the last frame from fal's footage with ffmpeg, and after uploading the video it calls `uploadFightFrame` for `RoundState.frameUrl`, so the next bout's image-to-video starts from real footage.
 
 This package does not call fal or run the game loop. It only PUTs bytes and returns the CDN URL.
 
