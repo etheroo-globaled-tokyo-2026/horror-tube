@@ -3,7 +3,8 @@
 # for that one terraform command only. See README.md.
 #
 # App runtime secrets (SPACES_*, TOGETHER_*, WORLD_ID_*, SHINAMI_ACCESS_KEY,
-# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, SUI_OPERATOR_PRIVATE_KEY, DATABASE_CA_CERT,
+# WALLET_SECRET_PEPPER, SUI_USDC_TYPE, SUI_OPERATOR_PRIVATE_KEY,
+# HOUSE_BOT_SUI_PRIVATE_KEYS, HOUSE_BOT_STAKE_UNITS, DATABASE_CA_CERT,
 # SEPOLIA_RPC_URL, AGENT_PRIVATE_KEY, FAL_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY)
 # and Sui betting public IDs (SUI_NETWORK, SUI_GRPC_URL, BETTING_PACKAGE_ID,
 # BETTING_HOUSE_ID, SUI_OPERATOR_CAP_ID) plus fight
@@ -43,4 +44,4 @@ roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 # WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: sandbox).
 # WORLD_ID_STAGING_TOKEN is passed as TF_VAR_world_id_staging_token from .env when the environment is staging.
 # Do not put WORLD_ID_* secrets in this file.
-# Sui betting IDs and SUI_OPERATOR_PRIVATE_KEY are TF_VAR_* from .env (see README).
+# Sui betting IDs, SUI_OPERATOR_PRIVATE_KEY and the HOUSE_BOT_* values are TF_VAR_* from .env (see README).

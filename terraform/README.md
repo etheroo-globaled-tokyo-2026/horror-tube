@@ -221,7 +221,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 
 The game service gets the five `FIGHT_MEDIA_SPACES_*` env vars from the fight-media Spaces resources in the same apply (same pattern as `DATABASE_URL`). Do not pass `TF_VAR_fight_media_*`. Laptops read those five values from 1Password item **Horror Tube fight media** (`op://Private/Horror Tube fight media/...` in `.env.example`).
 
-`@horror-tube/fight` (narration + fal video) is in the App Platform image. Those fight env vars are injected into `process.env` the same way as other App runtime secrets — not from a `.env` on the instance. Missing required values fail closed naming the variable. Both narration API key vars are present on the app; apply requires the key that matches `NARRATION_PROVIDER` and may pass an empty string for the unused one. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`, `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID`, `BET_FEE_BPS`, `SUI_MIN_BET`, `SUI_E2E_*`, `TEST_USDC_*`) stay off the app spec — the container process does not read them. Sui betting runtime on the app: `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID` (GENERAL) and `SUI_OPERATOR_PRIVATE_KEY` (SECRET). The server reads the fee from the House object (`fee_bps`) at startup. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` remain for ENS text writes.
+`@horror-tube/fight` (narration + fal video) is in the App Platform image. Those fight env vars are injected into `process.env` the same way as other App runtime secrets — not from a `.env` on the instance. Missing required values fail closed naming the variable. Both narration API key vars are present on the app; apply requires the key that matches `NARRATION_PROVIDER` and may pass an empty string for the unused one. One-shot deploy inputs (`PRIVATE_KEY`, `ROSTER_PRIVATE_KEY`, `PAYMENT_TOKEN`, `DURATION_SECONDS`, `DASHBOARD_PORT`, `WORLD_ID_HTTP_PORT`, `SUI_ADMIN_PRIVATE_KEY`, `SUI_ADMIN_CAP_ID`, `BET_FEE_BPS`, `SUI_MIN_BET`, `SUI_E2E_*`, `TEST_USDC_*`) stay off the app spec — the container process does not read them. Sui betting runtime on the app: `SUI_NETWORK`, `SUI_GRPC_URL`, `SUI_USDC_TYPE`, `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_CAP_ID`, `HOUSE_BOT_STAKE_UNITS` (GENERAL) and `SUI_OPERATOR_PRIVATE_KEY`, `HOUSE_BOT_SUI_PRIVATE_KEYS` (SECRET). The server reads the fee from the House object (`fee_bps`) at startup. `SEPOLIA_RPC_URL` and `AGENT_PRIVATE_KEY` remain for ENS text writes.
 
 Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for the backend and the provider Spaces env, and keeps icons `SPACES_*` on `TF_VAR_spaces_*`:
 
@@ -264,6 +264,8 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   : "${BETTING_HOUSE_ID:?BETTING_HOUSE_ID is required. See .env.example.}"
   : "${SUI_OPERATOR_CAP_ID:?SUI_OPERATOR_CAP_ID is required. See .env.example.}"
   : "${SUI_OPERATOR_PRIVATE_KEY:?SUI_OPERATOR_PRIVATE_KEY is required. See .env.example.}"
+  : "${HOUSE_BOT_SUI_PRIVATE_KEYS:?HOUSE_BOT_SUI_PRIVATE_KEYS is required. See .env.example.}"
+  : "${HOUSE_BOT_STAKE_UNITS:?HOUSE_BOT_STAKE_UNITS is required. See .env.example.}"
   : "${FAL_KEY:?FAL_KEY is required. See .env.example.}"
   : "${FAL_MODEL:?FAL_MODEL is required. See .env.example.}"
   : "${FIGHT_VIDEO_SECONDS:?FIGHT_VIDEO_SECONDS is required. See .env.example.}"
@@ -318,6 +320,8 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   export TF_VAR_betting_house_id="$BETTING_HOUSE_ID"
   export TF_VAR_sui_operator_cap_id="$SUI_OPERATOR_CAP_ID"
   export TF_VAR_sui_operator_private_key="$SUI_OPERATOR_PRIVATE_KEY"
+  export TF_VAR_house_bot_sui_private_keys="$HOUSE_BOT_SUI_PRIVATE_KEYS"
+  export TF_VAR_house_bot_stake_units="$HOUSE_BOT_STAKE_UNITS"
   export TF_VAR_fal_key="$FAL_KEY"
   export TF_VAR_fal_model="$FAL_MODEL"
   export TF_VAR_fal_image_to_video_model="${FAL_IMAGE_TO_VIDEO_MODEL-}"
