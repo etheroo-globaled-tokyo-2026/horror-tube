@@ -7,17 +7,17 @@ ETHGlobal Tokyo 2026. Target prizes: **World** (IDKit), **ENS** (ENSv2) and **Su
 
 ## Status (2026-09-26)
 
-| Part                         | Status                                                                                                                                                    |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web game (`apps/web`)        | Built. The room, TV, remote, shelf, and coin box. The client applies server `RoundState` (`applyRoundState` / `connectToServerRound`); it does not own the loop timers. |
-| World ID                     | Live. Waiver signs an IDKit 4.0 Orb proof for `enter-room`; the server verifies at `POST /world-id/verify`. Sandbox (`WORLD_ID_ENVIRONMENT=sandbox`) gives each tester's World ID (Sandbox) build its own nullifier; staging is the one-identity simulator. |
-| Wallet                       | Built. Sui testnet burner in the browser. A real USDC deposit is tested. The coin return is not.                                                          |
-| ENS parent and subnames      | Built. `horrortube.eth` on Sepolia ENSv2, subnames with text records, register/remove/icon CLIs (`docs/roster-json.md`).                                  |
-| Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                   |
-| Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                  |
-| Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet. |
-| Game server                  | Built (`apps/server`). Waiting→bet→fight→settle holding loop; a verified `POST /start` opens the first bout. |
-| Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                  |
+| Part                         | Status                                                                                                                                                                                                                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web game (`apps/web`)        | Built. The room, TV, remote, shelf, and coin box. The client applies server `RoundState` (`applyRoundState` / `connectToServerRound`); it does not own the loop timers.                                                                                                                   |
+| World ID                     | Live. Waiver signs an IDKit 4.0 Orb proof for `enter-room`; the server verifies at `POST /world-id/verify`. Sandbox (`WORLD_ID_ENVIRONMENT=sandbox`) gives each tester's World ID (Sandbox) build its own nullifier; staging is the one-identity simulator.                               |
+| Wallet                       | Built. A server-held Shinami wallet per World ID human; Shinami pays the gas for `POST /tx`. A real USDC deposit is tested. The coin return is not.                                                                                                                                       |
+| ENS parent and subnames      | Built. `horrortube.eth` on Sepolia ENSv2, subnames with text records, register/remove/icon CLIs (`docs/roster-json.md`).                                                                                                                                                                  |
+| Characters in the game       | Built. The game reads every character from ENS at page load (`apps/web/DESIGN.md`, "Characters (ENS)").                                                                                                                                                                                   |
+| Character dashboard          | Built. `pnpm dashboard`.                                                                                                                                                                                                                                                                  |
+| Betting contract             | Built on Sui testnet, in USDC (`docs/sui-betting.md`). The server opens, closes, cancels and settles one pool per battle; the room bets and claims through `POST /tx`. A live bet from the browser is not tested yet.                                                                     |
+| Game server                  | Built (`apps/server`). Waiting→bet→fight→settle holding loop; a verified `POST /start` opens the first bout.                                                                                                                                                                              |
+| Story LLM and video pipeline | Built in `@horror-tube/fight` (narration + fal). Live bout path not fully wired to fal from the server yet.                                                                                                                                                                               |
 | ENS writes after a fight     | After betting closes and the fight duration elapses, the server writes winner `injuries` then loser `status=dead` from `battle_results`, then calls `settleBattle` on the Sui pool. A failed write or settle stays on the round error. `POST /retry-settle` runs the pending steps again. |
 
 ## Art direction
@@ -29,15 +29,15 @@ See `apps/web/DESIGN.md`.
 - **ENS name**: character state (subnames and text records) on Sepolia. The web game reads its characters from here.
 - **Database**: Managed Postgres (`DATABASE_URL`). Holds seasons and the battle-result queue (`battle_results`). Not Durable Objects.
 - **Smart contract**: the Move package `horror_tube::betting` on Sui testnet holds one USDC pool per battle. The server's operator key opens, closes, cancels and settles it. See [sui-betting.md](sui-betting.md).
-- **Wallet**: a burner wallet in the browser now (`apps/web/wallet.ts`), a server wallet per World ID human later (our own keys, then Shinami). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
+- **Wallet**: a Shinami Invisible Wallet per World ID human, held by the server (`apps/server/src/wallet-handler.ts`, `apps/web/wallet.ts`). Sui testnet, USDC. No wallet popups for bets. See "The wallet" in `apps/web/DESIGN.md`.
 - **Frontend host**: Vercel or similar.
 
 ## Flow
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
    This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
-2. **Wallet**: the app makes a burner wallet (Sui testnet) for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
-   Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Not built yet: a faucet (the backend sends testnet SUI for gas and the first USDC, one time per World ID nullifier).
+2. **Wallet**: after World ID, the server opens the human's Shinami wallet (Sui testnet). There is no wallet popup at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
+   Deposits go through the coin box (see `apps/web/DESIGN.md`). Shinami pays the gas for deposits (`POST /sponsor-deposit`), bets, claims and withdrawals, so players need only USDC, never SUI. Not built yet: a faucet (the first USDC, one time per World ID nullifier).
    There is no wallet screen: after World ID, the user goes straight to the TV. Money lives on the coin box in the room. A real deposit is tested; the coin return is not.
 3. **Start**: the server boots waiting. A verified human's room sends `POST /start`; the fresh bout is a random living pair. The full rules (winner stays on) are in `docs/game-loop.md`.
 4. **Load characters**: the web game reads every subname under `<ENS_LABEL>.eth` at page load, with `look`, `brief`, `injuries`, `status`, and `icon` (keys: `docs/character-card-fields.md`). Built.
@@ -103,15 +103,15 @@ Links:
 
 ENS holds the game state of the characters. It is central to the game, not decoration.
 
-| Game concept                                  | ENSv2 feature                                                                                                                                |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Each character, e.g. `chucky.horrortube.eth`  | Subname in our own subname registry (UserRegistry)                                                                                           |
-| `look`, `brief`, `injuries`, `status`, `icon` | Text records on a Permissioned Resolver (`docs/character-card-fields.md`)                                                                    |
-| The game roster                               | The web game reads the subnames and text records from Sepolia. No hardcoded characters                                                       |
-| Capabilities lost to damage                   | Open: Enhanced Access Control roles, or a text record (open question 1)                                                                      |
-| Loser goes to the dead pool                   | Move or alias the subname (open question 2)                                                                                                  |
-| Payouts follow ENS state                      | The server settles the battle's Sui pool only after it writes the loser's `status=dead` to ENS                                              |
-| Bonus: fighters as AI agents                  | Each character is an agent namespace with its own permissions (ENSIP-25/26)                                                                  |
+| Game concept                                  | ENSv2 feature                                                                                  |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Each character, e.g. `chucky.horrortube.eth`  | Subname in our own subname registry (UserRegistry)                                             |
+| `look`, `brief`, `injuries`, `status`, `icon` | Text records on a Permissioned Resolver (`docs/character-card-fields.md`)                      |
+| The game roster                               | The web game reads the subnames and text records from Sepolia. No hardcoded characters         |
+| Capabilities lost to damage                   | Open: Enhanced Access Control roles, or a text record (open question 1)                        |
+| Loser goes to the dead pool                   | Move or alias the subname (open question 2)                                                    |
+| Payouts follow ENS state                      | The server settles the battle's Sui pool only after it writes the loser's `status=dead` to ENS |
+| Bonus: fighters as AI agents                  | Each character is an agent namespace with its own permissions (ENSIP-25/26)                    |
 
 **Requirements:** ENSv2 on Sepolia, no hard-coded values, a live demo link, and open-source code.
 

@@ -10,19 +10,21 @@ import { HttpError } from "../src/http-error.js";
 import { issueSession, readSession, walletSecret } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import type { ShinamiPort } from "../src/shinami-port.js";
-import { assertSponsorableKind, betPoolIds } from "../src/tx-policy.js";
+import { assertDepositKind, assertSponsorableKind, betPoolIds } from "../src/tx-policy.js";
 import { createWalletHandler, createWalletHandlerFromEnv } from "../src/wallet-handler.js";
 import { baseUrl } from "./base-url.js";
 
 const PEPPER = "test-pepper";
 const NULLIFIER = "11256099";
-const USDC =
-  "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
+const USDC = "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC";
 const COIN_BOX = `0x${"11".repeat(32)}`;
 const OTHER = `0x${"22".repeat(32)}`;
 const PACKAGE_ID = `0x${"33".repeat(32)}`;
 const HOUSE_ID = `0x${"55".repeat(32)}`;
 const POOL_ID = `0x${"66".repeat(32)}`;
+const PAYER = `0x${"77".repeat(32)}`;
+const PAYER_COIN = `0x${"88".repeat(32)}`;
+const WALLET = `0x${"44".repeat(32)}`;
 
 const shared = (objectId: string, mutable: boolean) =>
   Inputs.SharedObjectRef({ objectId, initialSharedVersion: 1, mutable });
@@ -52,6 +54,20 @@ async function kind(sender: string | undefined, fill: (tx: Transaction) => void)
     assumeSufficientAddressBalances: sender !== undefined,
   });
   return toBase64(bytes);
+}
+
+function depositKind(to: string, fill: (tx: Transaction) => void = () => {}): Promise<string> {
+  return kind(PAYER, (tx) => {
+    tx.moveCall({
+      target: "0x2::coin::send_funds",
+      typeArguments: [USDC],
+      arguments: [
+        coinWithBalance({ type: USDC, balance: 1_000_000n, useGasCoin: false }),
+        tx.pure.address(to),
+      ],
+    });
+    fill(tx);
+  });
 }
 
 function status(expected: number): (err: HttpError) => boolean {
@@ -96,10 +112,7 @@ describe("transaction allowlist", () => {
 
   it("allows a USDC payout when the change returns to the coin box", async () => {
     const txKind = await kind(COIN_BOX, (tx) => {
-      tx.transferObjects(
-        [coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })],
-        OTHER,
-      );
+      tx.transferObjects([coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false })], OTHER);
     });
     assert.doesNotThrow(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID));
   });
@@ -116,6 +129,79 @@ describe("transaction allowlist", () => {
       tx.makeMoveVec({ elements: [] });
     });
     assert.throws(() => assertSponsorableKind(txKind, COIN_BOX, USDC, PACKAGE_ID), status(403));
+  });
+
+  it("allows a deposit from the payer's address balance into the coin box", async () => {
+    const txKind = await depositKind(COIN_BOX);
+    assert.doesNotThrow(() => assertDepositKind(txKind, PAYER, COIN_BOX, USDC));
+  });
+
+  it("allows a deposit that merges and splits the payer's own coins", async () => {
+    const txKind = await kind(undefined, (tx) => {
+      const coin = tx.object(
+        Inputs.ObjectRef({
+          objectId: PAYER_COIN,
+          version: "1",
+          digest: "11111111111111111111111111111111",
+        }),
+      );
+      tx.mergeCoins(coin, [
+        tx.object(
+          Inputs.ObjectRef({
+            objectId: OTHER,
+            version: "1",
+            digest: "11111111111111111111111111111111",
+          }),
+        ),
+      ]);
+      const [paid] = tx.splitCoins(coin, [1_000_000n]);
+      tx.moveCall({
+        target: "0x2::coin::send_funds",
+        typeArguments: [USDC],
+        arguments: [paid, tx.pure.address(COIN_BOX)],
+      });
+    });
+    assert.doesNotThrow(() => assertDepositKind(txKind, PAYER, COIN_BOX, USDC));
+  });
+
+  it("rejects a deposit that sends USDC anywhere but the coin box and the payer", async () => {
+    const split = await depositKind(COIN_BOX, (tx) => {
+      tx.moveCall({
+        target: "0x2::coin::send_funds",
+        typeArguments: [USDC],
+        arguments: [
+          coinWithBalance({ type: USDC, balance: 1n, useGasCoin: false }),
+          tx.pure.address(OTHER),
+        ],
+      });
+    });
+    assert.throws(() => assertDepositKind(split, PAYER, COIN_BOX, USDC), status(403));
+    const home = await depositKind(PAYER);
+    assert.throws(() => assertDepositKind(home, PAYER, COIN_BOX, USDC), status(403));
+  });
+
+  it("rejects a deposit that also moves objects, calls a package, or spends the gas coin", async () => {
+    const extras: ((tx: Transaction) => void)[] = [
+      (tx) =>
+        tx.transferObjects(
+          [
+            tx.object(
+              Inputs.ObjectRef({
+                objectId: PAYER_COIN,
+                version: "1",
+                digest: "11111111111111111111111111111111",
+              }),
+            ),
+          ],
+          OTHER,
+        ),
+      (tx) => tx.moveCall({ target: `${PACKAGE_ID}::pool::bet`, arguments: [] }),
+      (tx) => tx.transferObjects([tx.splitCoins(tx.gas, [1n])], PAYER),
+    ];
+    for (const extra of extras) {
+      const txKind = await depositKind(COIN_BOX, extra);
+      assert.throws(() => assertDepositKind(txKind, PAYER, COIN_BOX, USDC), status(403));
+    }
   });
 
   it("finds the pool of a betting::bet call", async () => {
@@ -151,7 +237,7 @@ describe("wallet HTTP", () => {
 
   function fakeShinami(): ShinamiPort & { executed: string[]; created: number } {
     const executed: string[] = [];
-    const state = { executed, created: 0, address: `0x${"44".repeat(32)}` };
+    const state = { executed, created: 0, address: WALLET };
     const port: ShinamiPort & { executed: string[]; created: number } = {
       executed: state.executed,
       created: 0,
@@ -180,6 +266,14 @@ describe("wallet HTTP", () => {
         assert.equal(sessionToken, "session-token");
         state.executed.push(txKind);
         return Promise.resolve("digest-1");
+      },
+      sponsorTransaction(txKind: string, sender: string) {
+        state.executed.push(txKind);
+        return Promise.resolve({
+          txBytes: `sponsored:${sender}`,
+          signature: "sponsor-sig",
+          digest: "digest-2",
+        });
       },
     };
     return port;
@@ -212,7 +306,7 @@ describe("wallet HTTP", () => {
     const login = await fetch(`${base}/auth/world-id`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{\"ok\":true}",
+      body: '{"ok":true}',
     });
     assert.equal(login.status, 200);
     const session = v.parse(SessionJson, await login.json()).session;
@@ -270,7 +364,9 @@ describe("wallet HTTP", () => {
     const asked: string[] = [];
     const base = await start(shinami, (poolId) => {
       asked.push(poolId);
-      throw new Error("bet rejected: betting closed at 2026-09-26T00:00:05.000Z (betting_closes_at)");
+      throw new Error(
+        "bet rejected: betting closed at 2026-09-26T00:00:05.000Z (betting_closes_at)",
+      );
     });
     const res = await fetch(`${base}/tx`, {
       method: "POST",
@@ -281,9 +377,45 @@ describe("wallet HTTP", () => {
       body: JSON.stringify({ txKind: await betKind(`0x${"44".repeat(32)}`) }),
     });
     assert.equal(res.status, 409);
-    assert.match(v.parse(ErrorJson, await res.json()).error, /betting closed at 2026-09-26T00:00:05\.000Z/u);
+    assert.match(
+      v.parse(ErrorJson, await res.json()).error,
+      /betting closed at 2026-09-26T00:00:05\.000Z/u,
+    );
     assert.deepEqual(asked, [POOL_ID]);
     assert.equal(shinami.executed.length, 0);
+  });
+
+  it("sponsors a deposit into the session's wallet and refuses one into another wallet", async () => {
+    const shinami = fakeShinami();
+    const base = await start(shinami);
+    const post = async (txKind: string) =>
+      fetch(`${base}/sponsor-deposit`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${issueSession(NULLIFIER, PEPPER)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ txKind, sender: PAYER }),
+      });
+
+    const refused = await post(await depositKind(OTHER));
+    assert.equal(refused.status, 403);
+    assert.match(v.parse(ErrorJson, await refused.json()).error, /deposit/u);
+    assert.equal(shinami.executed.length, 0);
+
+    const sponsored = await post(await depositKind(WALLET));
+    assert.equal(sponsored.status, 200);
+    assert.deepEqual(await sponsored.json(), {
+      txBytes: `sponsored:${PAYER}`,
+      signature: "sponsor-sig",
+    });
+    assert.equal(shinami.executed.length, 1);
+
+    shinami.sponsorTransaction = () =>
+      Promise.reject(new Error("Invalid params InsufficientCoinBalance in command 0"));
+    const failing = await post(await depositKind(WALLET));
+    assert.equal(failing.status, 400);
+    assert.match(v.parse(ErrorJson, await failing.json()).error, /InsufficientCoinBalance/u);
   });
 
   it("returns 401 without a session", async () => {
@@ -294,7 +426,8 @@ describe("wallet HTTP", () => {
 
   it("tells the operator to create a Node Service key on a gasless auth error", async () => {
     const shinami = fakeShinami();
-    shinami.executeGaslessTransaction = () => Promise.reject(new Error("Unauthorized invalid access key"));
+    shinami.executeGaslessTransaction = () =>
+      Promise.reject(new Error("Unauthorized invalid access key"));
     const base = await start(shinami);
     const session = issueSession(NULLIFIER, PEPPER);
     const txKind = await kind(undefined, (tx) => {

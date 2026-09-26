@@ -1,7 +1,7 @@
 import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
-import { toBase64 } from "@mysten/sui/utils";
+import { fromBase64, toBase64 } from "@mysten/sui/utils";
 import * as v from "valibot";
 
 import { requestFailure } from "./waiver-entry.ts";
@@ -23,6 +23,12 @@ export type GameWallet = {
 const SessionResponse = v.object({ session: v.pipe(v.string(), v.minLength(1)) });
 const AddressResponse = v.object({ address: v.pipe(v.string(), v.minLength(1)) });
 const DigestResponse = v.object({ digest: v.pipe(v.string(), v.minLength(1)) });
+const SponsoredResponse = v.object({
+  txBytes: v.pipe(v.string(), v.minLength(1)),
+  signature: v.pipe(v.string(), v.minLength(1)),
+});
+
+export type SignSponsored = (txBytes: string) => Promise<string>;
 
 function suiClient(): SuiGrpcClient {
   return new SuiGrpcClient({
@@ -162,6 +168,10 @@ export async function runKind(
     wallet.session,
     DigestResponse,
   );
+  return confirmed(wallet, digest);
+}
+
+async function confirmed(wallet: GameWallet, digest: string): Promise<string> {
   const result = await wallet.client.core.waitForTransaction({ digest }).catch((err: Error) => {
     throw new Error(`Transaction ${digest} was sent but not confirmed on chain. ${err.message}`);
   });
@@ -171,6 +181,34 @@ export async function runKind(
     );
   }
   return digest;
+}
+
+export async function depositUsdc(
+  wallet: GameWallet,
+  coinType: string,
+  payer: string,
+  units: bigint,
+  sign: SignSponsored,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const tx = usdcDeposit(coinType, wallet.address, units);
+  tx.setSender(payer);
+  const kind = await tx.build({ client: wallet.client, onlyTransactionKind: true });
+  const sponsored = await postSchema(
+    fetchImpl,
+    "/sponsor-deposit",
+    JSON.stringify({ txKind: toBase64(kind), sender: payer }),
+    wallet.session,
+    SponsoredResponse,
+  );
+  const signature = await sign(sponsored.txBytes);
+  const result = await wallet.client.core.executeTransaction({
+    transaction: fromBase64(sponsored.txBytes),
+    signatures: [signature, sponsored.signature],
+  });
+  const digest =
+    result.$kind === "Transaction" ? result.Transaction.digest : result.FailedTransaction.digest;
+  return confirmed(wallet, digest);
 }
 
 export async function sendUsdc(
