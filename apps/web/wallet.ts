@@ -141,6 +141,19 @@ export function usdcTransfer(to: string, units: bigint): Transaction {
   return tx;
 }
 
+export function usdcDeposit(to: string, units: bigint): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: "0x2::coin::send_funds",
+    typeArguments: [USDC_TYPE],
+    arguments: [
+      coinWithBalance({ type: USDC_TYPE, balance: units, useGasCoin: false }),
+      tx.pure.address(to),
+    ],
+  });
+  return tx;
+}
+
 export async function sendUsdc(
   wallet: GameWallet,
   to: string,

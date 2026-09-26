@@ -68,17 +68,20 @@ reads the meter:
 - Coin slot: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Clicking the slot opens the
   INSERT A COIN panel. After a coin is picked: if no wallet is connected, `<mysten-dapp-kit-connect-modal>` opens; the game
   checks that the paying wallet has SUI for gas; then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
-  `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one transfer: `coinWithBalance({ type: USDC, balance })` to the in-game address. Use Slush.
+  `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one
+  `0x2::coin::send_funds<USDC>` on a `coinWithBalance({ type: USDC, balance })` coin (`usdcDeposit`), so the USDC lands in
+  the in-game wallet's address balance. Bets and the coin return spend only that balance; `POST /tx` rejects coin
+  objects. Use Slush.
   Phantom dropped Sui on 2026-09-24.
 - PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
   but we did not confirm that Slush mobile opens it. Plain address first.
 - The meter: `client.core.getBalance` for the USDC type. After our own transaction, `waitForTransaction` first, then
   read. For deposits from outside: poll every few seconds now, gRPC streaming later. Websocket subscriptions are gone. The public node allows 100
   requests per 30 seconds, so keep a spare RPC URL for the demo.
-- Coin return: the in-game wallet sends all its USDC back (`coinWithBalance` + `transferObjects`) to the wallet that
-  last paid in (`horror-tube.payout-address`), or to the connected wallet.
-- **Tested 2026-09-26:** a 5 USDC deposit from a Slush wallet landed on Sui testnet and the meter showed it. The coin
-  return is not tested yet (the in-game wallet has no SUI).
+- Coin return: the in-game wallet sends its whole address balance back through `POST /tx` (`coinWithBalance` +
+  `transferObjects`, built with `assumeSufficientAddressBalances`) to the wallet that last paid in
+  (`horror-tube.payout-address`), or to the connected wallet.
+- **Not tested on testnet yet:** a `send_funds` deposit from Slush followed by the coin return.
 
 **Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. The Sui skills say
 never keep keys in the browser. We break that rule on purpose, for testnet only. The server wallet fixes it.
@@ -215,7 +218,8 @@ the rental sticker. Ivory enamel front, soot hammertone shell, chipped and rust-
   in-game wallet signs them.
 - Keys: `D` zooms in and offers the coins, `P` leans in on the sticker, `W` opens the padlock, `1`–`3` pick a coin.
   While zoomed, the remote and the held tape are out of view and the remote keys are off. Stakes are 1, 3 and 5 USDC.
-- **Gas today:** the paying wallet needs testnet SUI for a deposit, and the in-game wallet needs SUI to pay back.
+- **Gas today:** the paying wallet needs testnet SUI for a deposit. The coin return goes through `POST /tx`, which
+  Shinami sponsors, so the in-game wallet holds no SUI.
   Errors zoom onto the meter and stay in the hint bar (`THE BOX SPAT IT OUT …`) until you step back.
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
