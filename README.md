@@ -1,7 +1,7 @@
 # Horror Tube
 
-A battle royale of famous horror characters. AI makes each fight as a video. Verified humans vote on who fights
-next (free). Users bet on who wins (paid). ETHGlobal Tokyo 2026.
+A battle royale of famous horror characters. AI makes each fight as a video. Verified humans watch; the winner stays
+on against a random challenger. Users bet on who wins (paid). ETHGlobal Tokyo 2026.
 
 ## Run
 
@@ -18,7 +18,7 @@ Fill `.env` first. The comment above each variable says how. `ENS_LABEL` and `VI
 | File                            | What it is                                                           |
 | ------------------------------- | -------------------------------------------------------------------- |
 | `docs/PLAN.md`                  | The product plan, the prize targets, and the status of each part.    |
-| `docs/game-loop.md`             | The vote and bet loop, and the contract for the game server.         |
+| `docs/game-loop.md`             | The bout and bet loop, and the contract for the game server.         |
 | `docs/sui-betting.md`           | Betting on Sui: the Move package, keys, env, deploy and commands.    |
 | `apps/web/DESIGN.md`            | The room, the art direction, the wallet, and how the game reads ENS. |
 | `docs/character-card-fields.md` | The ENS text records on each character.                              |
