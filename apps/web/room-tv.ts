@@ -863,7 +863,7 @@ export function drawTV(): void {
       text("has left the program.", 248, 28, COL.bone, "DotGothic16", 400);
       text(`${w.name} walks on, bleeding.`, 290, 28, COL.bone, "DotGothic16", 400);
       if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
-      else if (S.bet && S.result < 0) text(`YOU LOST ${usd(S.bet.amt)} USDC`, 390, 26, COL.rust);
+      else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
       const l = living(),

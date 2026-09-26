@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { PoolStatus, payout, type Pool, type Ticket } from "@horror-tube/betting";
 import { bcs } from "@mysten/sui/bcs";
 import { JsonRpcHTTPTransport, SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromBase64, normalizeStructTag, normalizeSuiAddress } from "@mysten/sui/utils";
 import * as v from "valibot";
 
-import { fetchBettingIds, placeBet, toContractIds } from "../betting.ts";
+import { fetchBettingIds, placeBet, tally, toContractIds, winningsDue } from "../betting.ts";
 import { formatPoolOdds } from "../odds.ts";
 import type { GameWallet } from "../wallet.ts";
 
@@ -15,6 +16,8 @@ const PLAYER = `0x${"11".repeat(32)}`;
 const PACKAGE = `0x${"aa".repeat(32)}`;
 const HOUSE = `0x${"bb".repeat(32)}`;
 const POOL = `0x${"cc".repeat(32)}`;
+const OPEN_POOL = `0x${"c0".repeat(32)}`;
+const OLD_POOL = `0x${"c1".repeat(32)}`;
 const COIN_TYPE = `0x${"ee".repeat(32)}::usdc::USDC`;
 const IDS = toContractIds({ packageId: PACKAGE, houseId: HOUSE, coinType: COIN_TYPE, feeBps: 200 });
 const DIGEST = "11111111111111111111111111111111";
@@ -188,5 +191,53 @@ describe("formatPoolOdds with fee", () => {
   it("matches the no-fee ratio when feeBps is 0", () => {
     assert.equal(formatPoolOdds([10, 30], 0, 0), "4.00");
     assert.equal(formatPoolOdds([10, 30], 1, 0), "1.33");
+  });
+});
+
+describe("winnings", () => {
+  const pool = (id: string, status: number, totals: [bigint, bigint]): Pool => ({
+    id,
+    houseId: HOUSE,
+    battleId: id,
+    closesAtMs: 0n,
+    feeBps: 200n,
+    status,
+    winningSide: 0n,
+    fee: (totals[1] * 200n) / 10_000n,
+    totals,
+    pot: totals[0] + totals[1],
+  });
+  const ticket = (id: string, poolId: string, side: bigint, stake: bigint): Ticket => ({
+    id,
+    poolId,
+    side,
+    stake,
+  });
+  const round = pool(POOL, PoolStatus.settled, [3_000_000n, 1_000_000n]);
+  const earlier = pool(OLD_POOL, PoolStatus.settled, [1_000_000n, 1_000_000n]);
+  const pending = pool(OPEN_POOL, PoolStatus.open, [5_000_000n, 5_000_000n]);
+  const pools = new Map([round, earlier, pending].map((p) => [p.id, p]));
+  const won = ticket(`0x${"d1".repeat(32)}`, POOL, 0n, 3_000_000n);
+  const lostNow = ticket(`0x${"d2".repeat(32)}`, POOL, 1n, 1_000_000n);
+  const lostEarlier = ticket(`0x${"d3".repeat(32)}`, OLD_POOL, 1n, 1_000_000n);
+  const open = ticket(`0x${"d4".repeat(32)}`, OPEN_POOL, 0n, 5_000_000n);
+
+  it("sums payouts over finished pools and leaves open pools alone", () => {
+    const claim = tally([won, lostEarlier, open], pools, POOL);
+    assert.deepEqual(claim.tickets, [won, lostEarlier]);
+    assert.equal(claim.units, payout(round, won) + payout(earlier, lostEarlier));
+  });
+
+  it("counts lost stake only on the round's pool", () => {
+    assert.equal(tally([won, lostEarlier], pools, POOL).lost, 0n);
+    assert.equal(tally([lostNow, lostEarlier], pools, POOL).lost, lostNow.stake);
+    assert.equal(tally([lostEarlier, open], pools, OPEN_POOL).lost, 0n);
+  });
+
+  it("is checked on every phase change and on every settle update", () => {
+    assert.equal(winningsDue("fight", "settle"), true);
+    assert.equal(winningsDue("settle", "settle"), true);
+    assert.equal(winningsDue("settle", "vote"), true);
+    assert.equal(winningsDue("bet", "bet"), false);
   });
 });

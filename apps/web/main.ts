@@ -7,7 +7,6 @@ import {
   hooks,
   loadBettingIds,
   pick,
-  refreshClaimable,
   setWallet,
   usd,
   type Phase,
@@ -206,11 +205,6 @@ let coinBoxMount: Promise<CoinBox> | null = null;
 async function buildCoinBox(wallet: GameWallet): Promise<CoinBox> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
-  void refreshClaimable().catch((cause: unknown) => {
-    console.error(
-      `claimable after wallet mount failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-    );
-  });
   const box = createCoinBox(
     wallet,
     coinType,
