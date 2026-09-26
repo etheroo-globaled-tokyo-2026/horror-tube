@@ -164,6 +164,7 @@ let stopRoundStream: (() => void) | null = null;
 
 export function applyRoundState(state: ServerRoundState): void {
   const prevPhase = S.phase;
+  const prevRound = S.round;
   S.round = state.round;
   S.phase = state.phase;
   S.endsAt = state.endsAt;
@@ -178,6 +179,10 @@ export function applyRoundState(state: ServerRoundState): void {
   S.videoUrl = state.videoUrl;
   S.frameUrl = state.frameUrl;
   S.error = state.error;
+  // #114: a new bout must accept a fresh hold; do not keep the prior round's bet.
+  if (state.round !== prevRound) {
+    S.bet = null;
+  }
   refreshTimer();
   for (const remote of state.chars) {
     const local = S.chars[remote.id];
