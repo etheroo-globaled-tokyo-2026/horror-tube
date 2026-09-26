@@ -9,6 +9,7 @@ import {
 
 import type { BattleBettingPorts } from "../src/battle-betting.js";
 import { readSkipBattleSettlement } from "../src/env.js";
+import type { FightJobRequest, FightJobResult } from "../src/fight-job.js";
 import {
   readGameLoopConfig,
   readRosterEnsLabels,
@@ -127,10 +128,18 @@ function unusedSettleDeps(skipSettlement = true) {
     battleQueueStore: new MemoryBattleQueueStore(),
     chainWritePorts: trackingPorts(calls),
     battleBetting: trackingBattleBetting(betCalls),
+    // Hang so tests that drive setOutcome/setVideoReady themselves are not raced.
+    fightJob: async () => new Promise(() => {}),
     skipSettlement,
     calls,
     betCalls,
   };
+}
+
+async function flushFightJob(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 describe("game loop config", () => {
@@ -209,6 +218,7 @@ describe("World ID vote gate", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: settle.skipSettlement,
     });
     await assert.rejects(
@@ -342,6 +352,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => {
         nullifierSeq += 1;
@@ -442,6 +453,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: false,
       verifyWorldId: async () => {
         n += 1;
@@ -499,6 +511,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: store,
       chainWritePorts: ports,
       battleBetting: trackingBattleBetting([]),
+      fightJob: async () => new Promise(() => {}),
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "ens-fail" }),
     });
@@ -551,6 +564,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "mismatch" }),
     });
@@ -591,6 +605,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "no-agent" }),
     });
@@ -627,6 +642,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "same" }),
     });
@@ -650,6 +666,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
+      fightJob: settle2.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => {
         n += 1;
@@ -687,6 +704,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "x" }),
     });
@@ -707,6 +725,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle2.battleQueueStore,
       chainWritePorts: settle2.chainWritePorts,
       battleBetting: settle2.battleBetting,
+      fightJob: settle2.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "y" }),
     });
@@ -743,6 +762,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "z" }),
     });
@@ -781,6 +801,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "fail-video" }),
     });
@@ -805,6 +826,254 @@ describe("GameLoop phases", () => {
     );
   });
 
+  it("fight job success attaches result and sets video + outcome", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const requests: FightJobRequest[] = [];
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: async (request) => {
+        requests.push(request);
+        return {
+          insert: agentInsertForAlphaWin({
+            id: "job-success",
+            battleId: request.battleId,
+            fighterASubname: request.fighterASubname,
+            fighterBSubname: request.fighterBSubname,
+          }),
+          winnerSide: 0,
+          damage: 1,
+          videoUrl: "https://cdn.example/videos/job.mp4",
+          durationMs: 2_000,
+          frameUrl: "https://cdn.example/frames/job.jpg",
+        };
+      },
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "job-ok" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    assert.deepEqual(loop.getState().fighters, [0, 1]);
+
+    await flushFightJob();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.priorFrameUrl, null);
+    assert.deepEqual(requests[0]?.livingSubnames, labels);
+    assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/job.mp4");
+    assert.equal(loop.getState().frameUrl, "https://cdn.example/frames/job.jpg");
+    assert.equal(loop.getState().error, null);
+    assert.equal(loop.getState().phase, "bet", "bet stays open until BET_MIN_SECONDS");
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "fight");
+  });
+
+  it("fight job failure runs failVideo and leaves bet for over", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: async () => {
+        throw new Error("FAL_KEY is required. Set it in .env. See .env.example.");
+      },
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "job-fail" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await flushFightJob();
+    assert.equal(loop.getState().phase, "over");
+    assert.match(
+      loop.getState().error ?? "",
+      /Fight job failed: FAL_KEY is required/u,
+    );
+    assert.ok(
+      settle.betCalls.some((c) => c === "cancel:1"),
+      `expected cancelBattle, got ${JSON.stringify(settle.betCalls)}`,
+    );
+    await assert.rejects(
+      () => loop.bet(0, 1),
+      /bet is only allowed in the bet phase|video failure/u,
+    );
+  });
+
+  it("a late fight job result is not applied to the next bout", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const requests: FightJobRequest[] = [];
+    const pending: Array<(result: FightJobResult) => void> = [];
+    let n = 0;
+    const loop = new GameLoop({
+      config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: (request) => {
+        requests.push(request);
+        return new Promise((resolve) => pending.push(resolve));
+      },
+      skipSettlement: true,
+      verifyWorldId: async () => {
+        n += 1;
+        return { nullifier: `late-${String(n)}` };
+      },
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    now += baseConfig.videoTimeoutSeconds * 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "over");
+
+    loop.resetFromOver();
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    await flushFightJob();
+    assert.deepEqual(
+      requests.map((r) => r.battleId),
+      ["1", "2"],
+    );
+
+    pending[0]?.({
+      insert: agentInsertForAlphaWin({ id: "late-r1", battleId: "1" }),
+      winnerSide: 0,
+      damage: 1,
+      videoUrl: "https://cdn.example/videos/late.mp4",
+      durationMs: 1_000,
+      frameUrl: "https://cdn.example/frames/late.jpg",
+    });
+    await flushFightJob();
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().videoUrl, null);
+    assert.equal(loop.getState().error, null);
+  });
+
+  it("stage 2 fight job receives priorFrameUrl for image-to-video", async () => {
+    let now = 0;
+    const settle = unusedSettleDeps(true);
+    const requests: FightJobRequest[] = [];
+    let call = 0;
+    const loop = new GameLoop({
+      config: {
+        ...baseConfig,
+        quorumVotes: 1,
+        voteCountdownSeconds: 1,
+        betMinSeconds: 1,
+        settleSeconds: 1,
+      },
+      ensLabels: labels,
+      now: () => now,
+      randomInt: pickFirst,
+      battleQueueStore: settle.battleQueueStore,
+      chainWritePorts: settle.chainWritePorts,
+      battleBetting: settle.battleBetting,
+      fightJob: async (request) => {
+        call += 1;
+        requests.push(request);
+        if (call === 1) {
+          return {
+            insert: agentInsertForAlphaWin({
+              id: "job-r1",
+              battleId: request.battleId,
+              fighterASubname: request.fighterASubname,
+              fighterBSubname: request.fighterBSubname,
+            }),
+            winnerSide: 0,
+            damage: 1,
+            videoUrl: "https://cdn.example/videos/r1.mp4",
+            durationMs: 1_000,
+            frameUrl: "https://cdn.example/frames/r1.jpg",
+          };
+        }
+        return {
+          insert: {
+            id: "job-r2",
+            battleId: request.battleId,
+            fighterASubname: request.fighterASubname,
+            fighterBSubname: request.fighterBSubname,
+            shots: [
+              {
+                time_range: "0-4s",
+                characters: "alpha and charlie",
+                action: "clash",
+                camera: "wide",
+                style: "gritty",
+              },
+            ],
+            ensLines: [
+              "charlie|status=dead",
+              'alpha|injuries=["cut","bruise"]',
+            ],
+            rationale: "alpha stays on",
+            winnerSubname: "alpha",
+            loserSubname: "charlie",
+            winnerInjuries: ["cut", "bruise"],
+            nextOpponentSubname: "delta",
+          },
+          winnerSide: 0,
+          damage: 2,
+          videoUrl: "https://cdn.example/videos/r2.mp4",
+          durationMs: 1_000,
+          frameUrl: "https://cdn.example/frames/r2.jpg",
+        };
+      },
+      skipSettlement: true,
+      verifyWorldId: async () => ({ nullifier: "prior-frame" }),
+    });
+    await loop.vote({}, [0, 1]);
+    now += 1_000;
+    await loop.tick(now);
+    await flushFightJob();
+    assert.equal(requests[0]?.priorFrameUrl, null);
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "fight");
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "settle");
+    now += 1_000;
+    await loop.tick(now);
+    assert.equal(loop.getState().phase, "bet");
+    assert.equal(loop.getState().round, 2);
+    await flushFightJob();
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[1]?.priorFrameUrl,
+      "https://cdn.example/frames/r1.jpg",
+    );
+    assert.equal(loop.getState().videoUrl, "https://cdn.example/videos/r2.mp4");
+  });
+
   it("video timeout failVideo also leaves bet and refuses further stakes", async () => {
     let now = 0;
     const settle = unusedSettleDeps(true);
@@ -823,6 +1092,7 @@ describe("GameLoop phases", () => {
       battleQueueStore: settle.battleQueueStore,
       chainWritePorts: settle.chainWritePorts,
       battleBetting: settle.battleBetting,
+      fightJob: settle.fightJob,
       skipSettlement: true,
       verifyWorldId: async () => ({ nullifier: "timeout-video" }),
     });
