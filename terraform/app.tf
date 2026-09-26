@@ -160,6 +160,20 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "WORLD_ID_PRACTICE_ACTIONS"
+        value = var.world_id_practice_actions
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
+        key   = "WORLD_ID_JUDGE_ACTION"
+        value = var.world_id_judge_action
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "SUI_USDC_TYPE"
         value = var.sui_usdc_type
         scope = "RUN_TIME"
