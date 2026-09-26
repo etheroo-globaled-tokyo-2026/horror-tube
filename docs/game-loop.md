@@ -65,11 +65,12 @@ fills the challenger slot from rotation after settle.
 ### Settle
 
 - After betting is closed **and** the fight video has finished playing, apply the
-  queued ENS writes (winner `injuries` first, then loser `status=dead`), then the
-  BattleBetting settlement transaction, then start the next bout from the stored
-  rotation opponent (or `fightInputFromRotation`). If either the betting-closed
-  or playback-finished signal is missing, stop and name it. Do not use a timer
-  fallback for those gates.
+  queued ENS writes (winner `injuries` first, then loser `status=dead`). With
+  `SKIP_BATTLE_SETTLEMENT=1`, skip the BattleBetting `settleBattle` call and leave
+  that step pending; with `0`, call `settleBattle` after the ENS writes. Then start
+  the next bout from the stored rotation opponent (or `fightInputFromRotation`).
+  If either the betting-closed or playback-finished signal is missing, stop and
+  name it. Do not use a timer fallback for those gates.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
@@ -91,6 +92,7 @@ Read from `.env`. Add each variable to `.env.example` with an empty value.
 | `BET_MIN_SECONDS`        | 10  | 10   |
 | `VIDEO_TIMEOUT_SECONDS`  | 300 | 300  |
 | `SETTLE_SECONDS`         | 8   | 8    |
+| `SKIP_BATTLE_SETTLEMENT` | 1   | 1    |
 
 The fight lasts as long as the video. It needs no variable.
 

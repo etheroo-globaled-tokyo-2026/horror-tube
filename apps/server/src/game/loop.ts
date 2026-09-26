@@ -1,4 +1,13 @@
 import {
+  createQueuedRecord,
+  markBettingClosed,
+  markPlaybackFinished,
+  settleQueuedBattle,
+  type BattleQueueInsert,
+  type BattleQueueStore,
+  type ChainWritePorts,
+} from "@horror-tube/fight/battle-queue";
+import {
   nextRotationPair,
   type RandomInt,
 } from "@horror-tube/fight/rotation";
@@ -29,6 +38,9 @@ export type GameLoopOptions = {
    * Defaults to a non-crypto sequential counter so production must pass cryptoRandomInt.
    */
   randomInt?: RandomInt;
+  battleQueueStore: BattleQueueStore;
+  chainWritePorts: ChainWritePorts;
+  skipSettlement: boolean;
 };
 
 type Listener = (state: RoundState) => void;
@@ -47,6 +59,9 @@ export class GameLoop {
   private readonly now: () => number;
   private readonly verifyWorldId: WorldIdVerifier;
   private readonly randomInt: RandomInt;
+  private readonly battleQueueStore: BattleQueueStore;
+  private readonly chainWritePorts: ChainWritePorts;
+  private readonly skipSettlement: boolean;
   private readonly listeners = new Set<Listener>();
 
   private chars: CharRuntime[];
@@ -68,6 +83,8 @@ export class GameLoop {
   private videoDurationMs: number | null = null;
   private outcome: { winner: 0 | 1; damage: number } | null = null;
   private settleDamage = 0;
+  private queuedAgentResultId: string | null = null;
+  private settleInFlight = false;
 
   constructor(options: GameLoopOptions) {
     if (options.ensLabels.length < 2) {
@@ -86,6 +103,9 @@ export class GameLoop {
           `GameLoop randomInt was not provided. Pass cryptoRandomInt (or a test double) for winner-stays pairing. maxExclusive=${String(maxExclusive)}.`,
         );
       });
+    this.battleQueueStore = options.battleQueueStore;
+    this.chainWritePorts = options.chainWritePorts;
+    this.skipSettlement = options.skipSettlement;
     this.chars = options.ensLabels.map((ensLabel, id) => ({
       id,
       ensLabel,
@@ -135,7 +155,10 @@ export class GameLoop {
   /**
    * Advance timers. Call on an interval from the HTTP process.
    */
-  tick(now: number = this.now()): void {
+  async tick(now: number = this.now()): Promise<void> {
+    if (this.settleInFlight) {
+      return;
+    }
     if (this.phase === "countdown" && this.endsAt !== null && now >= this.endsAt) {
       this.closeVoting(now);
       return;
@@ -145,7 +168,12 @@ export class GameLoop {
       return;
     }
     if (this.phase === "fight" && this.endsAt !== null && now >= this.endsAt) {
-      this.enterSettle(now);
+      this.settleInFlight = true;
+      try {
+        await this.enterSettle(now);
+      } finally {
+        this.settleInFlight = false;
+      }
       return;
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
@@ -215,6 +243,17 @@ export class GameLoop {
     }
     this.pool[side] += amount;
     this.emit();
+  }
+
+  async attachAgentResult(insert: BattleQueueInsert): Promise<void> {
+    if (this.phase !== "bet") {
+      throw new Error(
+        `attachAgentResult is only allowed in the bet phase. Current phase: ${this.phase}.`,
+      );
+    }
+    const record = createQueuedRecord(insert);
+    await this.battleQueueStore.save(record);
+    this.queuedAgentResultId = record.id;
   }
 
   /**
@@ -302,6 +341,7 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.queuedAgentResultId = null;
     this.enterVote();
   }
 
@@ -351,6 +391,7 @@ export class GameLoop {
     this.videoDurationMs = null;
     this.error = null;
     this.pool = [0, 0];
+    this.queuedAgentResultId = null;
     this.phase = "bet";
     this.betOpenedAt = now;
     this.endsAt = null;
@@ -398,9 +439,14 @@ export class GameLoop {
     this.emit();
   }
 
-  private enterSettle(now: number): void {
+  private async enterSettle(now: number): Promise<void> {
     if (this.fighters === null || this.winner === null) {
       throw new Error("enterSettle requires fighters and winner.");
+    }
+    if (this.queuedAgentResultId === null) {
+      throw new Error(
+        "enterSettle requires an attached agent result. Call attachAgentResult during the bet phase. Refusing to settle from setOutcome alone.",
+      );
     }
     const winnerId = this.fighters[this.winner];
     const loserId = this.fighters[this.winner === 0 ? 1 : 0];
@@ -416,9 +462,43 @@ export class GameLoop {
     this.phase = "settle";
     this.endsAt = now + this.config.settleSeconds * 1000;
     this.emit();
+
+    const queueId = this.queuedAgentResultId;
+    try {
+      let record = await this.battleQueueStore.get(queueId);
+      if (record === null) {
+        throw new Error(
+          `enterSettle: battle queue record ${JSON.stringify(queueId)} is missing from the store.`,
+        );
+      }
+      record = markBettingClosed(markPlaybackFinished(record));
+      await this.battleQueueStore.save(record);
+      console.log(
+        `ENS settle start queueId=${record.id} battleId=${record.battleId} skipSettlement=${String(this.skipSettlement)}`,
+      );
+      record = await settleQueuedBattle(
+        record,
+        this.chainWritePorts,
+        this.battleQueueStore,
+        { skipSettlement: this.skipSettlement },
+      );
+      console.log(
+        `ENS settle done queueId=${record.id} injuriesTx=${record.injuriesTxHash} statusTx=${record.statusTxHash} settlementTx=${record.settlementTxHash}`,
+      );
+      this.emit();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`ENS settle failed queueId=${queueId}: ${message}`);
+      this.error = message;
+      this.endsAt = null;
+      this.emit();
+    }
   }
 
   private afterSettle(): void {
+    if (this.error !== null) {
+      return;
+    }
     const alive = this.chars.filter((c) => c.alive);
     if (alive.length <= 1) {
       this.phase = "over";
@@ -432,6 +512,7 @@ export class GameLoop {
     this.outcome = null;
     this.videoDurationMs = null;
     this.betOpenedAt = null;
+    this.queuedAgentResultId = null;
     // Winner stays on: next challenger is random among living non-winners
     // (fightInputFromRotation / nextRotationPair). No challenger ballot.
     if (this.champion === null) {

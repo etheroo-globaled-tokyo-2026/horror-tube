@@ -83,7 +83,10 @@ describe("settle gates", () => {
     row = markPlaybackFinished(row);
     await store.save(row);
     await assert.rejects(
-      () => settleQueuedBattle(row, trackingPorts(calls), store),
+      () =>
+        settleQueuedBattle(row, trackingPorts(calls), store, {
+          skipSettlement: false,
+        }),
       (err: unknown) => {
         assert.ok(err instanceof BattleQueueError);
         assert.match(err.message, /betting-closed signal is missing/u);
@@ -102,7 +105,10 @@ describe("settle gates", () => {
     row = markBettingClosed(row);
     await store.save(row);
     await assert.rejects(
-      () => settleQueuedBattle(row, trackingPorts(calls), store),
+      () =>
+        settleQueuedBattle(row, trackingPorts(calls), store, {
+          skipSettlement: false,
+        }),
       (err: unknown) => {
         assert.ok(err instanceof BattleQueueError);
         assert.match(err.message, /playback-finished signal is missing/u);
@@ -120,12 +126,51 @@ describe("settleQueuedBattle", () => {
     let row = createQueuedRecord(sampleInsert());
     row = markBettingClosed(markPlaybackFinished(row));
     await store.save(row);
-    const done = await settleQueuedBattle(row, trackingPorts(calls), store);
+    const done = await settleQueuedBattle(row, trackingPorts(calls), store, {
+      skipSettlement: false,
+    });
     assert.deepEqual(calls, ["injuries", "status", "settle:42"]);
     assert.equal(done.injuriesTxHash, "0xinjuries");
     assert.equal(done.statusTxHash, "0xstatus");
     assert.equal(done.settlementTxHash, "0xsettle");
     assert.equal(nextSettleStep(done), "next_bout");
+  });
+
+  it("with skipSettlement true writes injuries then status and leaves settlement null", async () => {
+    const store = new MemoryBattleQueueStore();
+    const calls: string[] = [];
+    let row = createQueuedRecord(sampleInsert());
+    row = markBettingClosed(markPlaybackFinished(row));
+    await store.save(row);
+    const done = await settleQueuedBattle(row, trackingPorts(calls), store, {
+      skipSettlement: true,
+    });
+    assert.deepEqual(calls, ["injuries", "status"]);
+    assert.equal(done.injuriesTxHash, "0xinjuries");
+    assert.equal(done.statusTxHash, "0xstatus");
+    assert.equal(done.settlementTxHash, null);
+    assert.equal(nextSettleStep(done), "settlement");
+  });
+
+  it("with skipSettlement false after a skip resumes only at settleBattle", async () => {
+    const store = new MemoryBattleQueueStore();
+    const skipCalls: string[] = [];
+    let row = createQueuedRecord(sampleInsert());
+    row = markBettingClosed(markPlaybackFinished(row));
+    await store.save(row);
+    row = await settleQueuedBattle(row, trackingPorts(skipCalls), store, {
+      skipSettlement: true,
+    });
+    assert.deepEqual(skipCalls, ["injuries", "status"]);
+
+    const resumeCalls: string[] = [];
+    const done = await settleQueuedBattle(row, trackingPorts(resumeCalls), store, {
+      skipSettlement: false,
+    });
+    assert.deepEqual(resumeCalls, ["settle:42"]);
+    assert.equal(done.injuriesTxHash, "0xinjuries");
+    assert.equal(done.statusTxHash, "0xstatus");
+    assert.equal(done.settlementTxHash, "0xsettle");
   });
 
   it("resumes after a confirmed injuries write and does not repeat it", async () => {
@@ -138,7 +183,9 @@ describe("settleQueuedBattle", () => {
       injuriesTxHash: "0xalready-injuries",
     };
     await store.save(row);
-    const done = await settleQueuedBattle(row, trackingPorts(calls), store);
+    const done = await settleQueuedBattle(row, trackingPorts(calls), store, {
+      skipSettlement: false,
+    });
     assert.deepEqual(calls, ["status", "settle:42"]);
     assert.equal(done.injuriesTxHash, "0xalready-injuries");
     assert.equal(done.statusTxHash, "0xstatus");
@@ -162,7 +209,8 @@ describe("settleQueuedBattle", () => {
       },
     };
     await assert.rejects(
-      () => settleQueuedBattle(row, ports, store),
+      () =>
+        settleQueuedBattle(row, ports, store, { skipSettlement: false }),
       /settle step status failed.*rpc timeout/u,
     );
     const saved = await store.get(row.id);
