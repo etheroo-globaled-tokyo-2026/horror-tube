@@ -9,7 +9,7 @@ const EnterRoomIdkitContext = v.object({
     "app_id must start with app_",
   ),
   action: v.literal("enter-room"),
-  environment: v.optional(v.picklist(["production", "staging", "sandbox"])),
+  environment: v.picklist(["production", "staging", "sandbox"]),
   allow_legacy_proofs: v.literal(false),
   rp_context: v.object({
     rp_id: v.string(),

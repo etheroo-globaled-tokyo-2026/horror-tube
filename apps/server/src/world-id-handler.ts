@@ -44,7 +44,7 @@ export async function verifyEnterRoomProof(
   const env = deps.env ?? process.env;
   const worldId = loadWorldIdEnv(env);
   const fetchImpl: VerifyFetch = deps.fetch ?? ((input, init) => fetch(input, init));
-  return verifyProofOfHuman({
+  const verified = await verifyProofOfHuman({
     rpId: worldId.rpId,
     environment: worldId.environment,
     stagingToken: worldId.stagingToken,
@@ -53,6 +53,10 @@ export async function verifyEnterRoomProof(
     idkitResult,
     fetch: fetchImpl,
   });
+  console.log(
+    `World ID verify ok action=${verified.action} environment=${worldId.environment} nullifier=${verified.nullifier}`,
+  );
+  return verified;
 }
 
 export async function handleWorldIdRequest(

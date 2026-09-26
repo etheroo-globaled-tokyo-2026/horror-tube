@@ -181,7 +181,7 @@ pays out. Stakes are not defined here (no stake columns).
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
-- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight.
+- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
 
 ## Client
 
@@ -196,5 +196,4 @@ submission stays on the screen that sent it until dismissed. The final UI delete
 ## Out of scope
 
 - How the server is hosted.
-- Web bet/claim UI kinds (plan 4). Pool open/close/settle is the server operator.
 - Season end beyond today's `OVER` screen and reset.
