@@ -28,6 +28,10 @@ Icon uploads authenticate with **`SPACES_ACCESS_KEY_ID`** and **`SPACES_SECRET`*
 
 Store and load them from 1Password item **ETHTokyo DigitalOcean** (vault Private), fields `spaces_access_key_id` and `spaces_secret` (key name `ethtokyo-spaces`). Pass them for one command only (never as literals in an `export`). The AWS CLI reads **`AWS_ACCESS_KEY_ID`** / **`AWS_SECRET_ACCESS_KEY`**, so map from the Spaces names for that one command.
 
+Key scope (confirmed via DigitalOcean API `GET /v2/spaces/keys`): key `ethtokyo-spaces` is limited to bucket `horror-tube-icons-sgp1-m4k9` with permission `readwrite` (UI: Read/Write/Delete). The CDN hostname is only a public read front for that same bucket; there is no separate CDN key. Sharing `spaces_access_key_id` and `spaces_secret` with the team shares that bucket only, not the DigitalOcean account and not the Postgres database.
+
+A fresh agent shell may already have `AWS_PROFILE` or an SSO session token; if those are set, the AWS CLI ignores the Spaces key or sends the wrong token. Unset them in the same command.
+
 Read the keys inside a subshell first: `env A="$(…)" B="$A"` does not work, because the parent shell expands `$A` before `env` sets it, so `B` is empty and the AWS CLI silently uses `~/.aws` credentials instead. The `:?` checks stop the command if `op read` fails or a value is blank:
 
 ```bash
@@ -38,8 +42,9 @@ Read the keys inside a subshell first: `env A="$(…)" B="$A"` does not work, be
   SPACES_SECRET="$(op read 'op://Private/ETHTokyo DigitalOcean/spaces_secret')"
   : "${SPACES_ACCESS_KEY_ID:?SPACES_ACCESS_KEY_ID is required}"
   : "${SPACES_SECRET:?SPACES_SECRET is required}"
-  AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
-  AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
+  env -u AWS_PROFILE -u AWS_DEFAULT_PROFILE -u AWS_SESSION_TOKEN \
+    AWS_ACCESS_KEY_ID="$SPACES_ACCESS_KEY_ID" \
+    AWS_SECRET_ACCESS_KEY="$SPACES_SECRET" \
     aws s3 cp ./icon.png "s3://horror-tube-icons-sgp1-m4k9/${KEY}" \
     --endpoint-url "https://sgp1.digitaloceanspaces.com" \
     --acl public-read
