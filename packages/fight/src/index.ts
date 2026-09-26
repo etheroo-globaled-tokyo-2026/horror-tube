@@ -18,6 +18,7 @@ export * from "./validate.js";
 export * from "./render.js";
 export * from "./narrate.js";
 export * from "./fal-video.js";
+export * from "./rotation.js";
 
 export async function runFightTurn(
   input: FightInput,
