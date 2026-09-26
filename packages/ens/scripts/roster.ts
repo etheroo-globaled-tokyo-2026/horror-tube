@@ -143,12 +143,12 @@ export function decodeRegisterLabel(input: Hex): string | null {
 async function collectRecentTransferSingleLogs(
   publicClient: PublicClient,
   address: Address,
+  latestBlock: bigint,
 ): Promise<{
   logs: readonly { transactionHash: Hex }[];
   fromBlock: bigint;
   toBlock: bigint;
 }> {
-  const latestBlock = await publicClient.getBlockNumber();
   const planned = recentLogScanChunks(latestBlock);
   if (planned.length === 0) {
     throw new Error(
@@ -165,23 +165,27 @@ async function collectRecentTransferSingleLogs(
   let searchedFrom = planned[0]!.fromBlock;
   let searchedTo = planned[0]!.toBlock;
 
-  for (const { fromBlock, toBlock } of planned) {
+  const chunks = await Promise.all(
+    planned.map(async ({ fromBlock, toBlock }) => {
+      try {
+        return await publicClient.getLogs({
+          address,
+          event: transferSingleEvent,
+          fromBlock,
+          toBlock,
+        });
+      } catch (error) {
+        throw new Error(
+          `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }),
+  );
+
+  for (const [i, { fromBlock, toBlock }] of planned.entries()) {
     searchedFrom = fromBlock < searchedFrom ? fromBlock : searchedFrom;
     searchedTo = toBlock > searchedTo ? toBlock : searchedTo;
-
-    let chunk: readonly { transactionHash: Hex }[];
-    try {
-      chunk = await publicClient.getLogs({
-        address,
-        event: transferSingleEvent,
-        fromBlock,
-        toBlock,
-      });
-    } catch (error) {
-      throw new Error(
-        `eth_getLogs failed for ${address} fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    const chunk = chunks[i]!;
 
     console.error(
       `discover: eth_getLogs fromBlock=${fromBlock.toString()} toBlock=${toBlock.toString()} logs=${String(chunk.length)}`,
@@ -203,10 +207,12 @@ async function collectRecentTransferSingleLogs(
 async function discoverRegisteredLabels(
   publicClient: PublicClient,
   subregistry: Address,
+  latestBlock: bigint,
 ): Promise<string[]> {
   const { logs, fromBlock, toBlock } = await collectRecentTransferSingleLogs(
     publicClient,
     subregistry,
+    latestBlock,
   );
   const txHashes = [...new Set(logs.map((log) => log.transactionHash))];
   const inputs = await Promise.all(
@@ -301,25 +307,29 @@ async function loadCharacterSheets(
     labels.map(async (label): Promise<CharacterSheet> => {
       const name = subname(label, ensLabel);
       const dnsName = dnsEncodeName(name);
-      let owner: Address;
-      try {
-        const state = await publicClient.readContract({
-          address: subregistry,
-          abi: userRegistryAbi,
-          functionName: "getState",
-          args: [labelId(label)],
-        });
-        owner = getAddress(state.latestOwner);
-      } catch (error) {
-        throw new Error(
-          `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-      const [look, brief, injuries, status, icon] = await Promise.all(
-        ["look", "brief", "injuries", "status", "icon"].map((key) =>
-          readText(publicClient, resolver, dnsName, key),
+      const readOwner = async (): Promise<Address> => {
+        try {
+          const state = await publicClient.readContract({
+            address: subregistry,
+            abi: userRegistryAbi,
+            functionName: "getState",
+            args: [labelId(label)],
+          });
+          return getAddress(state.latestOwner);
+        } catch (error) {
+          throw new Error(
+            `UserRegistry.getState(${label}) failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      };
+      const [owner, [look, brief, injuries, status, icon]] = await Promise.all([
+        readOwner(),
+        Promise.all(
+          ["look", "brief", "injuries", "status", "icon"].map((key) =>
+            readText(publicClient, resolver, dnsName, key),
+          ),
         ),
-      );
+      ]);
       return { label, name, owner, look, brief, injuries, status, icon };
     }),
   );
@@ -340,30 +350,33 @@ export async function readRosterFromChain(
     batch: { multicall: true },
   });
 
-  let subregistry: Address;
-  let resolver: Address;
-  try {
-    const [sub, res] = await Promise.all([
-      publicClient.readContract({
-        address: ethRegistry,
-        abi: ethRegistryAbi,
-        functionName: "getSubregistry",
-        args: [ensLabel],
-      }),
-      publicClient.readContract({
-        address: ethRegistry,
-        abi: ethRegistryAbi,
-        functionName: "getResolver",
-        args: [ensLabel],
-      }),
-    ]);
-    subregistry = getAddress(sub);
-    resolver = getAddress(res);
-  } catch (error) {
-    throw new Error(
-      `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  const readParent = async (): Promise<[Address, Address]> => {
+    try {
+      const [sub, res] = await Promise.all([
+        publicClient.readContract({
+          address: ethRegistry,
+          abi: ethRegistryAbi,
+          functionName: "getSubregistry",
+          args: [ensLabel],
+        }),
+        publicClient.readContract({
+          address: ethRegistry,
+          abi: ethRegistryAbi,
+          functionName: "getResolver",
+          args: [ensLabel],
+        }),
+      ]);
+      return [getAddress(sub), getAddress(res)];
+    } catch (error) {
+      throw new Error(
+        `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+  const [[subregistry, resolver], latestBlock] = await Promise.all([
+    readParent(),
+    publicClient.getBlockNumber(),
+  ]);
 
   if (subregistry === ZERO_ADDRESS) {
     throw new Error(
@@ -374,7 +387,7 @@ export async function readRosterFromChain(
     throw new Error(`Parent ${ensLabel}.eth has no resolver (getResolver returned zero address).`);
   }
 
-  const labels = await discoverRegisteredLabels(publicClient, subregistry);
+  const labels = await discoverRegisteredLabels(publicClient, subregistry, latestBlock);
   const sheets = await loadCharacterSheets(publicClient, ensLabel, subregistry, resolver, labels);
   return { parentName: `${ensLabel}.eth`, sheets };
 }

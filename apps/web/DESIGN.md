@@ -112,7 +112,10 @@ Onboarding happens in the room, not on a form page. It takes from Buckshot Roule
 - **Verified:** the TV says VERIFIED, the paper gets a red VERIFIED stamp. Hard cut to the TV.
 - **Fail (no Orb):** the TV switches off, the lights go out, the waiver burns from the bottom up. Then only
   NOT ELIGIBLE stays in the dark. ENTER cuts back to a new waiver.
-- **Returning user:** a verified user skips the waiver and starts at the TV.
+- **Returning user:** a verified user skips the waiver and starts at the TV. The cast loads from ENS (about 3 s on
+  the public RPC; new users never see it, it loads while they read the waiver). Until it lands, the TV shows a warm
+  test card, PLEASE STAND BY, and the hint says the TV is warming up. If the read fails, the TV says NO SIGNAL and
+  the hint shows the real error. No cache, no fallback cast.
 - **Demo:** `X` or DEMO · NO ORB runs the fail path. DEMO · FORGET ME clears the verified flag.
 - The waiver text is also in the page for screen readers. With reduced motion, the burn and the cuts are instant.
 
@@ -121,7 +124,28 @@ Money lives on the coin box (below). Vote and bet stay on the remote.
 
 ## The room
 
-- **The room:** real 3D, low-poly, rusty textures with hard pixels, fog, one flickering bulb. Warm colours only.
+- **The room:** real 3D, low-poly, rusty textures with hard pixels, fog, one flickering bulb. Warm surfaces only.
+  - All textures are drawn in code from the tokens (no image files): stained wallpaper over a wood wainscot, floor
+    boards, a wood-veneer TV with a speaker grille, a desk with two drawers. Each texture is also its own bump map.
+  - Texels stay small (about 1 cm, 2 to 3 screen pixels) and clean: flowing grain lines, flat shapes, no random
+    speckle. Big noisy texels are what made the room look like mush. Textures use nearest filtering up close and
+    mipmaps plus anisotropic filtering far away, so surfaces seen at an angle do not sparkle. The TV picture has
+    mipmaps too, so small text stays whole.
+  - Depth comes from light, not from more props. The bulb hangs low over the desk and is the key light: it makes a
+    pool of light on the desk and the TV, and the wall falls into the dark. Ambient light stays low, because flat
+    light makes the room look flat.
+  - The bulb casts hard shadows (`BasicShadowMap`). Ambient occlusion (`GTAOPass`) darkens the places where things
+    touch. Exponential fog makes far things darker. The TV picture has no fog.
+  - The tapes are real VHS cases (6 × 25 cm spines) in the room palette, never the resident's hue: black plastic,
+    a `--sulfur` number sticker (the same colour as the numbers in the TV guide), an aged paper label with the short
+    name, and the face at the bottom, tinted with the same warm ramp as the fight video. Plain dark tapes fill the
+    rest of the shelf. A dead resident's tape stays, with a grey sticker and label and the name struck out. The
+    spines are lit, with a little glow to stay readable.
+  - The tape in your hand is the case: a black frame, a faint plastic shine, a `--rust` header, and the spine on its
+    side.
+  - The camera moves a little with the mouse (parallax).
+  - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
+    glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
   - Vote: a TV-guide channel. Last night's fight on top with **REC**, the residents below (number and name, 2 pages).
   - Typing a number: the number and the character's `brief`, never a face. The name shows after OK.
@@ -137,7 +161,8 @@ Rules from review:
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Picking must not feel like a treat.** No glamour, no vote races, no faces before you choose.
 - **Copy is short and human**, not technical.
-- **Readable first.** The room renders at 1/1.6 resolution and the TV picture at 640×480, with big type.
+- **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
+  big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.
 
 ## The coin box
 
@@ -165,7 +190,17 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
 
 ## Colour
 
-Only the tokens in `ht.css`. No hex values anywhere else. The room uses the warm set:
+Only the tokens in `ht.css`. No hex values anywhere else.
+
+Every surface in the room uses the warm set, but no two neighbours share a brightness step. From dark to light: the
+wall (`--char`, a faint `--sulfur` pattern), the desk (`--grime` walnut), the shelf and the TV (`--rust-deep`), then the paper,
+the tape labels and the TV picture. The inside of the shelf is `--soot`, so the tapes pop. Keep the grain sparse and
+drop random speckle: noise at the same brightness makes things run together.
+
+The light is split by temperature. The bulb is warm. The TV light (`--body`) and the ambient light (`--cold-deep`) are
+cool, so shadows and lit sides do not look alike.
+
+The warm set:
 
 | Token                         | Job                                                 |
 | ----------------------------- | --------------------------------------------------- |
