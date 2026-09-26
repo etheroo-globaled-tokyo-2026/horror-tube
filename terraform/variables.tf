@@ -262,6 +262,11 @@ variable "roster_ens_labels" {
   type        = string
 }
 
+variable "ens_roster_refresh_ms" {
+  description = "ENS_ROSTER_REFRESH_MS milliseconds between game-server ENS roster refreshes. Positive integer. Required; no default."
+  type        = number
+}
+
 variable "fal_key" {
   description = "FAL_KEY for fal video generation. Set via TF_VAR_fal_key from .env. Required; no default. Never commit."
   type        = string

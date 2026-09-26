@@ -1,7 +1,15 @@
 {
   "name": "@horror-tube/ens",
   "private": true,
+  "type": "module",
+  "exports": {
+    "./roster": {
+      "types": "./dist/roster.d.ts",
+      "import": "./dist/roster.js"
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "tsx --test tests/ens-register.test.ts tests/dashboard.test.ts tests/permissions.test.ts tests/setter-roles.test.ts tests/roster-cast-read.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "tsx scripts/register-eth-label.ts check",

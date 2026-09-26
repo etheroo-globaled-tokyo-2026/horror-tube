@@ -2,7 +2,7 @@
  * ENS labels for the fixed cast. Sourced from packages/roster/roster/cast.json
  * (same list propose/register use). Browser-safe: JSON import, no node:fs.
  */
-import cast from "../../roster/roster/cast.json";
+import cast from "../../roster/roster/cast.json" with { type: "json" };
 
 export function labelsFromCastEntries(entries: unknown): string[] {
   if (!Array.isArray(entries)) {
