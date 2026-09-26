@@ -223,6 +223,11 @@ variable "skip_battle_settlement" {
   type        = string
 }
 
+variable "battle_betting_address" {
+  description = "BATTLE_BETTING_ADDRESS Sepolia deploy the game uses for openBattle / placeBet. Required; no default. Public address, not a secret."
+  type        = string
+}
+
 variable "roster_ens_labels" {
   description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
   type        = string

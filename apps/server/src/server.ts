@@ -301,7 +301,7 @@ async function handleRequest(
           return;
         }
         try {
-          opts.game.bet(side, amount);
+          await opts.game.bet(side, amount);
           const payload = JSON.stringify({
             ok: true,
             state: opts.game.getState(),

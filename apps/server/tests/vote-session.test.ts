@@ -38,6 +38,17 @@ function testLoop(): GameLoop {
         throw new Error("vote tests must not settle a battle.");
       },
     },
+    battleBetting: {
+      async minBet() {
+        throw new Error("vote tests must not read minBet.");
+      },
+      async openBattle() {
+        throw new Error("vote tests must not open a battle.");
+      },
+      async placeBet() {
+        throw new Error("vote tests must not place a bet.");
+      },
+    },
     skipSettlement: true,
   });
 }

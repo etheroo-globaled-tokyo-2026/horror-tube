@@ -34,6 +34,8 @@ video_timeout_seconds  = 300
 settle_seconds         = 8
 # 1 skips BattleBetting settleBattle until that client exists; 0 calls it.
 skip_battle_settlement = "1"
+# Sepolia BattleBetting deploy the game uses for openBattle / placeBet (docs/battle-betting.md).
+battle_betting_address = "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
 # Comma-separated ENS labels (at least two). Same order does not matter; the server sorts them.
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 
