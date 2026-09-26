@@ -41,6 +41,21 @@ jobs:
       - run: pnpm --filter @horror-tube/fight-media test
       - run: pnpm --filter @horror-tube/fight-media typecheck
 
+  world-id:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/world-id test
+      - run: pnpm --filter @horror-tube/world-id typecheck
+
   server:
     runs-on: ubuntu-latest
     steps:
