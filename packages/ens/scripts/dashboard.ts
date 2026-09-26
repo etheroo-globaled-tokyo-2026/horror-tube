@@ -171,6 +171,13 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function renderListHtml(items: readonly string[]): string {
+  if (items.length === 0) {
+    return "none";
+  }
+  return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
 function renderIconHtml(icon: string): string {
   if (icon === "") {
     return "<span>(empty)</span>";
@@ -186,12 +193,14 @@ export function renderDashboardHtml(parentName: string, sheets: readonly Charact
     .map((sheet) => {
       return [
         `<article class="sheet">`,
-        `<h2><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></h2>`,
+        `<h2>${escapeHtml(sheet.display_name)}</h2>`,
+        `<p class="name"><a href="${escapeHtml(ensAppUrl(sheet.name))}">${escapeHtml(sheet.name)}</a></p>`,
         `<p class="addr"><a href="${escapeHtml(sepoliaAddressUrl(sheet.owner))}">${escapeHtml(sheet.owner)}</a></p>`,
         `<dl>`,
         `<dt>look</dt><dd>${escapeHtml(sheet.look)}</dd>`,
         `<dt>brief</dt><dd>${escapeHtml(sheet.brief)}</dd>`,
-        `<dt>injuries</dt><dd>${escapeHtml(sheet.injuries === "" ? "(empty)" : sheet.injuries)}</dd>`,
+        `<dt>injury places</dt><dd>${renderListHtml(sheet.injury_places)}</dd>`,
+        `<dt>injuries</dt><dd>${renderListHtml(sheet.injuries)}</dd>`,
         `<dt>status</dt><dd class="status">${escapeHtml(sheet.status === "" ? "(empty)" : sheet.status)}</dd>`,
         `<dt>icon</dt><dd class="icon">${renderIconHtml(sheet.icon)}</dd>`,
         `</dl>`,

@@ -199,12 +199,12 @@ export async function newSeason(): Promise<void> {
   }
   S.chars = roster.sheets.map((s, id) => ({
     id,
-    name: s.label.toUpperCase(),
+    name: s.display_name,
     short: s.label.toUpperCase(),
     ens: s.name,
     hue: HUES[id % 3],
     brief: s.brief,
-    injuries: s.injuries,
+    injuries: s.injuries.join(". "),
     icon: s.img,
     fights: 0,
     alive: s.alive,

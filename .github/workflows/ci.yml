@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @horror-tube/ens test
       - run: pnpm --filter @horror-tube/ens typecheck

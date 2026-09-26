@@ -7,19 +7,31 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
 from dotenv import load_dotenv
 
+# packages/roster/roster/__main__.py -> repo root (not cwd).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ENV_PATH = REPO_ROOT / ".env"
+
 from roster.chain import (
     apply_register_plan,
     list_registered,
+    list_registered_labels,
     set_icons,
     snapshot_existing,
     unregister_labels,
 )
-from roster.fandom import FandomError, fetch_page_lore, require_source_count, resolve_page
+from roster.fandom import (
+    FandomError,
+    fetch_page_lore,
+    page_section_index,
+    require_source_count,
+    resolve_page,
+)
 from roster.icons import (
     IconGenerationError,
     generate_face_png,
@@ -34,7 +46,12 @@ from roster.plan import (
     build_register_plan,
     build_removal_plan,
 )
-from roster.propose import propose_sheets, sheets_payload
+from roster.propose import (
+    propose_cast,
+    propose_sheets,
+    sheet_from_page_pair,
+    sheets_payload,
+)
 from roster.validate import (
     RosterValidationError,
     load_characters,
@@ -122,7 +139,13 @@ def cmd_icons(args: argparse.Namespace) -> int:
 
 def _require_chain_env() -> None:
     """Fail closed before any chain or CDN write when ENS write env is missing."""
-    for name in ("ENS_LABEL", "SEPOLIA_RPC_URL", "PRIVATE_KEY"):
+    for name in (
+        "ENS_LABEL",
+        "SEPOLIA_RPC_URL",
+        "PRIVATE_KEY",
+        "ROSTER_PRIVATE_KEY",
+        "AGENT_PRIVATE_KEY",
+    ):
         raw = os.environ.get(name)
         if raw is None or raw.strip() == "":
             raise RosterValidationError(
@@ -191,23 +214,65 @@ def cmd_icons_chain(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_propose(args: argparse.Namespace) -> int:
-    out_path = Path(_require_flag(args.out, name="--out"))
-    sources: list[str] = list(args.source or [])
-    if args.sources_file is not None:
-        if args.sources_file.strip() == "":
-            raise FandomError("--sources-file was passed blank.")
-        sources.extend(_load_sources_file(Path(args.sources_file)))
-    if len(sources) == 0:
-        raise FandomError(
-            "Provide at least one --source URL/title, or a --sources-file list."
-        )
-    sources = require_source_count(sources, n=args.n)
-    if args.wiki is not None and args.wiki.strip() == "":
+def _optional_page_flag(value: Optional[str], *, name: str) -> Optional[str]:
+    if value is None:
+        return None
+    if value.strip() == "":
+        raise FandomError(f"{name} was passed blank.")
+    return value.strip()
+
+
+def _require_wiki_not_blank(wiki: Optional[str]) -> None:
+    if wiki is not None and wiki.strip() == "":
         raise FandomError("--wiki was passed blank. Omit it or pass a Fandom host.")
 
-    refs = [resolve_page(source, wiki=args.wiki) for source in sources]
-    characters = propose_sheets([fetch_page_lore(ref) for ref in refs])
+
+def cmd_sections(args: argparse.Namespace) -> int:
+    source = _require_flag(args.source, name="--source")
+    _require_wiki_not_blank(args.wiki)
+    index = page_section_index(resolve_page(source, wiki=args.wiki))
+    json.dump(index, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_propose(args: argparse.Namespace) -> int:
+    out_path = Path(_require_flag(args.out, name="--out"))
+    _require_wiki_not_blank(args.wiki)
+    look_source = _optional_page_flag(args.look_source, name="--look-source")
+    brief_source = _optional_page_flag(args.brief_source, name="--brief-source")
+    if (look_source is None) != (brief_source is None):
+        raise FandomError("Pass both --look-source and --brief-source, or neither.")
+    if look_source is not None and brief_source is not None:
+        if list(args.source or []) or args.sources_file is not None:
+            raise FandomError(
+                "Do not pass --source or --sources-file together with "
+                "--look-source and --brief-source."
+            )
+        if args.n != 1:
+            raise FandomError(
+                f"--n must be 1 when --look-source and --brief-source are set. Got: {args.n}"
+            )
+        characters = [
+            sheet_from_page_pair(
+                resolve_page(look_source, wiki=args.wiki),
+                resolve_page(brief_source, wiki=args.wiki),
+            )
+        ]
+    else:
+        sources: list[str] = list(args.source or [])
+        if args.sources_file is not None:
+            if args.sources_file.strip() == "":
+                raise FandomError("--sources-file was passed blank.")
+            sources.extend(_load_sources_file(Path(args.sources_file)))
+        if len(sources) == 0:
+            raise FandomError(
+                "Provide at least one --source URL/title, a --sources-file list, "
+                "or both --look-source and --brief-source."
+            )
+        sources = require_source_count(sources, n=args.n)
+        refs = [resolve_page(source, wiki=args.wiki) for source in sources]
+        characters = propose_sheets([fetch_page_lore(ref) for ref in refs])
     payload = sheets_payload(characters)
     _write_json(out_path, payload)
     print(f"Wrote proposed roster JSON: {out_path}")
@@ -344,6 +409,68 @@ def cmd_register(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_wipe(_args: argparse.Namespace) -> int:
+    """Unregister every character subname. Does not touch the parent .eth name."""
+    _require_chain_env()
+    labels = list_registered_labels()
+    if len(labels) == 0:
+        print("wipe: no registered character subnames.")
+        return 0
+    print(f"wipe: unregistering {len(labels)} label(s): {', '.join(labels)}")
+    unregister_labels(labels)
+    print("wipe: chain writes complete")
+    return 0
+
+
+def cmd_redeploy(_args: argparse.Namespace) -> int:
+    """Propose the 10 cast fighters from Fandom, upload icons, and register them."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    _require_chain_env()
+    cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    together_key = required_env("TOGETHER_API_KEY", os.environ)
+    together_model = required_env("TOGETHER_IMAGE_MODEL", os.environ)
+    together_url = required_env("TOGETHER_API_URL", os.environ)
+    spaces = spaces_store_from_env(os.environ)
+    characters = propose_cast()
+    require_no_duplicate_labels(characters, source="cast.json")
+    print(f"redeploy: proposed {len(characters)} sheet(s)")
+    for character in characters:
+        print(f"  {character['label']} {character['display_name']}")
+
+    ens_label = _require_ens_label()
+    labels = [character["label"] for character in characters]
+    existing_on_chain = snapshot_existing(labels)
+    if len(existing_on_chain) != 0:
+        still = ", ".join(sorted(existing_on_chain))
+        raise RosterValidationError(
+            f"Refusing to register over existing subnames: {still}. "
+            "Run `python -m roster wipe` first."
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        icon_dir = Path(tmp) / "icons"
+        _written, updated = write_face_icons(
+            characters,
+            icon_dir,
+            api_key=together_key,
+            model=together_model,
+            api_url=together_url,
+            spaces=spaces,
+            cdn_host=cdn_host,
+            override=False,
+        )
+        plan = build_register_plan(
+            updated,
+            ens_label=ens_label,
+            existing_on_chain=existing_on_chain,
+            on_existing=None,
+        )
+        print(f"redeploy: registering {len(plan['characters'])} character(s)")
+        apply_register_plan(plan)
+    print("redeploy: chain writes complete")
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     _require_ens_label()
     input_path = Path(_require_flag(args.input, name="--input"))
@@ -416,7 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
             "icon, generate a face PNG from the on-chain look, upload to Spaces, and "
             "setText only the icon key to the https CDN URL. Skips characters that "
             "already have a non-empty https icon unless --override. Does not change "
-            "look, brief, injuries, or status."
+            "display_name, look, brief, injury_places, injuries, or status."
         ),
     )
     icons_chain_p.add_argument(
@@ -429,6 +556,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     icons_chain_p.set_defaults(func=cmd_icons_chain)
+
+    sections_p = sub.add_parser(
+        "sections",
+        help=(
+            "Print Fandom api.php section headings as JSON. "
+            "Use this instead of an inline Python parser."
+        ),
+    )
+    sections_p.add_argument(
+        "--source",
+        required=True,
+        help="https://<wiki>.fandom.com/wiki/<Title> URL, or a page title with --wiki.",
+    )
+    sections_p.add_argument(
+        "--wiki",
+        required=False,
+        default=None,
+        help="Fandom host for a page title, e.g. villains.fandom.com.",
+    )
+    sections_p.set_defaults(func=cmd_sections)
 
     propose_p = sub.add_parser(
         "propose",
@@ -463,6 +610,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=False,
         default=None,
         help="Fandom host for page titles, e.g. villains.fandom.com. Not used for full URLs.",
+    )
+    propose_p.add_argument(
+        "--look-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose look section (Appearance, Physical Appearance, ...) is the "
+            "fighter's body. Pair with --brief-source and --n 1. Do not also pass --source."
+        ),
+    )
+    propose_p.add_argument(
+        "--brief-source",
+        required=False,
+        default=None,
+        help=(
+            "Page whose brief section (Powers and abilities, Abilities, ...) is the "
+            "fighter's kit. Pair with --look-source. Both pages must yield the same label."
+        ),
     )
     propose_p.add_argument(
         "--out",
@@ -526,7 +691,7 @@ def build_parser() -> argparse.ArgumentParser:
         "register",
         help=(
             "Read chain state, then register character subnames and setText "
-            "(look, brief, injuries, status, icon). Sends transactions."
+            "(display_name, look, brief, injury_places, injuries, status, icon). Sends transactions."
         ),
     )
     register_p.add_argument(
@@ -570,11 +735,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     remove_p.set_defaults(func=cmd_remove)
 
+    wipe_p = sub.add_parser(
+        "wipe",
+        help=(
+            "Unregister every character subname under ENS_LABEL. "
+            "Does not read text records and does not remove the parent .eth name."
+        ),
+    )
+    wipe_p.set_defaults(func=cmd_wipe)
+
+    redeploy_p = sub.add_parser(
+        "redeploy",
+        help=(
+            "Propose the 10 cast fighters from live Fandom pages, upload face icons, "
+            "and register them with display_name, injury_places, and injuries."
+        ),
+    )
+    redeploy_p.set_defaults(func=cmd_redeploy)
+
     return parser
 
 
+def load_repo_dotenv() -> None:
+    """Load the checkout root .env when it exists.
+
+    load_dotenv() with no path follows cwd, so an empty packages/roster/.env
+    can hide the real file. A missing file is fine. Commands that need a
+    variable still fail when that variable is blank.
+    """
+    if REPO_ENV_PATH.is_file():
+        load_dotenv(dotenv_path=REPO_ENV_PATH)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    load_dotenv()
+    load_repo_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
