@@ -410,7 +410,6 @@ pad.forEach((row, ri) =>
   }),
 );
 
-// The resident's tape, held in the left hand. It rises when you type a number.
 const VW = 320,
   VH = 544;
 const tapeCanvas = document.createElement("canvas");
