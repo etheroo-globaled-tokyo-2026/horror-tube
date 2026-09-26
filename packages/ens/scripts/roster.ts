@@ -471,3 +471,37 @@ export async function readRosterFromChain(
   const sheets = await loadCharacterSheets(publicClient, ensLabel, subregistry, resolver, labels);
   return { parentName: `${ensLabel}.eth`, sheets };
 }
+
+/** Registered subname labels only. Does not read text records. */
+export async function readRegisteredLabels(
+  ensLabel: string,
+  rpcUrl: string,
+  ethRegistry: Address,
+): Promise<string[]> {
+  const publicClient = createPublicClient({
+    chain: sepolia,
+    transport: http(rpcUrl, { batch: true }),
+    batch: { multicall: true },
+  });
+  let subregistry: Address;
+  try {
+    subregistry = getAddress(
+      await publicClient.readContract({
+        address: ethRegistry,
+        abi: ethRegistryAbi,
+        functionName: "getSubregistry",
+        args: [ensLabel],
+      }),
+    );
+  } catch (error) {
+    throw new Error(
+      `Parent ETHRegistry read failed for ${ensLabel}.eth: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (subregistry === ZERO_ADDRESS) {
+    throw new Error(
+      `Parent ${ensLabel}.eth has no subregistry (getSubregistry returned zero address).`,
+    );
+  }
+  return discoverRegisteredLabels(publicClient, subregistry);
+}

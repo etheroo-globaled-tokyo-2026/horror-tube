@@ -16,8 +16,16 @@ from typing import Any, Optional, Sequence
 USER_AGENT = "horror-tube-roster/0.1 (+https://github.com/etheroo-globaled-tokyo-2026/horror-tube)"
 FETCH_TIMEOUT_SECONDS = 30
 
-APPEARANCE_RE = re.compile(r"^(physical\s+)?appearance$", re.IGNORECASE)
-POWERS_RE = re.compile(r"^powers\s+(and|&)\s+abilities$", re.IGNORECASE)
+LOOK_SECTION_RES = (
+    re.compile(r"^(physical\s+)?appearance$", re.IGNORECASE),
+    re.compile(r"^character description$", re.IGNORECASE),
+    re.compile(r"^appearance and character concept$", re.IGNORECASE),
+)
+BRIEF_SECTION_RES = (
+    re.compile(r"^powers\s+(and|&)\s+abilities$", re.IGNORECASE),
+    re.compile(r"^abilities and attributes$", re.IGNORECASE),
+    re.compile(r"^abilities$", re.IGNORECASE),
+)
 
 
 class FandomError(ValueError):
@@ -140,11 +148,19 @@ def is_disambiguation(parse: dict[str, Any]) -> bool:
     return any("disambiguation" in c["category"].lower() for c in parse.get("categories", []))
 
 
-def _find_section(parse: dict[str, Any], pattern: re.Pattern[str], *, name: str, ref: PageRef) -> str:
-    for section in parse["sections"]:
-        if pattern.match(_plain(section["line"])):
-            return section["index"]
-    lines = ", ".join(_plain(s["line"]) for s in parse["sections"]) or "(none)"
+def _find_section(
+    parse: dict[str, Any],
+    patterns: Sequence[re.Pattern[str]],
+    *,
+    name: str,
+    ref: PageRef,
+) -> str:
+    plain_sections = [(_plain(section["line"]), section) for section in parse["sections"]]
+    for pattern in patterns:
+        for line, section in plain_sections:
+            if pattern.fullmatch(line):
+                return section["index"]
+    lines = ", ".join(line for line, _ in plain_sections) or "(none)"
     raise FandomError(f"{ref}: no {name} section. Sections: {lines}")
 
 
@@ -168,6 +184,30 @@ def _section_text(ref: PageRef, pageid: int, index: str, *, name: str) -> str:
     return parser.blocks[0]
 
 
+def fetch_section(
+    ref: PageRef,
+    patterns: Sequence[re.Pattern[str]],
+    *,
+    name: str,
+) -> tuple[str, str]:
+    """Return the page title and the first paragraph of the first matching section."""
+    parse = fetch_api(
+        ref.host,
+        {
+            "action": "parse",
+            "page": ref.title,
+            "prop": "sections|properties|categories",
+            "redirects": "1",
+        },
+    )["parse"]
+    if is_disambiguation(parse):
+        raise FandomError(
+            f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page."
+        )
+    index = _find_section(parse, patterns, name=name, ref=ref)
+    return parse["title"], _section_text(ref, parse["pageid"], index, name=name)
+
+
 def fetch_page_lore(ref: PageRef) -> PageLore:
     parse = fetch_api(
         ref.host,
@@ -180,8 +220,8 @@ def fetch_page_lore(ref: PageRef) -> PageLore:
     )["parse"]
     if is_disambiguation(parse):
         raise FandomError(f"{ref}: {parse['title']!r} is a disambiguation page. Pass a specific character page.")
-    appearance = _find_section(parse, APPEARANCE_RE, name="Appearance", ref=ref)
-    powers = _find_section(parse, POWERS_RE, name="Powers and abilities", ref=ref)
+    appearance = _find_section(parse, LOOK_SECTION_RES, name="look", ref=ref)
+    powers = _find_section(parse, BRIEF_SECTION_RES, name="brief", ref=ref)
     return PageLore(
         ref=ref,
         title=parse["title"],
