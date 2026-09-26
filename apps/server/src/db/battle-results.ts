@@ -2,7 +2,7 @@ import type {
   BattleQueueRecord,
   BattleQueueStore,
   Shot,
-} from "@horror-tube/fight";
+} from "@horror-tube/fight/battle-queue";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 import { readDatabaseUrl } from "./database-url.js";

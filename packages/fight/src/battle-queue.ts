@@ -1,5 +1,7 @@
 import type { FightInput, LivingCard, Shot } from "./types.js";
 
+export type { Shot };
+
 /**
  * Queued fight result while betting is open. ENS writes and BattleBetting
  * settlement run only after both gates are set — never from a timer.
