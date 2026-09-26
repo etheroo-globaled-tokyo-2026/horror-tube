@@ -147,14 +147,15 @@ for each. Use `plan-remove` if you only want the JSON plan.
 
 Read-only local page that discovers registered subnames under `ENS_LABEL.eth`
 and shows `look` / `brief` / `injuries` / `status` / `icon`. Needs
-`ENS_LABEL`, `SEPOLIA_RPC_URL`, and `DASHBOARD_PORT`. Does not need
-`PRIVATE_KEY` and does not send transactions.
+`ENS_LABEL` and `SEPOLIA_RPC_URL`. Listens on port 8130. Set `DASHBOARD_PORT`
+in `.env` to use another port. Does not need `PRIVATE_KEY` and does not send
+transactions.
 
 ```bash
 pnpm --filter @horror-tube/ens dashboard
 ```
 
-Then open `http://127.0.0.1:<DASHBOARD_PORT>/`. Each GET re-reads the chain.
+Then open `http://127.0.0.1:8130/`. Each GET re-reads the chain.
 
 ## Tests
 

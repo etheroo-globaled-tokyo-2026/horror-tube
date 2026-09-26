@@ -128,19 +128,21 @@ export function parseLabel(value: string | undefined): string {
   return trimmed;
 }
 
+export const DASHBOARD_PORT = 8130;
+
 export function parseDashboardPort(value: string | undefined): number {
   if (value === undefined || value.trim() === "") {
-    fail(
-      "DASHBOARD_PORT is required. Set it in .env. See .env.example. Refusing to fall back.",
-    );
+    return DASHBOARD_PORT;
   }
   const trimmed = value.trim();
   if (!/^[0-9]+$/u.test(trimmed)) {
-    fail(`DASHBOARD_PORT must be an integer port. Got: ${trimmed}`);
+    throw new Error(`DASHBOARD_PORT must be an integer port. Got: ${trimmed}`);
   }
   const port = Number(trimmed);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    fail(`DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`);
+    throw new Error(
+      `DASHBOARD_PORT must be an integer port between 1 and 65535. Got: ${trimmed}`,
+    );
   }
   return port;
 }
@@ -550,7 +552,10 @@ export async function readRosterFromChain(
 async function main(): Promise<void> {
   const ensLabel = parseLabel(process.env.ENS_LABEL);
   const rpcUrl = requiredEnv("SEPOLIA_RPC_URL");
-  const port = parseDashboardPort(process.env.DASHBOARD_PORT);
+  const portEnv = process.env.DASHBOARD_PORT;
+  const port = parseDashboardPort(portEnv);
+  const portSource =
+    portEnv === undefined || portEnv.trim() === "" ? "fixed" : "DASHBOARD_PORT";
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -582,7 +587,7 @@ async function main(): Promise<void> {
     });
   });
 
-  console.log(`http://127.0.0.1:${port}/`);
+  console.log(`http://127.0.0.1:${port}/ (${portSource})`);
 }
 
 function isDirectRun(): boolean {
