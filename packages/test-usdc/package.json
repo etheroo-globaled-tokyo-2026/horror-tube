@@ -1,0 +1,21 @@
+{
+  "name": "@horror-tube/test-usdc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "sui move test --path move",
+    "typecheck": "tsc --noEmit",
+    "deploy": "tsx --env-file=../../.env src/deploy.ts",
+    "mint": "tsx --env-file=../../.env src/mint.ts"
+  },
+  "dependencies": {
+    "@horror-tube/betting": "workspace:*",
+    "@mysten/sui": "^2.33.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2"
+  }
+}
