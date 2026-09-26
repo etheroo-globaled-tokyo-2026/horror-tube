@@ -388,5 +388,11 @@ class CliTests(unittest.TestCase):
             self.assertFalse(out.exists())
 
 
+class TestRegisterRejectsFixtures(unittest.TestCase):
+    def test_register_refuses_fixture_path(self):
+        code = cli.main(["register", "--input", str(FIXTURE)])
+        self.assertEqual(code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
