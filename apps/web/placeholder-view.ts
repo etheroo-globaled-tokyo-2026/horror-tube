@@ -12,7 +12,7 @@ export type BetView = {
   closesAt: string;
 };
 
-export const CLOSES_AT_UNSET = "not set: waiting for a room to report playback start";
+export const CLOSES_AT_UNSET = "awaiting the broadcast start";
 
 export function placeholderView(s: PlaceholderInput): BetView | null {
   const name = (id: number): string => s.chars[id]?.name ?? `#${String(id)}`;

@@ -1,26 +1,12 @@
 import * as THREE from "three";
-import {
-  $,
-  DUR,
-  S,
-  hooks,
-  loadBettingIds,
-  refreshClaimable,
-  setWallet,
-  usd,
-  type Phase,
-} from "./game.ts";
-import {
-  COINS,
-  type CoinBox,
-  type CoinBoxPart,
-  type CoinBoxView,
-  createCoinBox,
-} from "./coinbox.ts";
-import { getGameWallet, hasWalletSession } from "./wallet.ts";
+import { $, DUR, S, hooks, loadBettingIds, setWallet, usd, type Phase } from "./game.ts";
+import { COINS, type CoinBoxPart, type CoinBoxView, createCoinBox } from "./coinbox.ts";
+import { canBet, canCollect } from "./betting.ts";
+import { getGameWallet, hasWalletSession, type GameWallet } from "./wallet.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 import { COL } from "./room-palette.ts";
-import { STAKES, T, Z, W8, LOW, esc, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { STAKES, T, Z, W8, LOW, num, say, walkRef, type WalkStep } from "./room-state.ts";
+import { errorHint, esc } from "./hint.ts";
 import { canvas, camera, draw, renderer, scene } from "./room-render.ts";
 import { lambert, shade, TV_Y } from "./room-materials.ts";
 import { ambient, bulb, bulbLight, drift, halo, motes } from "./room-shell.ts";
@@ -55,15 +41,15 @@ function hintText(): void {
     return;
   }
   const hovered = S.chars[T.hover];
-  const credit = `${usd(coinBox?.credit() ?? 0)} USDC`;
+  const credit = `${usd(coinBox.credit())} USDC`;
   const meter = Z.error
-    ? `${b("THE BOX SPAT IT OUT")} ${esc(Z.error)}`
+    ? `${b("COIN BOX NOTICE")} ${esc(Z.error)}`
     : Z.pick
       ? COINS.map((c, i) => `<button data-coin="${c}">${b(String(i + 1))} ${c} USDC</button>`).join(
           " ",
         )
       : Z.at === "sticker"
-        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox?.address ?? ""}</span>`
+        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox.address() ?? ""}</span>`
         : Z.at !== null && Z.hover === "slot"
           ? b("COIN DIAL")
           : Z.at !== null && Z.hover === "lock"
@@ -77,31 +63,48 @@ function hintText(): void {
     h.innerHTML = Z.at === null ? meter : `${meter} <span class="hint-key">ESC</span>`;
     return;
   }
+  const error = errorHint(S);
+  if (error !== null) {
+    h.innerHTML = error;
+    return;
+  }
   h.innerHTML = hovered
     ? `${b(num(hovered.id + 1))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
         ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY${W8.qrUri === "" ? "" : ` <a href="${esc(W8.qrUri)}" target="_blank" rel="noopener">OPEN LINK</a> <button data-copy-link>COPY LINK</button>`}`
-          : W8.fail !== ""
-            ? `NOT IN · TRY AGAIN ${b("ENTER")}`
-            : W8.step === "done" && S.noteKind === "bad"
-              ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
-              : W8.step === "done"
-                ? "WARMING UP"
-                : `NEXT ${b("ENTER")}`
-      : S.phase === "bet" && !S.bet && S.poolId === null
-            ? "OPENING THE BOOK"
-            : S.phase === "bet" && !S.bet && S.credit > 0
-            ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
-            : S.claim
-              ? `COLLECT ${b("OK")}`
-              : S.phase === "over"
-                ? `AGAIN ${b("OK")}`
-                : S.credit <= 0
-                  ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                  : `NEXT ${b("N")}`;
+          ? `SCAN WITH ${b("WORLD APP")}${W8.qrUri === "" ? "" : ` <button data-copy-link>COPY LINK</button>`}`
+          : W8.step === "wallet"
+            ? `${b("VIEWER REGISTERED")} · OPENING YOUR WALLET`
+            : W8.down !== ""
+              ? `${b("ENTRY IS DOWN")} ${esc(W8.down)}`
+              : W8.fail !== ""
+                ? `${b("ENTRY INCOMPLETE")} ${esc(W8.fail)} · TRY AGAIN ${b("ENTER")}`
+                : W8.step === "done" && S.noteKind === "bad"
+                  ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
+                  : W8.step === "done"
+                    ? "TUNING IN"
+                    : `NEXT ${b("ENTER")}`
+      : S.phase === "waiting"
+        ? S.startError === null
+          ? "STARTING THE PROGRAMME"
+          : `THE PROGRAMME DID NOT START · TRY AGAIN ${b("OK")}`
+        : S.phase === "bet" && !S.bet && S.poolId === null
+          ? "OPENING THE BOOK"
+          : S.pending === "bet"
+            ? "RECORDING YOUR BET…"
+            : S.pending === "claim"
+              ? "COLLECTING…"
+              : S.phase === "bet" && !S.bet && S.credit > 0
+                ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+                : S.claim
+                  ? `COLLECT ${b("OK")}`
+                  : S.phase === "over"
+                    ? `NEXT PROGRAMME ${b("OK")}`
+                    : S.credit <= 0
+                      ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                      : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -114,7 +117,10 @@ function press(id: string): void {
   led.material.color.set(COL.blood);
   setTimeout(() => led.material.color.set(COL.bloodDeep), 120);
   if (S.phase === "gate") return;
-  if (id === "clr") {
+  if (/^\d$/.test(id)) {
+    T.held = -1;
+    T.buf = (T.buf.length >= 2 ? "" : T.buf) + id;
+  } else if (id === "clr") {
     T.buf = "";
     T.held = -1;
   } else if (id === "ok") ok();
@@ -126,10 +132,10 @@ function press(id: string): void {
 }
 function ok(): void {
   if (S.claim) {
+    if (!canCollect(S)) return;
     $("#h-claim").click();
-    sfx.coins(14);
-    say("Collected.");
-  } else if (S.phase === "over") $("#h-reset").click();
+  } else if (S.phase === "over" || (S.phase === "waiting" && S.startError !== null))
+    $("#h-reset").click();
 }
 let holdTimer = 0;
 const stake = (): number => STAKES[T.stake] ?? 0;
@@ -138,14 +144,18 @@ const pressKey = (id: string, z: number): void => {
   if (k) k.position.z = z;
 };
 function holdStart(side: number): void {
-  if (S.phase !== "bet" || S.bet || holdTimer) return;
+  if (S.phase !== "bet" || S.bet || S.pending !== null || holdTimer) return;
   if (S.poolId === null) {
     sfx.deny();
     return say("Opening the book.");
   }
   if (stake() > S.credit) {
     sfx.deny();
-    return say(S.credit <= 0 ? "No stake. Feed the coin box." : "Not enough for that stake.");
+    return say(
+      S.credit <= 0
+        ? "Add funds to the coin box to bet. Watching is free."
+        : "Your balance is below that stake.",
+    );
   }
   T.hold = side;
   T.holdN = 0;
@@ -158,7 +168,7 @@ function holdStart(side: number): void {
       sfx.bet();
       S.side = side;
       S.amt = stake();
-      $("#h-bet").click();
+      if (canBet(S)) $("#h-bet").click();
       hintText();
     }
   }, 100);
@@ -171,43 +181,48 @@ function holdEnd(): void {
   pressKey("A", 0.022);
   pressKey("B", 0.022);
 }
-let coinBox: CoinBox | null = null;
 let coinBoxError = "";
-let chainCredit = 0;
-async function mountCoinBox(): Promise<void> {
-  if (coinBox !== null) return;
-  const wallet = await getGameWallet();
+const coinBox = createCoinBox(
+  (usdc) => {
+    S.credit = usdc;
+    hintText();
+  },
+  say,
+  (message) => {
+    Z.error = message;
+    Z.at ??= "meter";
+    hintText();
+  },
+);
+coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
+shade(coinBox.group);
+scene.add(coinBox.group);
+let coinBoxMount: Promise<void> | null = null;
+async function connectCoinBox(wallet: GameWallet): Promise<void> {
   setWallet(wallet);
   const { coinType } = await loadBettingIds();
-  void refreshClaimable().catch((err: unknown) => {
-    console.error(
-      `claimable after wallet mount failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  coinBox.connect(wallet, coinType);
+}
+async function mountCoinBox(wallet: GameWallet): Promise<void> {
+  coinBoxMount ??= connectCoinBox(wallet).catch((err: Error) => {
+    coinBoxMount = null;
+    throw err;
   });
-  coinBox = createCoinBox(
-    wallet,
-    coinType,
-    (usdc) => {
-      S.credit = usdc;
-      chainCredit = usdc;
-      hintText();
-    },
-    say,
-    (message) => {
-      Z.error = message;
-      Z.at ??= "meter";
-      hintText();
-    },
-  );
-  coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
-  shade(coinBox.group);
-  scene.add(coinBox.group);
+  await coinBoxMount;
+  const address = coinBox.address();
+  if (address !== wallet.address) {
+    throw new Error(
+      `The coin box is open for wallet ${address}, not yours (${wallet.address}). Reload the page to open yours.`,
+    );
+  }
 }
 if (hasWalletSession()) {
-  void mountCoinBox().catch((err: Error) => {
-    coinBoxError = err instanceof Error ? err.message : String(err);
-    console.error(`Shinami wallet failed: ${coinBoxError}`);
-  });
+  void getGameWallet()
+    .then(mountCoinBox)
+    .catch((err: Error) => {
+      coinBoxError = err.message;
+      console.error(`Shinami wallet failed: ${coinBoxError}`);
+    });
 }
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
@@ -245,10 +260,8 @@ const pickAt = (e: MouseEvent): Pick | null => {
     .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
   if (hit === undefined) return null;
   const o = hit.object;
-  if (o === paper)
-    return S.phase === "gate" && W8.step === "read" && $("#gate").hidden ? { at: "paper" } : null;
-  if (coinBox !== null && within(o, coinBox.group))
-    return { at: "coin", part: coinBox.partAt(hit) };
+  if (o === paper) return S.phase === "gate" && W8.step === "read" ? { at: "paper" } : null;
+  if (within(o, coinBox.group)) return { at: "coin", part: coinBox.partAt(hit) };
   const id: string | undefined = o.userData.keyId;
   if (id !== undefined) return { at: "key", id };
   if (S.phase === "gate" || Z.at !== null) return null;
@@ -258,7 +271,7 @@ const pickAt = (e: MouseEvent): Pick | null => {
 };
 const WALK: WalkStep[] = [
   {
-    say: "THE TV. EVERYTHING AIRS HERE.",
+    say: "YOUR SET RECEIVES ONE CHANNEL. RECEPTION IS GOOD HERE.",
     view: () => [
       tv.localToWorld(new THREE.Vector3(-0.06, 0.02, 1.35)),
       tv.localToWorld(new THREE.Vector3(-0.06, 0, 0.38)),
@@ -266,15 +279,19 @@ const WALK: WalkStep[] = [
     remote: false,
   },
   {
-    say: "THE RESIDENTS. PULL A TAPE.",
+    say: "THE RESIDENTS. PULL A TAPE. WE KEEP THEIR RECORDS UP TO DATE.",
     view: () => [
       shelf.localToWorld(new THREE.Vector3(0, 1.28, 1.05)),
       shelf.localToWorld(new THREE.Vector3(0, 1.22, 0.1)),
     ],
     remote: false,
   },
-  { say: "THE METER. FEED IT TO BET.", view: () => coinBox?.view("meter") ?? null, remote: false },
-  { say: "HOLD A OR B. BET ON WHO WALKS OUT.", view: () => null, remote: true },
+  {
+    say: "WATCHING IS FREE. THE METER IS FOR BETS.",
+    view: () => coinBox.view("meter"),
+    remote: false,
+  },
+  { say: "EXPECTING A SURVIVOR? HOLD A OR B TO BET.", view: () => null, remote: true },
 ];
 function walkTo(n: number): void {
   walkRef.n = n < WALK.length ? n : -1;
@@ -293,7 +310,7 @@ function stepBack(): void {
   hintText();
 }
 function insertCoin(usdc: number): void {
-  coinBox?.insert(usdc);
+  coinBox.insert(usdc);
   zoom("meter");
 }
 function useCoinPart(part: CoinBoxPart): void {
@@ -302,11 +319,11 @@ function useCoinPart(part: CoinBoxPart): void {
   else if (part === "sticker") zoom("sticker");
   else if (part === "lock") {
     zoom("meter");
-    coinBox?.open();
+    coinBox.open();
   } else zoom(Z.at ?? "meter", Z.pick);
 }
 function openCoinKey(part: CoinBoxPart): void {
-  if (coinBox === null) {
+  if (coinBox.address() === null) {
     say(coinBoxError === "" ? "The coin box is still opening." : coinBoxError);
     return;
   }
@@ -387,7 +404,6 @@ canvas.addEventListener("pointerdown", (e) => {
   if (pick.at === "shelf") {
     sfx.tape();
     T.buf = "";
-    T.reveal = -1;
     T.held = pick.slot?.id ?? -1;
     T.hover = -1;
     return hintText();
@@ -400,7 +416,7 @@ addEventListener(
   "keydown",
   (e) => {
     const waiverUp = S.phase === "gate" && W8.step !== "done";
-    if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
+    if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
       else if (k === "enter") nextGateStep();
@@ -474,7 +490,7 @@ renderer.setAnimationLoop(() => {
   const dark = waiver && W8.step === "dark";
   if (waiver) {
     camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
-    const up = W8.step === "scan" ? 1 : 0;
+    const up = W8.step === "scan" || W8.step === "wallet" ? 1 : 0;
     gaze = LOW ? up : gaze + (up - gaze) * 0.06;
     camera.lookAt(look.x * 0.06, 0.57 + gaze * (TV_Y - 0.55) - look.y * 0.04, -0.86 - gaze * 0.54);
     snap = true;
@@ -483,7 +499,7 @@ renderer.setAnimationLoop(() => {
     if (walkView !== null) {
       wantEye.copy(walkView[0]);
       wantAim.copy(walkView[1]);
-    } else if (Z.at !== null && coinBox !== null) {
+    } else if (Z.at !== null) {
       const [e2, a2] = coinBox.view(Z.at);
       wantEye.copy(e2);
       wantAim.copy(a2);
@@ -512,7 +528,7 @@ renderer.setAnimationLoop(() => {
   remote.visible = !waiver && Z.at === null && (walkRef.n < 0 || raise === 1);
   updateTape(performance.now());
   updateHover();
-  if (coinBox !== null) coinBox.group.visible = !waiver;
+  coinBox.group.visible = !waiver;
   cable.visible = !waiver;
   $("#demo-room").hidden = S.phase === "gate";
   $("#demo-gate").hidden = S.phase !== "gate" || dark;
@@ -579,6 +595,11 @@ hooks.render = () => {
     PHASE_SOUND.get(S.phase)?.();
   }
   hintText();
+};
+
+hooks.collected = () => {
+  sfx.coins(14);
+  say("Collected.");
 };
 
 waiverHooks.hintText = hintText;

@@ -1,4 +1,3 @@
-/** Odds label for the bet TV. Net of fee on the losing side (matches Move / TS payout). */
 export function formatPoolOdds(
   pool: [number, number],
   side: number,

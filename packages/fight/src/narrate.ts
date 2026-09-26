@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
 
 import { FightError, type NarrationConfig } from "./env.js";
 import {
@@ -14,10 +15,14 @@ import {
   rosterAfterFight,
   type RandomInt,
 } from "./rotation.js";
-import type { FightInput, NarrationModelTurn, NarrationTurn } from "./types.js";
+import {
+  narrationModelTurnSchema,
+  type FightInput,
+  type NarrationModelTurn,
+  type NarrationTurn,
+} from "./types.js";
 import { validateFightInput, validateNarrationTurn } from "./validate.js";
 
-/** Model output for one fight. Next opponent is chosen by rotation, not the model. */
 export type { NarrationModelTurn };
 
 export const narrationSchema = {
@@ -212,7 +217,7 @@ function anthropicClient(config: NarrationConfig): NarrationProviderClient {
           "Anthropic returned no parsed_output for the narration schema.",
         );
       }
-      return parsed as NarrationModelTurn;
+      return parsed;
     },
   };
 }
@@ -227,7 +232,7 @@ function geminiClient(config: NarrationConfig): NarrationProviderClient {
         config: {
           systemInstruction: system,
           responseMimeType: "application/json",
-          responseJsonSchema: schema as Record<string, unknown>,
+          responseJsonSchema: schema,
         },
       });
       const text = response.text;
@@ -243,7 +248,13 @@ function geminiClient(config: NarrationConfig): NarrationProviderClient {
           { cause: err },
         );
       }
-      return parsed as NarrationModelTurn;
+      const turn = narrationModelTurnSchema.safeParse(parsed);
+      if (!turn.success) {
+        throw new FightError(
+          `Gemini narration output does not match the narration schema: ${z.prettifyError(turn.error)}`,
+        );
+      }
+      return turn.data;
     },
   };
 }

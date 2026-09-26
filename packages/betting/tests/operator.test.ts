@@ -102,6 +102,12 @@ describe("operator", () => {
     assert.deepEqual(chain.calls, []);
   });
 
+  it("treats cancelling a battle whose pool never opened as done", async () => {
+    const chain = fakeChain(null);
+    await chain.operator.cancel(battleId);
+    assert.deepEqual(chain.calls, []);
+  });
+
   it("refuses to cancel a settled pool", async () => {
     const chain = fakeChain(settledPool(0n));
     await assert.rejects(chain.operator.cancel(battleId), /cannot cancel/u);

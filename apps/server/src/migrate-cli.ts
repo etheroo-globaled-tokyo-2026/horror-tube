@@ -18,8 +18,8 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
+main().catch((cause: unknown) => {
+  const message = cause instanceof Error ? cause.message : String(cause);
   console.error(message);
   process.exitCode = 1;
 });

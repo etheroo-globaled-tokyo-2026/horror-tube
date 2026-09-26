@@ -4,8 +4,8 @@ import { extname, resolve, sep } from "node:path";
 
 import * as v from "valibot";
 
-import { StoreWriteError, type GameLoop } from "./game/loop.js";
-import { HttpError } from "./http-error.js";
+import { StartRefusedError, StoreWriteError, type GameLoop } from "./game/loop.js";
+import { HttpError, type HttpErrorBody } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
@@ -22,9 +22,7 @@ export type GameServerOptions = {
   wallet?: WalletHandler;
   worldId?: WorldIdHandlerDeps;
   game?: GameLoop;
-  /** HMAC pepper for the waiver session. Required for POST /playback-start. */
   sessionPepper?: string;
-  /** Public Sui betting IDs for GET /betting. */
   betting?: {
     packageId: string;
     houseId: string;
@@ -34,23 +32,24 @@ export type GameServerOptions = {
   };
 };
 
-const CONTENT_TYPES: Record<string, string> = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".mp4": "video/mp4",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-};
+const CONTENT_TYPES = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".mp4", "video/mp4"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".webp", "image/webp"],
+  [".woff2", "font/woff2"],
+]);
 
 export type JsonBody =
   | { ok: true }
   | { ok: false; error: string }
-  | { error: string }
+  | { ok: false; error: string; code: "bout_open" | "start_failed" }
+  | HttpErrorBody
   | { session: string }
   | { address: string }
   | { digest: string };
@@ -121,8 +120,8 @@ function serveStatic(res: ServerResponse, staticDir: string, urlPath: string): v
     sendNotFound(res);
     return;
   }
-  const type = CONTENT_TYPES[extname(resolved.path).toLowerCase()] ?? "application/octet-stream";
-  // Open first; only send 200 after the fd is open so open/read errors can be 500.
+  const type =
+    CONTENT_TYPES.get(extname(resolved.path).toLowerCase()) ?? "application/octet-stream";
   const stream = createReadStream(resolved.path);
   stream.once("open", () => {
     if (res.headersSent || res.writableEnded) {
@@ -188,7 +187,6 @@ function readBearerToken(req: IncomingMessage): string {
   return token;
 }
 
-/** Resolve the waiver session to a nullifier, or answer the request and return null. */
 function sessionNullifier(
   req: IncomingMessage,
   res: ServerResponse,
@@ -313,6 +311,24 @@ async function handleRequest(
         sendState(res, opts.game.getState());
         return;
       }
+      if (method === "POST" && path === "/start") {
+        if (sessionNullifier(req, res, opts.sessionPepper) === null) return;
+        try {
+          await opts.game.start();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (err instanceof StartRefusedError) {
+            console.warn(`POST /start refused: ${message}`);
+            sendJson(res, 409, { ok: false, error: message, code: "bout_open" });
+            return;
+          }
+          console.error(`POST /start failed: ${message}`);
+          sendJson(res, 500, { ok: false, error: message, code: "start_failed" });
+          return;
+        }
+        sendState(res, opts.game.getState());
+        return;
+      }
       if (method === "GET" && path === "/betting") {
         const cfg = opts.betting;
         if (cfg === undefined) {
@@ -363,9 +379,7 @@ async function handleRequest(
 
     sendNotFound(res);
   } catch (err) {
-    console.error(
-      `request handler failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    console.error(`request handler failed: ${err instanceof Error ? err.message : String(err)}`);
     sendInternalError(res);
   }
 }

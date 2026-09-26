@@ -1,4 +1,4 @@
-/** Same-origin RoundState client (docs/game-loop.md). No second host. */
+import * as v from "valibot";
 
 import type { RoundState } from "../server/src/types.ts";
 
@@ -8,33 +8,88 @@ export type ServerRoundState = RoundState;
 
 export type RoundListener = (state: ServerRoundState) => void;
 
-function apiUrl(path: string): string {
-  // Same origin as the App Platform app (or Vite proxy in local dev).
-  return path.startsWith("/") ? path : `/${path}`;
+const NumberPair = v.tuple([v.number(), v.number()]);
+
+const RoundStateSchema = v.object({
+  round: v.number(),
+  phase: v.picklist(["waiting", "bet", "fight", "settle", "over"]),
+  endsAt: v.nullable(v.number()),
+  champion: v.nullable(v.number()),
+  fighters: v.nullable(NumberPair),
+  battleId: v.nullable(v.string()),
+  poolId: v.nullable(v.string()),
+  pool: NumberPair,
+  winner: v.nullable(v.picklist([0, 1])),
+  videoUrl: v.nullable(v.string()),
+  videoStartedAt: v.nullable(v.number()),
+  bettingClosesAt: v.nullable(v.number()),
+  frameUrl: v.nullable(v.string()),
+  error: v.nullable(v.string()),
+  bots: v.array(
+    v.object({
+      address: v.string(),
+      bet: v.nullable(
+        v.object({ side: v.picklist([0, 1]), units: v.number(), digest: v.string() }),
+      ),
+      error: v.nullable(v.string()),
+    }),
+  ),
+  chars: v.array(
+    v.object({ id: v.number(), alive: v.boolean(), kills: v.number(), damage: v.number() }),
+  ),
+}) satisfies v.GenericSchema<RoundState>;
+
+const SessionPostResponse = v.object({
+  ok: v.optional(v.boolean()),
+  error: v.optional(v.string()),
+  code: v.optional(v.string()),
+  state: v.optional(RoundStateSchema),
+});
+
+export class SessionPostError extends Error {
+  constructor(
+    readonly path: string,
+    readonly status: number,
+    readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SessionPostError";
+  }
+}
+
+function parseRoundState(source: string, json: string): ServerRoundState {
+  const parsed = v.safeParse(RoundStateSchema, JSON.parse(json));
+  if (!parsed.success) {
+    throw new Error(`${source} sent an invalid RoundState: ${v.summarize(parsed.issues)}`);
+  }
+  return parsed.output;
 }
 
 export async function fetchRoundState(): Promise<ServerRoundState> {
-  const res = await fetch(apiUrl("/round"));
+  const res = await fetch("/round");
   if (!res.ok) {
-    throw new Error(
-      `GET /round failed: HTTP ${String(res.status)} ${res.statusText}`,
-    );
+    throw new Error(`GET /round failed: HTTP ${String(res.status)} ${res.statusText}`);
   }
-  return (await res.json()) as ServerRoundState;
+  return parseRoundState("GET /round", await res.text());
 }
 
 export function connectRoundEvents(onState: RoundListener): () => void {
-  const source = new EventSource(apiUrl("/events"));
-  const onRound = (ev: MessageEvent<string>): void => {
-    const state = JSON.parse(ev.data) as ServerRoundState;
-    onState(state);
+  const source = new EventSource("/events");
+  const onRound = (ev: Event): void => {
+    if (!(ev instanceof MessageEvent)) {
+      throw new Error(
+        `EventSource /events "round" delivered a ${ev.constructor.name}, not a MessageEvent.`,
+      );
+    }
+    onState(parseRoundState("EventSource /events round", String(ev.data)));
   };
-  source.addEventListener("round", onRound as EventListener);
+  source.addEventListener("round", onRound);
   source.onerror = () => {
     console.error("EventSource /events error", source.readyState);
   };
   return () => {
-    source.removeEventListener("round", onRound as EventListener);
+    source.removeEventListener("round", onRound);
     source.close();
   };
 }
@@ -48,12 +103,12 @@ function storedSession(store: SessionStore): string {
 }
 
 async function postWithSession(
-  path: "/playback-start",
-  payload: { battleId: string },
+  path: "/start" | "/playback-start",
+  payload: Record<string, never> | { battleId: string },
   store: SessionStore,
 ): Promise<ServerRoundState> {
   const session = storedSession(store);
-  const res = await fetch(apiUrl(path), {
+  const res = await fetch(path, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -61,13 +116,18 @@ async function postWithSession(
     },
     body: JSON.stringify(payload),
   });
-  const body = (await res.json()) as {
-    ok?: boolean;
-    error?: string;
-    state?: ServerRoundState;
-  };
-  if (!res.ok || body.ok === false) {
+  const parsed = v.safeParse(SessionPostResponse, await res.json());
+  if (!parsed.success) {
     throw new Error(
+      `POST ${path} sent an unexpected body with HTTP ${String(res.status)}: ${v.summarize(parsed.issues)}`,
+    );
+  }
+  const body = parsed.output;
+  if (!res.ok || body.ok === false) {
+    throw new SessionPostError(
+      path,
+      res.status,
+      body.code,
       body.error ?? `POST ${path} failed: HTTP ${String(res.status)}`,
     );
   }
@@ -77,7 +137,10 @@ async function postWithSession(
   return body.state;
 }
 
-/** Tell the server this room's fight video started playing; it stores betting_closes_at. */
+export function postStart(store: SessionStore = localStorage): Promise<ServerRoundState> {
+  return postWithSession("/start", {}, store);
+}
+
 export function postPlaybackStart(
   battleId: string,
   store: SessionStore = localStorage,

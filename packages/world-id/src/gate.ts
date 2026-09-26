@@ -2,6 +2,7 @@ import { loadWorldIdEnv } from "./env.js";
 import { NullifierAlreadyUsedError, type NullifierStore } from "./nullifier-store.js";
 import {
   parseProofOfHumanResult,
+  type IdkitResultJson,
   verifyProofOfHuman,
   type VerifiedHuman,
   type VerifyFetch,
@@ -10,7 +11,7 @@ import {
 export async function claimHumanAction(args: {
   action: string;
   signal: string | null;
-  idkitResult: unknown;
+  idkitResult: IdkitResultJson;
   nullifierStore: NullifierStore;
   fetch: VerifyFetch;
   env?: NodeJS.ProcessEnv;

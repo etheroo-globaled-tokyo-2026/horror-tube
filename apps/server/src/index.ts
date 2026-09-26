@@ -2,44 +2,60 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { cryptoRandomInt } from "@horror-tube/fight/rotation";
-import { requiredEnv } from "@horror-tube/betting";
+import { createClient, getPool, requiredEnv } from "@horror-tube/betting";
 import { loadWorldIdEnv } from "@horror-tube/world-id";
-import { createBattleBettingPorts, readHouseFeeBps } from "./battle-betting.js";
+import { createBattleBettingPorts, readHouseTerms } from "./battle-betting.js";
 import { assertDatabaseReady } from "./db/assert-database-ready.js";
+import { migrate } from "./db/migrate.js";
 import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { PostgresRoundStore } from "./db/rounds.js";
+import { PostgresPoolLedger } from "./db/sui-pools.js";
 import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
 import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
 import { createFightJobRunner } from "./fight-job.js";
-import {
-  readGameLoopConfig,
-  readRosterEnsLabels,
-} from "./game/config.js";
+import { readGameLoopConfig, readRosterEnsLabels } from "./game/config.js";
 import { GameLoop } from "./game/loop.js";
+import { createHouseBotChains, readHouseBotStakeUnits } from "./house-bot-chain.js";
 import { loadLivingCardsFromEns } from "./load-living-cards.js";
 import { createGameServer, listenGameServer } from "./server.js";
+import {
+  recordPools,
+  releaseLivePool,
+  sweepStrandedPools,
+  type PoolChain,
+} from "./stranded-pools.js";
 import { createWalletHandlerFromEnv } from "./wallet-handler.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 loadRepoDotenv(join(repoRoot, ".env"));
 
-// Fail closed before listen: the waiver gate needs a signed World ID request.
 loadWorldIdEnv();
 
 const port = readGamePort();
 const staticDir = readStaticDir();
 const host = "0.0.0.0";
-const battleBetting = createBattleBettingPorts();
+const suiPoolTimeoutMs = 20_000;
+const suiOperator = createBattleBettingPorts();
+const houseBots = {
+  chains: createHouseBotChains(suiOperator.config, suiPoolTimeoutMs),
+  stakeUnits: readHouseBotStakeUnits(),
+};
 const fightJob = createFightJobRunner({
   loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
 });
 
 await assertDatabaseReady();
 console.log("database: verified TLS connection ok");
+const migrations = await migrate();
+console.log(
+  `database: migrations applied [${migrations.applied.join(", ")}], ${String(migrations.skipped.length)} already applied`,
+);
 
 const pg = createPgPool();
 const battleQueueStore = new PostgresBattleQueueStore(pg);
+const poolLedger = new PostgresPoolLedger(pg);
+const battleBetting = recordPools(suiOperator, poolLedger);
 const chainWritePorts = createEnsChainWritePorts(process.env, {
   settle: (battleId, side) => battleBetting.settle(battleId, side),
 });
@@ -56,16 +72,30 @@ const game = new GameLoop({
   chainWritePorts,
   battleBetting,
   fightJob,
+  houseBots,
 });
-await game.startFreshBout();
-console.log(
-  `game: fresh bout opened fighters=${JSON.stringify(game.getState().fighters)}`,
-);
 
 const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
-const feeBps = await readHouseFeeBps(battleBetting.config);
-console.log(`betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)}`);
+const { feeBps, minBet } = await readHouseTerms(battleBetting.config);
+console.log(
+  `betting: house ${battleBetting.config.houseId} fee_bps=${String(feeBps)} min_bet=${String(minBet)}`,
+);
+if (houseBots.stakeUnits < minBet) {
+  throw new Error(
+    `HOUSE_BOT_STAKE_UNITS (${String(houseBots.stakeUnits)}) is below the House min_bet (${String(minBet)}) on BETTING_HOUSE_ID=${battleBetting.config.houseId}. Raise it in .env. See .env.example.`,
+  );
+}
+console.log(
+  `house bots: ${houseBots.chains.map((b) => b.address).join(",")} stake_units=${String(houseBots.stakeUnits)}`,
+);
+
+const suiClient = createClient(battleBetting.config);
+const suiPools: PoolChain = {
+  readPool: (poolId) => getPool(suiClient, poolId),
+  cancel: (battleId) => suiOperator.cancelBattle(battleId),
+};
+await sweepStrandedPools(suiPools, poolLedger, suiPoolTimeoutMs);
 
 const bettingPublic = {
   packageId: battleBetting.config.packageId,
@@ -96,7 +126,7 @@ await listenGameServer(server, {
 
 const tickMs = 250;
 let tickBusy = false;
-setInterval(() => {
+const tickTimer = setInterval(() => {
   if (tickBusy) {
     return;
   }
@@ -112,8 +142,26 @@ setInterval(() => {
     });
 }, tickMs);
 
+let stopping = false;
+function shutDown(signal: NodeJS.Signals): void {
+  if (stopping) return;
+  stopping = true;
+  clearInterval(tickTimer);
+  console.log(`${signal}: game loop stopped; releasing the live Sui pool before exit.`);
+  releaseLivePool(game.getState(), suiPools, poolLedger, suiPoolTimeoutMs).then(
+    () => process.exit(0),
+    (cause: unknown) => {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`Shutdown: ${message}. The next startup sweep retries it.`);
+      process.exit(1);
+    },
+  );
+}
+process.once("SIGTERM", shutDown);
+process.once("SIGINT", shutDown);
+
 console.log(
   `horror-tube server listening on http://${host}:${String(port)}` +
     (staticDir === undefined ? " (API only; no STATIC_DIR)" : ` (static: ${staticDir})`) +
-    ` · game loop roster=${String(game.ensLabels.length)}`,
+    ` · game loop phase=${game.getState().phase} (a verified POST /start opens the first bout) roster=${String(game.ensLabels.length)}`,
 );

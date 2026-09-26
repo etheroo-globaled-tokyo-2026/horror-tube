@@ -174,7 +174,7 @@ variable "wallet_secret_pepper" {
 }
 
 variable "world_id_environment" {
-  description = "WORLD_ID_ENVIRONMENT for the app (production or staging). Set via TF_VAR_world_id_environment from .env. Required; no default."
+  description = "WORLD_ID_ENVIRONMENT for the app (production, staging, or sandbox). Set via TF_VAR_world_id_environment from .env. Required; no default."
   type        = string
 }
 
@@ -225,6 +225,17 @@ variable "sui_operator_private_key" {
   description = "SUI_OPERATOR_PRIVATE_KEY (suiprivkey1…). Server-only. Set via TF_VAR_sui_operator_private_key from .env. Required; no default. Never commit."
   type        = string
   sensitive   = true
+}
+
+variable "house_bot_sui_private_keys" {
+  description = "HOUSE_BOT_SUI_PRIVATE_KEYS: comma-separated suiprivkey1… keys, one per house bot. Server-only. Set via TF_VAR_house_bot_sui_private_keys from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "house_bot_stake_units" {
+  description = "HOUSE_BOT_STAKE_UNITS: house bot stake per bout in USDC base units. Set via TF_VAR_house_bot_stake_units from .env. Required; no default."
+  type        = string
 }
 
 variable "betting_close_after_video_start_seconds" {

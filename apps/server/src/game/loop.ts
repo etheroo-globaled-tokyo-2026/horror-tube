@@ -8,18 +8,17 @@ import {
   type BattleQueueStore,
   type ChainWritePorts,
 } from "@horror-tube/fight/battle-queue";
-import {
-  nextRotationPair,
-  type RandomInt,
-} from "@horror-tube/fight/rotation";
+import { nextRotationPair, type RandomInt, type RosterEntry } from "@horror-tube/fight/rotation";
 
 import { normalizeSuiAddress } from "@mysten/sui/utils";
+import { randomUUID } from "node:crypto";
 
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
 import type { RoundStore } from "../db/rounds.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
+import { botSide, type HouseBotChain, type HouseBots } from "./house-bot.js";
 
 export type CharRuntime = {
   id: number;
@@ -31,38 +30,57 @@ export type CharRuntime = {
 
 export type GameLoopOptions = {
   config: GameLoopConfig;
-  /** Sorted ENS labels; numeric RoundState ids are indexes into this list. */
   ensLabels: string[];
   ensStatuses: string[];
   now?: () => number;
-  /**
-   * Random draws for fresh bout and stage 2+ challenger. Tests inject a pinned source.
-   */
   randomInt?: RandomInt;
   battleQueueStore: BattleQueueStore;
-  /** Seasons. Vote/rounds/tallies tables are unused. */
   roundStore: RoundStore;
   chainWritePorts: ChainWritePorts;
-  /** Sui betting operator (openPool / cancel / close / settle). Bets go through /tx. */
   battleBetting: BattleBettingPorts;
-  /**
-   * Starts when betting opens. Calls setOutcome / setVideoReady on success,
-   * failVideo on failure. Tests inject a mock; production uses createFightJobRunner.
-   */
   fightJob: FightJobRunner;
+  houseBots: HouseBots;
 };
 
 type Listener = (state: RoundState) => void;
+type ChainRetry = { retryAt: number; delayMs: number };
+type BotRuntime = {
+  chain: HouseBotChain;
+  betTriedFor: string | null;
+  bet: { battleId: string; side: 0 | 1; units: bigint; digest: string } | null;
+  claimedFor: string | null;
+  claimRetry: ChainRetry | null;
+  error: string | null;
+};
 
-/** A Postgres write the round depends on failed; nothing was stored or counted. */
+const CHAIN_RETRY_FIRST_MS = 5_000;
+const CHAIN_RETRY_MAX_MS = 60_000;
+
+const due = (retry: ChainRetry | null, now: number): boolean =>
+  retry === null || now >= retry.retryAt;
+
+const errorText = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+export class StartRefusedError extends Error {
+  constructor(reason: string) {
+    super(`start refused: ${reason}.`);
+    this.name = "StartRefusedError";
+  }
+}
+
+function nextChainRetry(now: number, previous: ChainRetry | null): ChainRetry {
+  const delayMs =
+    previous === null ? CHAIN_RETRY_FIRST_MS : Math.min(previous.delayMs * 2, CHAIN_RETRY_MAX_MS);
+  return { retryAt: now + delayMs, delayMs };
+}
+
 export class StoreWriteError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     this.name = "StoreWriteError";
   }
 }
-
-
 
 export function isAliveFromEnsStatus(ensLabel: string, status: string): boolean {
   if (status === "alive" || status === "") return true;
@@ -106,27 +124,29 @@ export class GameLoop {
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
+  private readonly bots: BotRuntime[];
+  private readonly botStakeUnits: bigint;
+  private botAction: Promise<void> | null = null;
   private readonly listeners = new Set<Listener>();
+  private readonly pendingCancels = new Map<string, ChainRetry>();
+  private cancelRetryInFlight = false;
 
   private chars: CharRuntime[];
   private round = 1;
-  private phase: Phase = "over";
+  private phase: Phase = "waiting";
   private endsAt: number | null = null;
   private champion: number | null = null;
   private seasonId: string | null = null;
+  private startInFlight = false;
   private fighters: [number, number] | null = null;
   private pool: [number, number] = [0, 0];
-  /** Sui pool battle id (UUID) while this bout's betting window is open. */
   private onChainBattleId: string | null = null;
-  /** Derived Sui pool object id after openPool succeeds. */
   private poolObjectId: string | null = null;
   private winner: 0 | 1 | null = null;
   private videoUrl: string | null = null;
-  /** Last-frame CDN URL for the next bout's image-to-video seed. */
   private frameUrl: string | null = null;
   private error: string | null = null;
   private betOpenedAt: number | null = null;
-  /** Set only from a room's playback report; never from setVideoReady. */
   private videoStartedAt: number | null = null;
   private bettingClosesAt: number | null = null;
   private playbackStartWrite: Promise<void> | null = null;
@@ -137,14 +157,13 @@ export class GameLoop {
   private settleDamage = 0;
   private queuedAgentResultId: string | null = null;
   private settleInFlight = false;
-  /** Set when the bet phase ends, before the fight clock starts. */
+  private openRetry: ChainRetry | null = null;
+  private openInFlight = false;
   private bettingClosedGate = false;
-  /** Set when the fight's video duration has elapsed. */
   private playbackFinishedGate = false;
   private holdingCopyApplied = false;
   private lastPoolReadAt = 0;
   private poolReadInFlight = false;
-  /** Also the retry spacing for a failed closeBetting. */
   private static readonly POOL_READ_INTERVAL_MS = 2000;
 
   constructor(options: GameLoopOptions) {
@@ -168,6 +187,15 @@ export class GameLoop {
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
     this.fightJob = options.fightJob;
+    this.bots = options.houseBots.chains.map((chain) => ({
+      chain,
+      betTriedFor: null,
+      bet: null,
+      claimedFor: null,
+      claimRetry: null,
+      error: null,
+    }));
+    this.botStakeUnits = options.houseBots.stakeUnits;
     this.chars = buildChars(options.ensLabels, options.ensStatuses);
     this.initialAlive = this.chars.map((c) => c.alive);
   }
@@ -189,13 +217,21 @@ export class GameLoop {
       fighters: this.fighters,
       battleId: this.onChainBattleId,
       poolId: this.poolObjectId,
-      pool: [...this.pool] as [number, number],
+      pool: [this.pool[0], this.pool[1]],
       winner: this.phase === "settle" || this.phase === "over" ? this.winner : null,
       videoUrl: this.videoUrl,
       videoStartedAt: this.videoStartedAt,
       bettingClosesAt: this.bettingClosesAt,
       frameUrl: this.frameUrl,
       error: this.error,
+      bots: this.bots.map((bot) => ({
+        address: bot.chain.address,
+        bet:
+          bot.bet === null || bot.bet.battleId !== this.onChainBattleId
+            ? null
+            : { side: bot.bet.side, units: Number(bot.bet.units), digest: bot.bet.digest },
+        error: bot.error,
+      })),
       chars: this.chars.map((c) => ({
         id: c.id,
         alive: c.alive,
@@ -205,33 +241,20 @@ export class GameLoop {
     };
   }
 
-
-  /**
-   * Advance timers. Call on an interval from the HTTP process.
-   */
   async tick(now: number = this.now()): Promise<void> {
+    await this.retryPendingCancels(now);
     if (this.settleInFlight) {
       return;
     }
+    this.kickHouseBot(now);
     if (this.phase === "bet") {
+      await this.maybeOpenPool(now);
       await this.maybeRefreshPool(now);
       await this.maybeLeaveBet(now);
       return;
     }
     if (this.phase === "fight" && this.endsAt !== null && now >= this.endsAt) {
-      this.settleInFlight = true;
-      try {
-        await this.enterSettle(now);
-      } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        console.error(`ENS settle failed: ${message}`);
-        this.error = message;
-        this.endsAt = null;
-        this.emit();
-        throw cause;
-      } finally {
-        this.settleInFlight = false;
-      }
+      await this.runSettle(now);
       return;
     }
     if (this.phase === "settle" && this.endsAt !== null && now >= this.endsAt) {
@@ -247,10 +270,6 @@ export class GameLoop {
     return label;
   }
 
-  /**
-   * Gate for POST /tx bets: only the live pool, only during bet, and never at
-   * or after the stored betting_closes_at (checked before the phase flips).
-   */
   assertBetAllowed(poolId: string): void {
     this.assertBeforeCutoff("bet", this.now());
     if (this.phase !== "bet") {
@@ -268,11 +287,6 @@ export class GameLoop {
     }
   }
 
-  /**
-   * A room reports that this bout's video started playing. The first report
-   * fixes video_started_at and betting_closes_at on the battle_results row,
-   * then on the round. A failed write leaves both unset, so betting stays open.
-   */
   async reportPlaybackStart(battleId: string): Promise<void> {
     if (this.phase !== "bet") {
       throw new Error(
@@ -346,14 +360,7 @@ export class GameLoop {
     this.lastCloseBettingAt = 0;
   }
 
-  /**
-   * Update poolId and totals from the Sui pool for the live battle.
-   */
-  setPool(
-    battleId: string,
-    poolId: string,
-    totals: [number, number],
-  ): void {
+  setPool(battleId: string, poolId: string, totals: [number, number]): void {
     if (this.onChainBattleId !== battleId) {
       throw new Error(
         `setPool battleId ${JSON.stringify(battleId)} does not match live battle ${JSON.stringify(this.onChainBattleId)}.`,
@@ -364,10 +371,6 @@ export class GameLoop {
     this.emit();
   }
 
-  /**
-   * During bet, read on-chain pool totals every 2s into RoundState.pool.
-   * Tabs never poll Sui; the server is the only reader.
-   */
   private async maybeRefreshPool(now: number): Promise<void> {
     if (this.onChainBattleId === null || this.poolObjectId === null) {
       return;
@@ -375,10 +378,7 @@ export class GameLoop {
     if (this.poolReadInFlight) {
       return;
     }
-    if (
-      this.lastPoolReadAt !== 0 &&
-      now - this.lastPoolReadAt < GameLoop.POOL_READ_INTERVAL_MS
-    ) {
+    if (this.lastPoolReadAt !== 0 && now - this.lastPoolReadAt < GameLoop.POOL_READ_INTERVAL_MS) {
       return;
     }
     this.poolReadInFlight = true;
@@ -397,9 +397,7 @@ export class GameLoop {
       this.setPool(battleId, poolId, next);
     } catch (cause: unknown) {
       const detail = cause instanceof Error ? cause.message : String(cause);
-      console.error(
-        `Sui pool totals read failed (battleId=${battleId}): ${detail}`,
-      );
+      console.error(`Sui pool totals read failed (battleId=${battleId}): ${detail}`);
     } finally {
       this.poolReadInFlight = false;
     }
@@ -416,12 +414,6 @@ export class GameLoop {
     this.queuedAgentResultId = record.id;
   }
 
-  /**
-   * Video job seam: record the CDN video URL, playback duration (ms), and the
-   * last-frame CDN URL that seeds the next bout. Does not build a fal client.
-   * Ready is not playing: betting stays open until a room reports playback
-   * start and betting_closes_at passes.
-   */
   setVideoReady(url: string, durationMs: number, frameUrl: string): void {
     if (this.phase !== "bet") {
       throw new Error(
@@ -447,35 +439,22 @@ export class GameLoop {
     this.emit();
   }
 
-  /**
-   * Story/LLM seam: winner index into fighters and damage to the winner.
-   */
   setOutcome(winner: 0 | 1, damage: number): void {
     if (this.phase !== "bet") {
-      throw new Error(
-        `setOutcome is only allowed in the bet phase. Current phase: ${this.phase}.`,
-      );
+      throw new Error(`setOutcome is only allowed in the bet phase. Current phase: ${this.phase}.`);
     }
     if (winner !== 0 && winner !== 1) {
       throw new Error(`setOutcome winner must be 0 or 1. Got: ${String(winner)}.`);
     }
     if (!Number.isInteger(damage) || damage < 0) {
-      throw new Error(
-        `setOutcome damage must be an integer >= 0. Got: ${String(damage)}.`,
-      );
+      throw new Error(`setOutcome damage must be an integer >= 0. Got: ${String(damage)}.`);
     }
     this.outcome = { winner, damage };
   }
 
-  /**
-   * Mark the video job failed: clear the in-memory pool, refuse further bets,
-   * cancel the on-chain battle (claimable refunds), and leave `bet` for `over`. #114.
-   */
   async failVideo(message: string): Promise<void> {
     if (this.phase !== "bet") {
-      throw new Error(
-        `failVideo is only allowed in the bet phase. Current phase: ${this.phase}.`,
-      );
+      throw new Error(`failVideo is only allowed in the bet phase. Current phase: ${this.phase}.`);
     }
     if (message.trim() === "") {
       throw new Error("failVideo message must be non-empty.");
@@ -491,92 +470,128 @@ export class GameLoop {
     this.clearPlaybackCutoff();
     this.endsAt = null;
     this.phase = "over";
-    await this.markSeasonEnded();
     this.emit();
     if (battleId !== null) {
-      try {
-        await this.battleBetting.cancelBattle(battleId);
-        console.log(
-          `Sui betting cancelBattle battleId=${battleId} (video failed)`,
-        );
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        console.error(
-          `Sui betting cancelBattle failed after video error (battleId=${battleId}): ${detail}`,
-        );
+      await this.cancelPool(battleId, this.now());
+    }
+    await this.markSeasonEnded();
+  }
+
+  private async cancelPool(battleId: string, now: number): Promise<void> {
+    try {
+      await this.battleBetting.cancelBattle(battleId);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      const retry = nextChainRetry(now, this.pendingCancels.get(battleId) ?? null);
+      this.pendingCancels.set(battleId, retry);
+      console.error(
+        `Sui betting cancelBattle failed (battleId=${battleId}): ${detail}. Stakes stay locked until it lands; retrying in ${String(retry.delayMs)} ms.`,
+      );
+      return;
+    }
+    this.pendingCancels.delete(battleId);
+    console.log(`Sui betting cancelBattle battleId=${battleId}`);
+  }
+
+  private async retryPendingCancels(now: number): Promise<void> {
+    if (this.cancelRetryInFlight) return;
+    const due = [...this.pendingCancels]
+      .filter(([, retry]) => now >= retry.retryAt)
+      .map(([battleId]) => battleId);
+    if (due.length === 0) return;
+    this.cancelRetryInFlight = true;
+    try {
+      for (const battleId of due) {
+        await this.cancelPool(battleId, now);
       }
+    } finally {
+      this.cancelRetryInFlight = false;
     }
   }
 
-  async startFreshBout(): Promise<void> {
-    const openId = await this.roundStore.findOpenSeasonId();
-    if (openId !== null) {
-      console.warn(
-        `startFreshBout: ending leftover open season ${openId} from a previous process`,
-      );
-      await this.roundStore.endSeason(openId, null);
+  async start(): Promise<void> {
+    if (this.startInFlight) {
+      throw new StartRefusedError("a fresh bout is already starting");
     }
-    this.chars = this.ensLabels.map((ensLabel, id) => {
+    if (this.phase !== "waiting" && this.phase !== "over") {
+      throw new StartRefusedError(
+        `a bout is already open (phase=${this.phase}, round=${String(this.round)}, battleId=${String(this.onChainBattleId)})`,
+      );
+    }
+    this.startInFlight = true;
+    try {
+      await this.startFreshBout();
+    } finally {
+      this.startInFlight = false;
+    }
+  }
+
+  private async startFreshBout(): Promise<void> {
+    const leftover = await this.roundStore.endOpenSeasons();
+    if (leftover.length > 0) {
+      console.warn(`start: ended leftover open season(s) ${leftover.join(",")}`);
+    }
+    const chars = this.ensLabels.map((ensLabel, id): CharRuntime => {
       const alive = this.initialAlive[id];
       if (alive === undefined) {
         throw new Error(
-          `startFreshBout: missing initial alive flag for ${ensLabel} at index ${String(id)}.`,
+          `start: missing initial alive flag for ${ensLabel} at index ${String(id)}.`,
         );
       }
-      return {
-        id,
-        ensLabel,
-        alive,
-        kills: 0,
-        damage: 0,
-      };
+      return { id, ensLabel, alive, kills: 0, damage: 0 };
     });
-    this.champion = null;
-    this.round = 1;
-    this.winner = null;
-    this.fighters = null;
-    this.pool = [0, 0];
-    this.outcome = null;
-    this.videoUrl = null;
-    this.frameUrl = null;
-    this.error = null;
-    this.videoDurationMs = null;
-    this.betOpenedAt = null;
-    this.clearPlaybackCutoff();
-    this.queuedAgentResultId = null;
-    this.bettingClosedGate = false;
-    this.playbackFinishedGate = false;
-    this.holdingCopyApplied = false;
-    this.onChainBattleId = null;
-    this.poolObjectId = null;
-    this.seasonId = await this.roundStore.startSeason(
-      this.chars.map((c) => ({
-        ensLabel: this.labelOf(c.id),
+    const living = chars.filter((c) => c.alive);
+    if (living.length === 0) {
+      throw new Error(
+        `start: no living character in ROSTER_ENS_LABELS (${this.ensLabels.join(",")}).`,
+      );
+    }
+    const first = living[this.randomInt(living.length)];
+    if (first === undefined) {
+      throw new Error(
+        `start: randomInt(${String(living.length)}) returned an index outside the living roster.`,
+      );
+    }
+    const fighters = this.rotationPair(chars, first.id);
+    const seasonId = await this.roundStore.startSeason(
+      chars.map((c) => ({
+        ensLabel: c.ensLabel,
         alive: c.alive,
         kills: c.kills,
         damage: c.damage,
       })),
     );
-    const living = this.chars.filter((c) => c.alive);
-    const first = living[this.randomInt(living.length)]!;
-    await this.enterBetFromRotation(first.id, this.now());
+    this.seasonId = seasonId;
+    this.chars = chars;
+    this.champion = null;
+    this.round = 1;
+    this.frameUrl = null;
+    this.winner = null;
+    this.outcome = null;
+    this.videoDurationMs = null;
+    this.queuedAgentResultId = null;
+    this.pool = [0, 0];
+    console.log(
+      `start: season ${seasonId} fresh bout ${this.labelOf(fighters[0])} vs ${this.labelOf(fighters[1])}`,
+    );
+    await this.enterBet(fighters, this.now());
   }
 
   private async markSeasonEnded(): Promise<void> {
-    if (this.seasonId === null) {
-      return;
-    }
-    const championLabel =
-      this.champion === null ? null : this.labelOf(this.champion);
-    await this.roundStore.endSeason(this.seasonId, championLabel);
+    const seasonId = this.seasonId;
+    if (seasonId === null) return;
     this.seasonId = null;
+    const championLabel = this.champion === null ? null : this.labelOf(this.champion);
+    try {
+      await this.roundStore.endSeason(seasonId, championLabel);
+      console.log(`season ${seasonId} ended champion=${String(championLabel)}`);
+    } catch (cause) {
+      console.error(
+        `season ${seasonId} end write failed: ${errorText(cause)}. The next start ends it as a leftover season.`,
+      );
+    }
   }
 
-  /**
-   * Leave bet only once betting_closes_at has passed and the operator's
-   * closeBetting succeeded. No playback report means no deadline, so betting
-   * stays open. A failed close keeps bettingClosed false and retries.
-   */
   private async maybeLeaveBet(now: number): Promise<void> {
     if (this.phase !== "bet" || this.betOpenedAt === null) return;
     if (this.videoUrl === null || this.videoDurationMs === null) {
@@ -599,7 +614,7 @@ export class GameLoop {
     if (battleId === null) {
       throw new Error("betting_closes_at passed but the bet phase has no battle id.");
     }
-    if (this.closeBettingInFlight) return;
+    if (this.poolObjectId === null || this.closeBettingInFlight) return;
     if (
       this.lastCloseBettingAt !== 0 &&
       now - this.lastCloseBettingAt < GameLoop.POOL_READ_INTERVAL_MS
@@ -630,14 +645,14 @@ export class GameLoop {
     this.emit();
   }
 
-  /**
-   * Re-run ENS settle after a failure. Does not apply the holding copy twice.
-   */
   async retrySettle(): Promise<void> {
-    if (this.error === null) {
+    if (this.settleInFlight) {
       throw new Error(
-        "retrySettle requires a failed settle. Current error is empty.",
+        `retrySettle refused: a settle is already running for round ${String(this.round)}.`,
       );
+    }
+    if (this.error === null) {
+      throw new Error("retrySettle requires a failed settle. Current error is empty.");
     }
     if (this.phase !== "fight" && this.phase !== "settle") {
       throw new Error(
@@ -645,7 +660,23 @@ export class GameLoop {
       );
     }
     this.error = null;
-    await this.enterSettle(this.now());
+    await this.runSettle(this.now());
+  }
+
+  private async runSettle(now: number): Promise<void> {
+    this.settleInFlight = true;
+    try {
+      await this.enterSettle(now);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error(`ENS settle failed (round ${String(this.round)}): ${message}`);
+      this.error = message;
+      this.endsAt = null;
+      this.emit();
+      throw cause;
+    } finally {
+      this.settleInFlight = false;
+    }
   }
 
   private async enterSettle(now: number): Promise<void> {
@@ -681,10 +712,7 @@ export class GameLoop {
         `enterSettle: battle queue record ${JSON.stringify(this.queuedAgentResultId)} is missing from the store.`,
       );
     }
-    if (
-      queued.winnerSubname !== winnerLabel ||
-      queued.loserSubname !== loserLabel
-    ) {
+    if (queued.winnerSubname !== winnerLabel || queued.loserSubname !== loserLabel) {
       throw new Error(
         `enterSettle: agent result winner=${JSON.stringify(queued.winnerSubname)} loser=${JSON.stringify(queued.loserSubname)} does not match bout winner=${JSON.stringify(winnerLabel)} loser=${JSON.stringify(loserLabel)}.`,
       );
@@ -707,14 +735,8 @@ export class GameLoop {
     let record = markPlaybackFinished(markBettingClosed(queued));
     await this.battleQueueStore.save(record);
     try {
-      console.log(
-        `ENS settle start queueId=${record.id} battleId=${record.battleId}`,
-      );
-      record = await settleQueuedBattle(
-        record,
-        this.chainWritePorts,
-        this.battleQueueStore,
-      );
+      console.log(`ENS settle start queueId=${record.id} battleId=${record.battleId}`);
+      record = await settleQueuedBattle(record, this.chainWritePorts, this.battleQueueStore);
       this.error = null;
       console.log(
         `ENS settle done queueId=${record.id} injuriesTx=${record.injuriesTxHash} statusTx=${record.statusTxHash} settlementTx=${record.settlementTxHash}`,
@@ -741,67 +763,42 @@ export class GameLoop {
       this.emit();
       return;
     }
-    this.round += 1;
-    this.winner = null;
-    this.pool = [0, 0];
-    this.onChainBattleId = null;
-    this.poolObjectId = null;
-    this.outcome = null;
-    this.videoDurationMs = null;
-    this.betOpenedAt = null;
-    this.clearPlaybackCutoff();
-    this.queuedAgentResultId = null;
-    this.bettingClosedGate = false;
-    this.playbackFinishedGate = false;
-    this.holdingCopyApplied = false;
-    // Winner stays on: next challenger is random among living non-winners
-    // (fightInputFromRotation / nextRotationPair). No challenger ballot.
     if (this.champion === null) {
       throw new Error(
         "afterSettle: champion is required before starting the next bout via rotation.",
       );
     }
-    await this.enterBetFromRotation(this.champion, this.now());
+    this.round += 1;
+    this.winner = null;
+    this.pool = [0, 0];
+    this.outcome = null;
+    this.videoDurationMs = null;
+    this.queuedAgentResultId = null;
+    await this.enterBet(this.rotationPair(this.chars, this.champion), this.now());
   }
 
-  /**
-   * Stage 2+ bout start: champion vs random living non-winner.
-   * Consumes nextRotationPair so narration cannot name a different opponent.
-   */
-  private async enterBetFromRotation(
-    championId: number,
-    now: number,
-  ): Promise<void> {
-    const championLabel = this.ensLabels[championId];
-    if (championLabel === undefined) {
-      throw new Error(
-        `enterBetFromRotation: champion id ${String(championId)} has no ENS label.`,
-      );
-    }
-    const roster = this.chars.map((c) => {
-      const subname = this.ensLabels[c.id];
-      if (subname === undefined) {
-        throw new Error(
-          `enterBetFromRotation: character id ${String(c.id)} has no ENS label.`,
-        );
-      }
-      return {
-        subname,
-        status: (c.alive ? "alive" : "dead") as "alive" | "dead",
-      };
-    });
-    const pair = nextRotationPair(roster, championLabel, this.randomInt);
+  private rotationPair(chars: CharRuntime[], stayingId: number): [number, number] {
+    const roster = chars.map((c): RosterEntry => ({
+      subname: this.labelOf(c.id),
+      status: c.alive ? "alive" : "dead",
+    }));
+    const pair = nextRotationPair(roster, this.labelOf(stayingId), this.randomInt);
     const challengerId = this.ensLabels.indexOf(pair.challengerSubname);
     if (challengerId < 0) {
       throw new Error(
-        `enterBetFromRotation: challenger ${JSON.stringify(pair.challengerSubname)} missing from ensLabels.`,
+        `rotationPair: challenger ${JSON.stringify(pair.challengerSubname)} missing from ensLabels.`,
       );
     }
-    this.fighters = [championId, challengerId];
+    return [stayingId, challengerId];
+  }
+
+  private async enterBet(fighters: [number, number], now: number): Promise<void> {
+    this.fighters = fighters;
     this.videoUrl = null;
     this.error = null;
-    this.onChainBattleId = null;
+    this.onChainBattleId = randomUUID();
     this.poolObjectId = null;
+    this.openRetry = null;
     this.bettingClosedGate = false;
     this.playbackFinishedGate = false;
     this.holdingCopyApplied = false;
@@ -809,50 +806,143 @@ export class GameLoop {
     this.betOpenedAt = now;
     this.clearPlaybackCutoff();
     this.endsAt = null;
-    await this.openOnChainBattle(now);
     this.emit();
     this.kickFightJob();
+    await this.maybeOpenPool(now);
   }
 
-  /**
-   * Operator openPool for the current fighter pair. closesAt is only an upper
-   * bound the chain requires; betting ends at the stored betting_closes_at via
-   * closeBetting. Fighters stay off Sui (ENS / RoundState).
-   */
-  private async openOnChainBattle(now: number): Promise<void> {
-    if (this.fighters === null) {
-      throw new Error("openOnChainBattle requires fighters.");
-    }
-    const fighterA = this.ensLabels[this.fighters[0]];
-    const fighterB = this.ensLabels[this.fighters[1]];
-    if (fighterA === undefined || fighterB === undefined) {
-      throw new Error(
-        `openOnChainBattle: missing ENS label for fighters ${JSON.stringify(this.fighters)}.`,
-      );
-    }
-    const closesAtUnix = BigInt(
+  private async maybeOpenPool(now: number): Promise<void> {
+    const battleId = this.onChainBattleId;
+    if (this.phase !== "bet" || this.error !== null || battleId === null) return;
+    if (this.poolObjectId !== null || this.openInFlight) return;
+    if (this.openRetry !== null && now < this.openRetry.retryAt) return;
+    const latestCloseUnix = BigInt(
       Math.floor(now / 1000) +
         this.config.videoTimeoutSeconds +
         this.config.bettingCloseAfterVideoStartSeconds +
         120,
     );
-    this.onChainBattleId = await this.battleBetting.openBattle(
-      fighterA,
-      fighterB,
-      closesAtUnix,
-    );
-    this.poolObjectId = this.battleBetting.poolIdFor(this.onChainBattleId);
+    this.openInFlight = true;
+    try {
+      await this.battleBetting.openBattle(battleId, latestCloseUnix);
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      if (!this.isSameBetBout(battleId)) {
+        console.error(
+          `Sui betting openPool failed after its bout ended (battleId=${battleId}): ${detail}`,
+        );
+        return;
+      }
+      this.openRetry = nextChainRetry(now, this.openRetry);
+      console.error(
+        `Sui betting openPool failed (battleId=${battleId}): ${detail}. Bets stay refused until it lands; retrying in ${String(this.openRetry.delayMs)} ms.`,
+      );
+      return;
+    } finally {
+      this.openInFlight = false;
+    }
+    if (!this.isSameBetBout(battleId)) return;
+    this.poolObjectId = this.battleBetting.poolIdFor(battleId);
+    this.openRetry = null;
     this.lastPoolReadAt = 0;
     console.log(
-      `Sui betting openPool battleId=${this.onChainBattleId} poolId=${this.poolObjectId} fighters=${fighterA},${fighterB} closesAt=${String(closesAtUnix)}`,
+      `Sui betting openPool battleId=${battleId} poolId=${this.poolObjectId} closesAt=${String(latestCloseUnix)}`,
+    );
+    this.emit();
+  }
+
+  private kickHouseBot(now: number): void {
+    if (this.botAction !== null) return;
+    let action: (() => Promise<void>) | null = null;
+    for (const bot of this.bots) {
+      if (this.wantsBotBet(bot, now)) action = () => this.botBet(bot);
+      else if (this.wantsBotClaim(bot, now)) action = () => this.botClaim(bot, now);
+      if (action !== null) break;
+    }
+    if (action === null) return;
+    this.botAction = action()
+      .catch((cause: unknown) => {
+        console.error(`house bot action failed unexpectedly: ${errorText(cause)}`);
+      })
+      .finally(() => {
+        this.botAction = null;
+      });
+  }
+
+  private humanStake(battleId: string): [number, number] {
+    const stake: [number, number] = [this.pool[0], this.pool[1]];
+    for (const bot of this.bots) {
+      if (bot.bet?.battleId === battleId) stake[bot.bet.side] -= Number(bot.bet.units);
+    }
+    return [Math.max(0, stake[0]), Math.max(0, stake[1])];
+  }
+
+  private wantsBotBet(bot: BotRuntime, now: number): boolean {
+    const battleId = this.onChainBattleId;
+    if (this.phase !== "bet" || this.error !== null || battleId === null) return false;
+    if (this.poolObjectId === null || bot.betTriedFor === battleId) return false;
+    if (this.bettingClosesAt !== null && now >= this.bettingClosesAt) return false;
+    const human = this.humanStake(battleId);
+    return human[0] + human[1] > 0 || this.videoUrl !== null;
+  }
+
+  private async botBet(bot: BotRuntime): Promise<void> {
+    const battleId = this.onChainBattleId;
+    const poolId = this.poolObjectId;
+    if (battleId === null || poolId === null) return;
+    const round = this.round;
+    const address = bot.chain.address;
+    const units = this.botStakeUnits;
+    // WARNING: one bet attempt per bout. A timed-out bet may still land, so a retry could stake twice.
+    bot.betTriedFor = battleId;
+    const side = botSide(this.humanStake(battleId), this.randomInt);
+    try {
+      const digest = await bot.chain.bet(poolId, side, units);
+      bot.bet = { battleId, side, units, digest };
+      bot.error = null;
+      if (this.onChainBattleId === battleId) this.pool[side] += Number(units);
+      console.log(
+        `house bot ${address} bet battleId=${battleId} round=${String(round)} side=${String(side)} units=${String(units)} digest=${digest}`,
+      );
+    } catch (cause) {
+      bot.error = `House bot ${address} bet failed (battleId=${battleId}, round ${String(round)}): ${errorText(cause)}. It sits this bout out.`;
+      console.error(bot.error);
+    }
+    this.emit();
+  }
+
+  private wantsBotClaim(bot: BotRuntime, now: number): boolean {
+    return (
+      this.phase === "settle" &&
+      this.error === null &&
+      bot.bet !== null &&
+      bot.claimedFor !== bot.bet.battleId &&
+      due(bot.claimRetry, now)
     );
   }
 
-  /**
-   * Fire-and-forget fight generation for the open bout. Success → attachAgentResult,
-   * setOutcome, setVideoReady. Failure → failVideo (refund / cancel / leave bet).
-   * Called once per bet open; a result is applied only to the bout that started it.
-   */
+  private async botClaim(bot: BotRuntime, now: number): Promise<void> {
+    if (bot.bet === null) return;
+    const battleId = bot.bet.battleId;
+    const address = bot.chain.address;
+    try {
+      const claimed = await bot.chain.claimFinished();
+      bot.claimedFor = battleId;
+      bot.claimRetry = null;
+      bot.error = null;
+      console.log(
+        claimed === null
+          ? `house bot ${address} has no finished tickets after battleId=${battleId}`
+          : `house bot ${address} claimed ${String(claimed.tickets)} ticket(s) after battleId=${battleId} digest=${claimed.digest}`,
+      );
+    } catch (cause) {
+      bot.claimRetry = nextChainRetry(now, bot.claimRetry);
+      bot.error = `House bot ${address} claim failed after battleId=${battleId} (round ${String(this.round)}): ${errorText(cause)}. Retrying in ${String(bot.claimRetry.delayMs)} ms.`;
+      console.error(bot.error);
+    }
+    this.emit();
+  }
+
   private kickFightJob(): void {
     void this.runFightJob().catch((cause: unknown) => {
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -887,9 +977,7 @@ export class GameLoop {
       .map((c) => {
         const label = this.ensLabels[c.id];
         if (label === undefined) {
-          throw new Error(
-            `Fight job: character id ${String(c.id)} has no ENS label.`,
-          );
+          throw new Error(`Fight job: character id ${String(c.id)} has no ENS label.`);
         }
         return label;
       });
@@ -937,7 +1025,6 @@ export class GameLoop {
       await this.failVideo(`Fight job failed: ${detail}`);
     }
   }
-
 
   private emit(): void {
     const state = this.getState();

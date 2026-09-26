@@ -24,7 +24,7 @@ function part(root: HTMLElement, name: string): HTMLElement {
 }
 
 function frame(root: HTMLElement, title: string, parts: string[]): void {
-  root.replaceChildren(el("h2", `PLACEHOLDER · ${title}`));
+  root.replaceChildren(el("h2", title));
   for (const name of parts) {
     const node = el("div");
     node.dataset.part = name;
@@ -43,7 +43,7 @@ function showFailure(root: HTMLElement): void {
 }
 
 function buildBet(view: BetView): void {
-  frame(betRoot, "BETTING PERIOD", ["closes", "sides", "stake", "submit"]);
+  frame(betRoot, "PLACE YOUR BET", ["closes", "sides", "stake", "submit"]);
   const sides = part(betRoot, "sides");
   view.sides.forEach((side, i) => {
     const label = el("label");
@@ -64,13 +64,13 @@ function buildBet(view: BetView): void {
     stake.append(option);
   }
   part(betRoot, "stake").replaceChildren(el("span", "Stake "), stake);
-  const send = el("button", "Submit bet");
+  const send = el("button", "Place bet");
   send.addEventListener("click", () => {
     const side = sides.querySelector<HTMLInputElement>("input:checked")?.value === "1" ? 1 : 0;
     failure.bet = "";
     renderPlaceholders();
-    submitBet(side, Number(stake.value)).catch((error: unknown) => {
-      failure.bet = `BET REJECTED. ${error instanceof Error ? error.message : String(error)}`;
+    submitBet(side, Number(stake.value)).catch((cause: unknown) => {
+      failure.bet = `BET REJECTED. ${cause instanceof Error ? cause.message : String(cause)}`;
       renderPlaceholders();
     });
   });
@@ -82,8 +82,7 @@ function buildBet(view: BetView): void {
 }
 
 export function renderPlaceholders(): void {
-  const view = placeholderView(S);
-  const bet = view?.screen === "bet" ? view : null;
+  const bet = placeholderView(S);
 
   if (bet !== null) {
     const key = `${String(S.round)}:${String(S.battleId)}`;
@@ -91,8 +90,7 @@ export function renderPlaceholders(): void {
       buildBet(bet);
       betKey = key;
     }
-    part(betRoot, "closes").textContent =
-      `Betting closes at (stored betting_closes_at): ${bet.closesAt}`;
+    part(betRoot, "closes").textContent = `Betting closes: ${bet.closesAt}`;
     bet.sides.forEach((side, i) => {
       const pool = betRoot.querySelector<HTMLElement>(`[data-pool="${String(i)}"]`);
       if (pool !== null) pool.textContent = `(pool ${side.usdc} USDC)`;

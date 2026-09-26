@@ -9,10 +9,9 @@ export type SeasonCharacter = {
   damage: number;
 };
 
-/** Seasons table only. Vote/rounds/tallies tables remain in the migration unused. */
 export type RoundStore = {
   startSeason(characters: SeasonCharacter[]): Promise<string>;
-  findOpenSeasonId(): Promise<string | null>;
+  endOpenSeasons(): Promise<string[]>;
   endSeason(seasonId: string, championLabel: string | null): Promise<void>;
 };
 
@@ -35,15 +34,18 @@ export class PostgresRoundStore implements RoundStore {
         ),
       ],
     );
-    return requireId(result.rows[0], "seasons");
+    const row = result.rows[0];
+    if (row === undefined) {
+      throw new Error("INSERT INTO seasons returned no id.");
+    }
+    return row.id;
   }
 
-  async findOpenSeasonId(): Promise<string | null> {
+  async endOpenSeasons(): Promise<string[]> {
     const result = await this.db.query<IdRow>(
-      `SELECT id FROM seasons WHERE ended_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+      "UPDATE seasons SET ended_at = now() WHERE ended_at IS NULL RETURNING id",
     );
-    const row = result.rows[0];
-    return row === undefined ? null : row.id;
+    return result.rows.map((row) => row.id);
   }
 
   async endSeason(seasonId: string, championLabel: string | null): Promise<void> {
@@ -61,37 +63,31 @@ export class PostgresRoundStore implements RoundStore {
   }
 }
 
-function requireId(row: IdRow | undefined, table: string): string {
-  if (row === undefined) {
-    throw new Error(`INSERT INTO ${table} returned no id.`);
-  }
-  return row.id;
-}
-
-/** In-process RoundStore for tests. */
 export class MemoryRoundStore implements RoundStore {
   readonly seasons: SeasonCharacter[][] = [];
-  readonly seasonEnded = new Map<string, { championLabel: string | null }>();
-  private openSeasonId: string | null = null;
+  readonly ended = new Map<string, { championLabel: string | null }>();
 
   async startSeason(characters: SeasonCharacter[]): Promise<string> {
     this.seasons.push(structuredClone(characters));
-    const id = `season-${String(this.seasons.length)}`;
-    this.openSeasonId = id;
-    return id;
+    return `season-${String(this.seasons.length)}`;
   }
 
-  async findOpenSeasonId(): Promise<string | null> {
-    return this.openSeasonId;
+  openSeasonIds(): string[] {
+    return this.seasons
+      .map((_, i) => `season-${String(i + 1)}`)
+      .filter((id) => !this.ended.has(id));
+  }
+
+  async endOpenSeasons(): Promise<string[]> {
+    const open = this.openSeasonIds();
+    for (const id of open) this.ended.set(id, { championLabel: null });
+    return open;
   }
 
   async endSeason(seasonId: string, championLabel: string | null): Promise<void> {
-    if (this.openSeasonId !== seasonId) {
-      throw new Error(
-        `endSeason: expected to end open season ${String(this.openSeasonId)}. Got ${seasonId}.`,
-      );
+    if (!this.openSeasonIds().includes(seasonId)) {
+      throw new Error(`endSeason: expected to end one open season ${seasonId}. Updated 0.`);
     }
-    this.seasonEnded.set(seasonId, { championLabel });
-    this.openSeasonId = null;
+    this.ended.set(seasonId, { championLabel });
   }
 }

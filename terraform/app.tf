@@ -160,8 +160,8 @@ resource "digitalocean_app" "game" {
         type  = "GENERAL"
       }
 
-      # Only on staging: the portal staging-verify header. Production must not
-      # set this app env var (empty TF_VAR is not a token and must not appear).
+      # Only on staging: the portal staging-verify header. Other environments must
+      # not set this app env var (empty TF_VAR is not a token and must not appear).
       dynamic "env" {
         for_each = var.world_id_environment == "staging" ? [1] : []
         content {
@@ -219,6 +219,20 @@ resource "digitalocean_app" "game" {
         value = var.sui_operator_private_key
         scope = "RUN_TIME"
         type  = "SECRET"
+      }
+
+      env {
+        key   = "HOUSE_BOT_SUI_PRIVATE_KEYS"
+        value = var.house_bot_sui_private_keys
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "HOUSE_BOT_STAKE_UNITS"
+        value = var.house_bot_stake_units
+        scope = "RUN_TIME"
+        type  = "GENERAL"
       }
 
       env {

@@ -2,12 +2,7 @@ import { requiredEnv } from "@horror-tube/betting";
 import { config as loadDotenv } from "dotenv";
 import { existsSync, statSync } from "node:fs";
 
-/**
- * Load a `.env` file only when it exists (laptop checkout).
- * App Platform has no `.env` on disk; the process uses injected env only.
- * A missing file is not an error. Missing required variables still fail by name.
- */
-export function loadRepoDotenv(envPath: string): { loaded: boolean } {
+export function loadRepoDotenv(envPath: string) {
   if (!existsSync(envPath)) {
     return { loaded: false };
   }
@@ -29,10 +24,6 @@ export function readGamePort(env: NodeJS.ProcessEnv = process.env): number {
   return port;
 }
 
-/**
- * When STATIC_DIR is unset, the process serves only /health (local Vite serves the UI).
- * When set, it must be an existing directory.
- */
 export function readStaticDir(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {

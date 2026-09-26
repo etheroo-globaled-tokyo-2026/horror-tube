@@ -10,11 +10,13 @@ import {
   mmss,
   note,
   odds,
-  replaying,
+  type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
+import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
-import { COL, RAMP } from "./room-palette.ts";
+import { BARS, COL, RAMP } from "./room-palette.ts";
+import { drawLogo } from "./logo.ts";
 import {
   TEAK,
   TV_Y,
@@ -29,7 +31,8 @@ import {
   speckle,
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
-import { LOW, STAKES, T, W8, num } from "./room-state.ts";
+import { tinted } from "./room-shelf.ts";
+import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
 
 export const TW = 640,
   TH = 480;
@@ -415,9 +418,9 @@ export const small = document.createElement("canvas");
 small.width = 160;
 small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
-export let vidMode: "" | "live" | "rec" = "";
+export let vidMode: "" | "live" = "";
 let reportedBattleId: string | null = null;
-// The server's betting deadline starts from this report, so only a real `playing` event sends it.
+// WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
   if (vidMode !== "live" || S.phase !== "bet" || battleId === null) return;
@@ -425,10 +428,10 @@ video.addEventListener("playing", () => {
   reportedBattleId = battleId;
   postPlaybackStart(battleId)
     .then(applyRoundState)
-    .catch((error: unknown) => {
+    .catch((cause: unknown) => {
       reportedBattleId = null;
       note(
-        `PLAYBACK START NOT RECORDED. ${error instanceof Error ? error.message : String(error)}`,
+        `PLAYBACK START NOT RECORDED. ${cause instanceof Error ? cause.message : String(cause)}`,
         "bad",
       );
     });
@@ -447,8 +450,7 @@ export function syncVideo(): void {
     video.src = url;
     lastVideoUrl = url;
   }
-  // Betting stays open for the first seconds of playback, so the bout plays from bet on.
-  const mode = S.phase === "fight" || S.phase === "bet" ? "live" : replaying() ? "rec" : "";
+  const mode = S.phase === "fight" || S.phase === "bet" ? "live" : "";
   if (mode === vidMode) return;
   vidMode = mode;
   if (!mode) {
@@ -456,8 +458,8 @@ export function syncVideo(): void {
     return;
   }
   video.currentTime = 0;
-  video.loop = mode === "rec";
-  video.muted = mode === "rec";
+  video.loop = false;
+  video.muted = false;
   video.play().catch(() => {
     video.muted = true;
     void video.play();
@@ -514,6 +516,58 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
   } else g.drawImage(small, 0, 0, w, h, dx, dy, dw, dh);
 }
 export let tvNoise = 0;
+function drawCaseFile(ch: Character): void {
+  const g = tvCtx,
+    W = TW,
+    x = 232,
+    seen = ch.fights > 0;
+  g.fillStyle = COL.rust;
+  g.font = "700 18px Silkscreen";
+  g.textAlign = "left";
+  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(ch), 32, 64, 176, 176);
+  if (!ch.alive) {
+    g.save();
+    g.translate(120, 152);
+    g.rotate(-0.2);
+    g.strokeStyle = g.fillStyle = COL.blood;
+    g.lineWidth = 4;
+    g.textAlign = "center";
+    g.strokeRect(-92, -24, 184, 40);
+    g.font = "700 24px Silkscreen";
+    g.fillText("DECEASED", 0, 6);
+    g.restore();
+  }
+  g.textAlign = "left";
+  g.fillStyle = COL.bone;
+  g.font = "30px DotGothic16";
+  let y = wrap(g, ch.name, x, 92, W - x - 32, 34);
+  g.fillStyle = COL.sulfur;
+  g.font = "700 16px Silkscreen";
+  g.fillText(seen ? `KILLS ${ch.kills} · DAMAGE ${ch.damage}` : "KILLS ?? · DAMAGE ??", x, y);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("RESIDENT FILE", x, y + 34);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  y = Math.max(wrap(g, ch.brief, x, y + 60, W - x - 32, 26), 272);
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("INJURIES", 32, y);
+  g.fillStyle = COL.bone;
+  g.font = "20px DotGothic16";
+  wrap(g, ch.injuries || "None recorded.", 32, y + 26, W - 64, 26);
+  const [footer, color] = !ch.alive
+    ? ["THIS ROOM IS EMPTY", COL.rust]
+    : S.champion !== null && ch.id === S.champion
+      ? ["THE SURVIVOR STAYS ON", COL.rust]
+      : ["CLR TO GO BACK", COL.sulfur];
+  g.textAlign = "center";
+  g.fillStyle = color;
+  g.font = "700 22px Silkscreen";
+  g.fillText(footer, W / 2, 456);
+}
 export function drawTV(): void {
   const g = tvCtx,
     W = TW,
@@ -537,6 +591,7 @@ export function drawTV(): void {
     const width = g.measureText(t).width,
       max = W - 64;
     if (width > max) g.font = `${weight} ${Math.floor((size * max) / width)}px ${face}`;
+    g.textAlign = "center";
     g.fillStyle = color;
     g.fillText(t, W / 2, y);
   };
@@ -566,9 +621,9 @@ export function drawTV(): void {
         for (let row = 0; row < modules.size; row++)
           for (let col = 0; col < modules.size; col++)
             if (modules.get(row, col)) g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
-        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
+        text("CONFIRM SOMEONE IS WATCHING", oy + side + 36, 28, COL.sulfur);
         text(
-          "Orb only. We check it on our side.",
+          "We've had trouble with unattended sets.",
           oy + side + 68,
           22,
           COL.bone,
@@ -576,35 +631,31 @@ export function drawTV(): void {
           400,
         );
       } else {
-        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
-        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+        text("PLEASE STAND BY", 210, 36, COL.sulfur);
+        text("Preparing your viewer check.", 270, 24, COL.bone, "DotGothic16", 400);
       }
+    } else if (W8.step === "wallet") {
+      noise = 0.1;
+      fill(COL.soot);
+      text("VIEWER REGISTERED", 210, 48, COL.blood);
+      text(`OPENING YOUR WALLET${".".repeat(1 + (((now / 400) | 0) % 3))}`, 270, 26, COL.bone);
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
-      text("VERIFIED", 210, 48, COL.blood);
-      text("ONE HUMAN · 18+", 270, 26, COL.bone);
+      text("VIEWER REGISTERED", 210, 48, COL.blood);
+      text("Thank you for being here.", 270, 26, COL.bone, "DotGothic16", 400);
     } else if (W8.step === "done" && S.noteKind === "bad") {
       noise = 0.35;
       fill(COL.soot);
       text("NO SIGNAL", 210, 56, COL.blood);
-      text("The residents did not answer.", 270, 26, COL.bone, "DotGothic16", 400);
+      text("The programme could not be received.", 270, 26, COL.bone, "DotGothic16", 400);
     } else if (W8.step === "done") {
       noise = 0.12;
-      const bars = [
-        COL.bone,
-        COL.sulfur,
-        COL.rust,
-        COL.rustDeep,
-        COL.blood,
-        COL.bloodDeep,
-        COL.grime,
-      ];
-      bars.forEach((c, i) => {
+      BARS.forEach((c, i) => {
         g.fillStyle = c;
-        g.fillRect((i * W) / bars.length, 0, W / bars.length + 1, 300);
+        g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
       });
-      band(300, H - 300);
+      drawLogo(g, W / 2, 196, 420);
       text("PLEASE STAND BY", 370, 40, COL.bone);
       text(
         `tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`,
@@ -617,9 +668,11 @@ export function drawTV(): void {
     } else if (W8.fail !== "") {
       noise = 0.2;
       fill(COL.soot);
-      text("SCAN FAILED", 190, 48, COL.blood);
-      text(W8.fail, 270, 26, COL.bone, "DotGothic16", 400);
-      text("YOU ARE NOT IN.", 340, 24, COL.rust);
+      text(W8.down === "" ? "ENTRY INCOMPLETE" : "ENTRY IS DOWN", 110, 48, COL.blood);
+      g.font = "400 22px DotGothic16";
+      g.fillStyle = COL.bone;
+      const end = wrap(g, W8.fail, W / 2, 170, W - 64, 28);
+      if (W8.down === "") text("ENTER TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.rust);
     } else if (W8.step !== "read") {
       noise = 0;
       fill(COL.soot);
@@ -644,6 +697,40 @@ export function drawTV(): void {
         80 + (i % 16) * 24,
       );
     });
+  } else if (T.buf) {
+    fill(COL.soot);
+    noise = 0.14;
+    const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+    if (ch) drawCaseFile(ch);
+    else {
+      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
+      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
+      else text("NO SUCH RESIDENT", 280, 28, COL.rust);
+    }
+  } else if (S.phase === "waiting") {
+    fill(COL.soot);
+    BARS.forEach((c, i) => {
+      g.fillStyle = c;
+      g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
+    });
+    if (S.startError === null) {
+      text("PLEASE STAND BY", 200, 40, COL.bone);
+      text(
+        `the programme is starting${".".repeat(1 + (((now / 400) | 0) % 3))}`,
+        250,
+        24,
+        COL.rust,
+        "DotGothic16",
+        400,
+      );
+    } else {
+      noise = 0.2;
+      text("THE PROGRAMME DID NOT START", 130, 34, COL.blood);
+      g.font = "400 22px DotGothic16";
+      g.fillStyle = COL.bone;
+      const end = wrap(g, S.startError, W / 2, 190, W - 64, 28);
+      text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 28), 24, COL.sulfur);
+    }
   } else {
     const filmCanvas = film();
     if (vidMode && video.readyState >= 2) videoFrame();
@@ -661,8 +748,10 @@ export function drawTV(): void {
       );
       text(
         S.bet
-          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`
-          : "HOLD A OR B TO BET",
+          ? `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`
+          : S.pending === "bet"
+            ? "RECORDING YOUR BET…"
+            : "HOLD A OR B TO BET",
         H - 70,
         24,
         COL.bone,
@@ -685,16 +774,27 @@ export function drawTV(): void {
         g.font = "24px DotGothic16";
         const pays = odds(i);
         g.fillText(pays === "no stake" ? "no stake" : `pays ×${pays}`, x, 264);
+        const house = S.bots.flatMap((bot) => (bot.bet?.side === i ? [bot.bet.units] : []));
+        if (house.length > 0) {
+          g.fillStyle = COL.soot;
+          g.font = "20px DotGothic16";
+          g.fillText(
+            `HOUSE BOT ${usd(fromUsdcUnits(BigInt(house.reduce((s, u) => s + u, 0))))} USDC`,
+            x,
+            306,
+          );
+        }
       });
       if (S.bet)
         text(
-          `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. GOOD LUCK.`,
+          `${S.bet.amt} USDC ON ${char(S.fighters?.[S.bet.side] ?? -1).short}. RECORDED.`,
           360,
           26,
           COL.soot,
         );
+      else if (S.pending === "bet") text("RECORDING YOUR BET…", 360, 26, COL.soot);
       else if (S.poolId === null) text("OPENING THE BOOK", 360, 26, COL.soot);
-      else if (S.credit <= 0) text("NO STAKE. FEED THE COIN BOX.", 360, 24, COL.soot);
+      else if (S.credit <= 0) text("ADD USDC AT THE COIN BOX TO BET.", 360, 24, COL.soot);
       else {
         text(`STAKE ${STAKES[T.stake]} USDC  ·  VOL ± TO CHANGE`, 340, 24, COL.soot);
         text(
@@ -714,24 +814,32 @@ export function drawTV(): void {
         l = char(S.fighters?.[1 - S.winner] ?? -1);
       fill(COL.soot);
       band(60, 50, COL.blood);
-      text("WE INTERRUPT THIS PROGRAM", 96, 24, COL.soot);
+      text("RESIDENT RECORD UPDATED", 96, 24, COL.soot);
       text(l.name.toUpperCase(), 200, 40, COL.blood);
-      text("has left the program.", 248, 28, COL.bone, "DotGothic16", 400);
-      text(`${w.name} walks on, bleeding.`, 290, 28, COL.bone, "DotGothic16", 400);
-      if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
-      else if (S.bet && S.result < 0) text(`YOU LOST ${usd(S.bet.amt)} USDC`, 390, 26, COL.rust);
+      text("is deceased.", 248, 28, COL.bone, "DotGothic16", 400);
+      text(`${w.name} returns to their room.`, 290, 28, COL.bone, "DotGothic16", 400);
+      if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
+      else if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
+      else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
-      const l = living();
-      text("END OF PROGRAMMING", 200, 34);
+      const l = living(),
+        endedByFailure = !!S.error;
+      text(endedByFailure ? "SIGNAL LOST" : "THANK YOU FOR WATCHING", 200, 34);
       text(
-        l[0] ? `${l[0].name} is the last one left.` : "Nobody is left.",
+        endedByFailure
+          ? "The programme could not continue."
+          : l[0]
+            ? `${l[0].name} is the last one left.`
+            : "Nobody is left.",
         250,
         28,
         COL.bone,
         "DotGothic16",
         400,
       );
+      if (!endedByFailure)
+        text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
       text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
     }
   }
