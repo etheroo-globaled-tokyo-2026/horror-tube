@@ -165,10 +165,22 @@ describe("GET /replay", () => {
       id: "bout-2",
       battleId: "other-battle",
     });
-    await new Promise((r) => setTimeout(r, 5));
     await store.setVideoUrl("bout-2", "https://cdn.example/videos/second.mp4");
 
     const second = v.parse(ReplayOk, await (await fetch(`${base}/replay`)).json());
     assert.equal(second.videoUrl, "https://cdn.example/videos/second.mp4");
+  });
+
+  it("returns 500 naming battle_results when the store read fails", async () => {
+    class FailingReadStore extends MemoryBattleQueueStore {
+      override async getLatestVideoUrl(): Promise<string | null> {
+        throw new Error("connection reset by peer");
+      }
+    }
+    const base = await listen(testLoop(new FailingReadStore(), () => 0));
+    const res = await fetch(`${base}/replay`);
+    assert.equal(res.status, 500);
+    const body = v.parse(ReplayErr, await res.json());
+    assert.match(body.error, /battle_results.*connection reset by peer/u);
   });
 });

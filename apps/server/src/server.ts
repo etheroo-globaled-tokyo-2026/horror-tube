@@ -379,13 +379,23 @@ async function handleRequest(
         return;
       }
       if (method === "GET" && path === "/replay") {
+        let videoUrl;
         try {
-          const videoUrl = await opts.game.getReplayVideoUrl();
-          sendJson(res, 200, { videoUrl });
+          videoUrl = await opts.game.getReplayVideoUrl();
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, 404, { ok: false, error: message });
+          const message = `Reading the latest fight video from battle_results failed: ${err instanceof Error ? err.message : String(err)}`;
+          console.error(`GET /replay failed: ${message}`);
+          sendJson(res, 500, { ok: false, error: message });
+          return;
         }
+        if (videoUrl === null) {
+          sendJson(res, 404, {
+            ok: false,
+            error: "no fight video is stored. A bout must reach setVideoReady before replay.",
+          });
+          return;
+        }
+        sendJson(res, 200, { videoUrl });
         return;
       }
       if (method === "POST" && path === "/retry-settle") {

@@ -170,12 +170,13 @@ export class PostgresBattleQueueStore implements BattleQueueStore {
     }
   }
 
+  // Order by bout creation: settle writes bump updated_at on older rows.
   async getLatestVideoUrl(): Promise<string | null> {
     const result = await this.db.query<{ video_url: string }>(
       `SELECT video_url
        FROM battle_results
        WHERE video_url IS NOT NULL
-       ORDER BY updated_at DESC, created_at DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT 1`,
     );
     const row = result.rows[0];

@@ -594,12 +594,8 @@ export class GameLoop {
     this.emit();
   }
 
-  async getReplayVideoUrl(): Promise<string> {
-    const url = await this.battleQueueStore.getLatestVideoUrl();
-    if (url === null || url.trim() === "") {
-      throw new Error("no fight video is stored. Play a bout first so setVideoReady can persist the Spaces CDN URL.");
-    }
-    return url;
+  getReplayVideoUrl(): Promise<string | null> {
+    return this.battleQueueStore.getLatestVideoUrl();
   }
 
   setOutcome(winner: 0 | 1, damage: number): void {

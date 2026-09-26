@@ -254,7 +254,7 @@ describe("battle video URL store", () => {
     assert.equal(await store.getLatestVideoUrl(), cdn);
   });
 
-  it("returns the newest stored URL and null when none exist", async () => {
+  it("returns the newest bout's URL, even after a later write to an older bout", async () => {
     const store = new MemoryBattleQueueStore();
     assert.equal(await store.getLatestVideoUrl(), null);
 
@@ -262,9 +262,10 @@ describe("battle video URL store", () => {
     const newer = createQueuedRecord(sampleInsert({ id: "vid-new", battleId: "2" }));
     await store.save(older);
     await store.setVideoUrl(older.id, "https://cdn.example/videos/old.mp4");
-    await new Promise((r) => setTimeout(r, 5));
     await store.save(newer);
     await store.setVideoUrl(newer.id, "https://cdn.example/videos/new.mp4");
+    await store.save(markBettingClosed(older));
+    await store.setVideoUrl(older.id, "https://cdn.example/videos/old.mp4");
 
     assert.equal(await store.getLatestVideoUrl(), "https://cdn.example/videos/new.mp4");
   });

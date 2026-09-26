@@ -339,10 +339,7 @@ function wrapStepError(
 
 export class MemoryBattleQueueStore implements BattleQueueStore {
   private readonly rows = new Map<string, BattleQueueRecord>();
-  private readonly videoById = new Map<
-    string,
-    { url: string; createdAt: number; updatedAt: number }
-  >();
+  private readonly videoById = new Map<string, string>();
 
   async get(id: string): Promise<BattleQueueRecord | null> {
     const row = this.rows.get(id);
@@ -360,26 +357,15 @@ export class MemoryBattleQueueStore implements BattleQueueStore {
         `battle_results row ${JSON.stringify(id)} is missing. Cannot store fight video.`,
       );
     }
-    const now = Date.now();
-    const prior = this.videoById.get(id);
-    this.videoById.set(id, {
-      url: trimmed,
-      createdAt: prior?.createdAt ?? now,
-      updatedAt: now,
-    });
+    this.videoById.set(id, trimmed);
   }
 
+  // Map keeps first-insert order, matching battle_results.created_at order in Postgres.
   async getLatestVideoUrl(): Promise<string | null> {
-    let best: { url: string; updatedAt: number; createdAt: number } | null = null;
-    for (const entry of this.videoById.values()) {
-      if (
-        best === null ||
-        entry.updatedAt > best.updatedAt ||
-        (entry.updatedAt === best.updatedAt && entry.createdAt > best.createdAt)
-      ) {
-        best = entry;
-      }
+    let latest: string | null = null;
+    for (const id of this.rows.keys()) {
+      latest = this.videoById.get(id) ?? latest;
     }
-    return best?.url ?? null;
+    return latest;
   }
 }
