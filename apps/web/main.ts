@@ -1288,11 +1288,19 @@ function updateHover(): void {
 addEventListener("pointermove", (e) => {
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  canvas.classList.toggle(
-    "hot",
-    !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null || !!onShelf(e),
-  );
+  canvas.dataset.cursor = cursorAt(e);
 });
+const PART_CURSOR = { slot: "coin", sticker: "phone", lever: "grab" } satisfies Record<
+  CoinBoxPart,
+  string
+>;
+function cursorAt(e: MouseEvent): string {
+  if (onPaper(e)) return "pen";
+  const part = coinPartAt(e);
+  if (part !== null) return PART_CURSOR[part];
+  if (onShelf(e)) return "grab";
+  return hitAt(e) ? "press" : "";
+}
 canvas.addEventListener("pointerdown", (e) => {
   if (onPaper(e)) return sign();
   const part = coinPartAt(e);
