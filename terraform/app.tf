@@ -160,6 +160,18 @@ resource "digitalocean_app" "game" {
         type  = "GENERAL"
       }
 
+      # Only on staging: the portal staging-verify header. Production must not
+      # set this app env var (empty TF_VAR is not a token and must not appear).
+      dynamic "env" {
+        for_each = var.world_id_environment == "staging" ? [1] : []
+        content {
+          key   = "WORLD_ID_STAGING_TOKEN"
+          value = var.world_id_staging_token
+          scope = "RUN_TIME"
+          type  = "SECRET"
+        }
+      }
+
       env {
         key   = "SUI_USDC_TYPE"
         value = var.sui_usdc_type

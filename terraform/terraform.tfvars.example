@@ -43,4 +43,5 @@ battle_betting_address = "0x683e87b20857DA293477C5ee3DF682d7d8FDDb4C"
 roster_ens_labels      = "REPLACE_ME_LABEL_A,REPLACE_ME_LABEL_B"
 
 # WORLD_ID_ENVIRONMENT is passed as TF_VAR_world_id_environment from .env (operator: staging).
+# WORLD_ID_STAGING_TOKEN is passed as TF_VAR_world_id_staging_token from .env when the environment is staging.
 # Do not put WORLD_ID_* secrets in this file.
