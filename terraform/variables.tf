@@ -19,11 +19,6 @@ variable "db_size" {
   type        = string
 }
 
-variable "db_firewall_cidr" {
-  description = "CIDR allowed to reach the Managed PostgreSQL cluster (e.g. your public IP as x.x.x.x/32). Required; do not use 0.0.0.0/0."
-  type        = string
-}
-
 variable "db_name" {
   description = "Name of the Managed PostgreSQL cluster."
   type        = string
