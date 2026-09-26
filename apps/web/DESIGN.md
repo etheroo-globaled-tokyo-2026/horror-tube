@@ -179,13 +179,17 @@ The wallet opens after verification. Money lives on the coin box (below). Bets s
   - The TV light is cool (`--body`). Dust drifts in the light. The screen glass bulges and catches a soft
     glare. The room has a soft vignette.
 - **The TV:** the only thing that shows the game. It is **never clickable**.
-  - Waiting: the living roster and TYPE THE NUMBER · OK. OK books that fighter; the model picks the opponent.
-    The same screen, titled PICK THE NEXT FIGHTER, is the `pick` phase. A failed booking shows the server's reason.
+  - Waiting and `pick`: the top half shows the last bout on loop once one has aired; before that, it cycles
+    through the residents (face, name, `brief`, injuries). A typed number shows that resident instead. The bottom
+    half shows every resident's face and room number, the dead crossed out and the champion faded, under
+    THE PROGRAMME MAY BEGIN, or in `pick` the matchup (champion face, `<CHAMPION> VS`, then a `?` box that
+    becomes the typed resident's face), then TYPE A ROOM NUMBER. OK books that fighter; the model picks the first
+    opponent. A failed booking shows the server's reason.
   - Typing a number: the resident's case file, the same data as their tape: face, name, kills and damage, `brief`,
     injuries. Typing never lifts a tape, so the TV stays in view. CLR goes back.
   - Bet: A and B with the odds and your stake. Fight: the video, with a warm, low-res filter. Settle: the resident
     record update, the deceased resident, and OK to collect.
-- **The remote:** the only thing you use for the game. Digits for a case file, VOL ± for the stake, hold A or B to
+- **The remote:** the only thing you use for the game. One digit per room (rooms 1–9, then 0) for a case file, VOL ± for the stake, hold A or B to
   bet, OK to collect or to start again.
 - **The coin box:** the only thing you use for money. See "The coin box" below.
 - **Keyboard:** digits, Enter = OK, Backspace = CLR, ↑/↓ = VOL, hold A/B. `N` moves to the next phase (phases never end on their own; ENTER steps the waiver the same way, except the World ID scan, which waits for the proof), `V` shows the records, `M` mutes.
@@ -194,7 +198,8 @@ Rules from review:
 
 - **The TV is never interactive.** You act with the remote (the game) or the coin box (money).
 - **Copy is short and practical.** The announcer is polite and accustomed to death. Hover hints name things;
-  controls state the action (`STAKE VOL ± · BET HOLD A / B`, `COLLECT OK`).
+  controls state the action (`STAKE VOL ± · BET HOLD A / B`, `COLLECT`). Copy never names the OK key; the
+  orange key is the one to press.
   Use the broadcast story for vocabulary and tone. Preserve clear payment outcomes and error reasons.
 - **Readable first.** The room renders at full window size (CSS pixels) and the TV picture at 640×480, with
   big type. The pixel look comes from the textures, not from a low render size. Remote key labels are drawn at 3×.

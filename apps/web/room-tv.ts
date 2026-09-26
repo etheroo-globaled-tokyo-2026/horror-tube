@@ -34,7 +34,8 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
-import { LOW, STAKES, T, W8, wrap, num } from "./room-state.ts";
+import { LOW, STAKES, T, W8, wrap } from "./room-state.ts";
+import { roomNumber, typedRoomId } from "./typed-fighter.ts";
 import { collapse, drawPower, powerStage } from "./room-power.ts";
 
 export const TW = 640,
@@ -458,7 +459,7 @@ function applyVideoSrc(url: string, mode: "live" | "rec"): void {
   if (mode === vidMode) return;
   vidMode = mode;
   video.currentTime = 0;
-  video.loop = false;
+  video.loop = mode === "rec";
   video.muted = false;
   video.play().catch(() => {
     video.muted = true;
@@ -534,7 +535,7 @@ export function videoFrame(dx = 0, dy = 0, dw = TW, dh = TH): void {
   const w = 160,
     h = Math.round((160 * dh) / dw);
   if (small.height !== h) small.height = h;
-  sg.drawImage(video, ...crop(832, 480, dw, dh), 0, 0, w, h);
+  sg.drawImage(video, ...crop(video.videoWidth, video.videoHeight, dw, dh), 0, 0, w, h);
   const img = sg.getImageData(0, 0, w, h),
     d = img.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -575,7 +576,7 @@ function drawCaseFile(ch: Character): void {
   g.fillStyle = COL.rust;
   g.font = "700 18px Silkscreen";
   g.textAlign = "left";
-  g.fillText(`RESIDENT ${num(ch.id + 1)}`, 32, 40);
+  g.fillText(`RESIDENT ${roomNumber(ch.id)}`, 32, 40);
   g.imageSmoothingEnabled = false;
   g.drawImage(tinted(ch), 32, 64, 176, 176);
   if (!ch.alive) {
@@ -618,6 +619,175 @@ function drawCaseFile(ch: Character): void {
   g.fillStyle = color;
   g.font = "700 22px Silkscreen";
   g.fillText(footer, W / 2, 456);
+}
+const PANE = 232;
+function drawResidentCard(ch: Character): void {
+  const g = tvCtx,
+    x = 224,
+    maxW = TW - x - 36;
+  g.save();
+  g.beginPath();
+  g.rect(0, 0, TW, PANE);
+  g.clip();
+  g.textAlign = "left";
+  g.fillStyle = COL.rust;
+  g.font = "700 16px Silkscreen";
+  g.fillText(`ROOM ${roomNumber(ch.id)}`, 36, 44);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(ch), 36, 60, 168, 168);
+  g.fillStyle = COL.bone;
+  g.font = "28px DotGothic16";
+  let y = wrap(g, ch.name, x, 84, maxW, 30);
+  g.font = "20px DotGothic16";
+  y = wrap(g, ch.brief, x, y + 6, maxW, 24);
+  g.fillStyle = ch.alive ? COL.rust : COL.blood;
+  g.font = "18px DotGothic16";
+  wrap(g, ch.alive ? ch.injuries || "Unhurt." : "Deceased.", x, y + 8, maxW, 22);
+  g.restore();
+}
+function drawReplayPane(now: number): boolean {
+  if (vidMode !== "rec" || video.readyState < 2) return false;
+  videoFrame(0, 0, TW, PANE);
+  const g = tvCtx;
+  g.fillStyle = COL.soot;
+  g.fillRect(28, 20, 196, 34);
+  g.textAlign = "left";
+  g.fillStyle = COL.blood;
+  if (((now / 600) | 0) % 2 === 0) g.fillRect(40, 30, 14, 14);
+  g.font = "700 18px Silkscreen";
+  g.fillText("LAST BOUT", 66, 45);
+  return true;
+}
+function drawMatchup(champion: Character, challenger: Character | undefined): void {
+  const g = tvCtx,
+    face = 30,
+    gap = 12,
+    y = PANE + 32,
+    title = challenger ? `${champion.short} VS ${challenger.short}` : `${champion.short} VS`;
+  let size = 24;
+  g.font = `700 ${size}px Silkscreen`;
+  const room = TW - 48 - (face + gap) * 2;
+  if (g.measureText(title).width > room) {
+    size = Math.floor((size * room) / g.measureText(title).width);
+    g.font = `700 ${size}px Silkscreen`;
+  }
+  const textW = g.measureText(title).width,
+    left = (TW - textW) / 2,
+    faceY = y - size / 2 - face / 2 + 2;
+  g.textAlign = "left";
+  g.fillStyle = COL.sulfur;
+  g.fillText(title, left, y);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tinted(champion), left - gap - face, faceY, face, face);
+  const right = left + textW + gap;
+  if (challenger) g.drawImage(tinted(challenger), right, faceY, face, face);
+  else {
+    g.strokeStyle = COL.sulfur;
+    g.lineWidth = 2;
+    g.setLineDash([4, 4]);
+    g.strokeRect(right + 1, faceY + 1, face - 2, face - 2);
+    g.setLineDash([]);
+    g.textAlign = "center";
+    g.fillStyle = COL.sulfur;
+    g.font = "700 18px Silkscreen";
+    g.fillText("?", right + face / 2, faceY + face / 2 + 7);
+  }
+  g.textAlign = "center";
+}
+function drawRoomChoice(now: number): void {
+  const g = tvCtx,
+    W = TW,
+    typedId = typedRoomId(T.buf),
+    typed = typedId === null ? undefined : S.chars[typedId],
+    ids = S.selectable.filter((id) => S.chars[id] !== undefined),
+    champion = S.phase === "pick" && S.champion !== null ? S.chars[S.champion] : undefined;
+  let featured = ids.length > 0 ? ids[((now / 4000) | 0) % ids.length] : undefined;
+  g.textAlign = "center";
+  if (S.startError !== null) {
+    featured = undefined;
+    g.fillStyle = COL.blood;
+    g.font = "700 30px Silkscreen";
+    g.fillText("THAT ROOM DID NOT OPEN", W / 2, 76);
+    g.fillStyle = COL.bone;
+    g.font = "400 20px DotGothic16";
+    wrap(g, S.startError, W / 2, 120, W - 72, 26);
+  } else if (typed !== undefined) {
+    featured = undefined;
+    drawResidentCard(typed);
+  } else if (drawReplayPane(now)) featured = undefined;
+  else {
+    const shown = featured === undefined ? undefined : S.chars[featured];
+    if (shown !== undefined) drawResidentCard(shown);
+  }
+  g.fillStyle = COL.char;
+  g.fillRect(0, PANE, W, TH - PANE);
+  g.fillStyle = COL.rust;
+  g.fillRect(0, PANE, W, 3);
+  g.textAlign = "center";
+  g.fillStyle = COL.sulfur;
+  g.font = "700 24px Silkscreen";
+  if (champion)
+    drawMatchup(
+      champion,
+      typed !== undefined && S.selectable.includes(typed.id) ? typed : undefined,
+    );
+  else g.fillText("THE PROGRAMME MAY BEGIN", W / 2, PANE + 32);
+  g.fillStyle = COL.bone;
+  g.font = "18px DotGothic16";
+  g.fillText(
+    champion ? "Choose who they meet next." : "Choose a room. We will find them company.",
+    W / 2,
+    PANE + 56,
+  );
+  if (S.chars.length === 0) {
+    g.fillStyle = COL.rust;
+    g.fillText(`tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`, W / 2, PANE + 130);
+    return;
+  }
+  const cols = Math.ceil(S.chars.length / 2),
+    cellW = (W - 48) / cols,
+    face = 44;
+  g.imageSmoothingEnabled = false;
+  S.chars.forEach((resident, i) => {
+    const cx = 24 + (i % cols) * cellW + cellW / 2,
+      top = PANE + 68 + Math.floor(i / cols) * 74,
+      fx = cx - face / 2,
+      chosen = typed?.id === resident.id,
+      staysOn = resident.id === champion?.id,
+      frame = chosen && !staysOn ? COL.sulfur : featured === resident.id ? COL.bone : null;
+    g.globalAlpha = staysOn ? 0.35 : resident.alive ? 1 : 0.55;
+    g.drawImage(tinted(resident), fx, top, face, face);
+    g.globalAlpha = 1;
+    if (frame !== null) {
+      g.strokeStyle = frame;
+      g.lineWidth = 3;
+      g.strokeRect(fx - 3, top - 3, face + 6, face + 6);
+    }
+    const label = `${roomNumber(resident.id)} ${resident.short}`;
+    g.font = "15px DotGothic16";
+    const labelW = Math.min(g.measureText(label).width, cellW - 8);
+    g.textAlign = "center";
+    g.fillStyle = chosen ? COL.sulfur : resident.alive ? COL.bone : COL.rust;
+    g.globalAlpha = staysOn ? 0.35 : 1;
+    g.fillText(label, cx, top + face + 18, cellW - 8);
+    g.globalAlpha = 1;
+    if (!resident.alive) {
+      g.strokeStyle = COL.blood;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.moveTo(fx + 4, top + 4);
+      g.lineTo(fx + face - 4, top + face - 4);
+      g.moveTo(fx + face - 4, top + 4);
+      g.lineTo(fx + 4, top + face - 4);
+      g.moveTo(cx - labelW / 2 - 2, top + face + 13);
+      g.lineTo(cx + labelW / 2 + 2, top + face + 13);
+      g.stroke();
+    }
+  });
+  g.textAlign = "center";
+  g.fillStyle = COL.rust;
+  g.font = "700 14px Silkscreen";
+  g.fillText("TYPE A ROOM NUMBER", W / 2, TH - 12);
 }
 function drawWorldMark(
   g: CanvasRenderingContext2D,
@@ -771,7 +941,7 @@ export function drawTV(): void {
     S.chars.forEach((c, i) => {
       g.fillStyle = c.alive ? COL.bone : COL.rust;
       g.fillText(
-        `${num(c.id + 1)} ${c.ens.split(".")[0]}${c.alive ? "" : " †"}`,
+        `${roomNumber(c.id)} ${c.ens.split(".")[0]}${c.alive ? "" : " †"}`,
         i < 16 ? 24 : 336,
         80 + (i % 16) * 24,
       );
@@ -779,56 +949,16 @@ export function drawTV(): void {
   } else if (T.buf && S.phase !== "waiting" && S.phase !== "pick") {
     fill(COL.soot);
     noise = 0.14;
-    const ch = T.buf.length === 2 ? S.chars[+T.buf - 1] : null;
+    const id = typedRoomId(T.buf),
+      ch = id === null ? undefined : S.chars[id];
     if (ch) drawCaseFile(ch);
     else {
-      text(`${T.buf.padEnd(2, "_")}`, 170, 110);
-      if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
-      else text("NO SUCH RESIDENT", 280, 28, COL.rust);
+      text(T.buf, 170, 110);
+      text("NO SUCH RESIDENT", 280, 28, COL.rust);
     }
   } else if (S.phase === "waiting" || S.phase === "pick") {
-    fill(COL.soot);
-    BARS.forEach((c, i) => {
-      g.fillStyle = c;
-      g.fillRect((i * W) / BARS.length, 0, W / BARS.length + 1, 48);
-    });
-    if (S.startError !== null) {
-      noise = 0.2;
-      text(
-        S.phase === "pick" ? "THAT FIGHTER WAS REFUSED" : "THE PROGRAMME DID NOT START",
-        130,
-        34,
-        COL.blood,
-      );
-      g.font = "400 22px DotGothic16";
-      g.fillStyle = COL.bone;
-      const end = wrap(g, S.startError, W / 2, 190, W - 64, 28);
-      text("TYPE THE NUMBER  ·  OK", Math.min(H - 24, end + 28), 24, COL.sulfur);
-    } else {
-      const ids = S.selectable.filter((id) => S.chars[id] !== undefined);
-      text(S.phase === "pick" ? "PICK THE NEXT FIGHTER" : "BOOK A FIGHTER", 56, 28, COL.sulfur);
-      if (ids.length === 0) {
-        text(
-          `tuning in${".".repeat(1 + (((now / 400) | 0) % 3))}`,
-          120,
-          24,
-          COL.rust,
-          "DotGothic16",
-          400,
-        );
-      } else {
-        text("TYPE THE NUMBER  ·  OK", 100, 18, COL.rust, "DotGothic16", 400);
-        g.textAlign = "left";
-        g.font = "22px DotGothic16";
-        ids.forEach((id, i) => {
-          const resident = S.chars[id];
-          if (resident === undefined) return;
-          const chosen = T.buf.length === 2 && Number(T.buf) - 1 === id;
-          g.fillStyle = chosen ? COL.sulfur : COL.bone;
-          g.fillText(`${num(id + 1)}  ${resident.short}`, i < 8 ? 36 : 340, 150 + (i % 8) * 32);
-        });
-      }
-    }
+    noise = S.startError === null ? 0.08 : 0.2;
+    drawRoomChoice(now);
   } else {
     const filmCanvas = film();
     if (vidMode && video.readyState >= 2) videoFrame();
@@ -917,7 +1047,7 @@ export function drawTV(): void {
       text("is deceased.", 248, 28, COL.bone, "DotGothic16", 400);
       text(`${w.name} returns to their room.`, 290, 28, COL.bone, "DotGothic16", 400);
       if (S.pending === "claim") text("COLLECTING…", 390, 26, COL.sulfur);
-      else if (S.claim) text(`PRESS OK TO COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
+      else if (S.claim) text(`COLLECT ${usd(S.claim)} USDC`, 390, 26, COL.sulfur);
       else if (S.result < 0) text(`YOU LOST ${usd(-S.result)} USDC`, 390, 26, COL.rust);
     } else if (S.phase === "over") {
       fill(COL.soot);
@@ -941,11 +1071,11 @@ export function drawTV(): void {
         g.font = "400 20px DotGothic16";
         g.fillStyle = COL.bone;
         const end = wrap(g, S.startError, W / 2, 336, W - 64, 24);
-        text("PRESS OK TO TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.sulfur);
+        text("TRY AGAIN", Math.min(H - 24, end + 24), 24, COL.sulfur);
       } else {
         if (!endedByFailure)
           text("They can tell when you do.", 295, 24, COL.bone, "DotGothic16", 400);
-        text("PRESS OK TO START AGAIN", 350, 24, COL.sulfur);
+        text("START AGAIN", 350, 24, COL.sulfur);
       }
     }
   }
