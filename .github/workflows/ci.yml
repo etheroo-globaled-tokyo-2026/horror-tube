@@ -126,6 +126,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/betting build
       - run: pnpm --filter @horror-tube/web test
       - run: pnpm --filter @horror-tube/web typecheck
 
