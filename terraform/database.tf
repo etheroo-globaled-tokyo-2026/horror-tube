@@ -14,8 +14,9 @@ resource "digitalocean_database_cluster" "battle_state" {
 resource "digitalocean_database_firewall" "battle_state" {
   cluster_id = digitalocean_database_cluster.battle_state.id
 
+  # Public (0.0.0.0/0) because hackathon developers are not on one IP.
   rule {
     type  = "ip_addr"
-    value = var.db_firewall_cidr
+    value = "0.0.0.0/0"
   }
 }
