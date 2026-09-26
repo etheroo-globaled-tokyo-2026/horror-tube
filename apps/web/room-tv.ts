@@ -3,7 +3,6 @@ import QRCode from "qrcode";
 import {
   S,
   applyRoundState,
-  replaying,
   char,
   usd,
   film,
@@ -14,7 +13,6 @@ import {
   type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
-import { playReplayVideo } from "./replay-video.ts";
 import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { BARS, COL, RAMP } from "./room-palette.ts";
@@ -34,7 +32,7 @@ import {
 } from "./room-materials.ts";
 import { renderer, scene, textTex } from "./room-render.ts";
 import { tinted } from "./room-shelf.ts";
-import { fitFont, lines, LOW, T, W8, wrap, num } from "./room-state.ts";
+import { boutNumber, fitFont, lines, LOW, reelById, T, VCR, W8, wrap, num } from "./room-state.ts";
 import { collapse, drawPower, powerStage } from "./room-power.ts";
 
 export const TW = 640,
@@ -424,9 +422,6 @@ small.height = 120;
 export const sg = ctx2d(small, { willReadFrequently: true });
 export let vidMode: "" | "live" | "rec" = "";
 let reportedBattleId: string | null = null;
-let replayVideoUrl: string | null = null;
-let replayFetchInFlight = false;
-let replayFetchFailed = false;
 // WARNING: the server starts the betting deadline from this report; send it only on a real `playing` event.
 video.addEventListener("playing", () => {
   const battleId = S.battleId;
@@ -443,19 +438,25 @@ video.addEventListener("playing", () => {
       );
     });
 });
-
-function clearReplayFetchState(): void {
-  replayVideoUrl = null;
-  replayFetchInFlight = false;
-  replayFetchFailed = false;
-}
+video.addEventListener("ended", () => {
+  if (vidMode === "rec") VCR.loaded = "";
+});
+video.addEventListener("error", () => {
+  const detail = video.error?.message || `media error ${String(video.error?.code)}`;
+  console.error(`Video ${String(lastVideoUrl)} failed: ${detail}`);
+  note(
+    `${vidMode === "rec" ? "THE TAPE" : "THE BROADCAST"} WOULD NOT PLAY. ${String(lastVideoUrl)}: ${detail}`,
+    "bad",
+  );
+  if (vidMode === "rec") VCR.loaded = "";
+});
 
 function applyVideoSrc(url: string, mode: "live" | "rec"): void {
+  if (url === lastVideoUrl && mode === vidMode) return;
   if (url !== lastVideoUrl) {
     video.src = url;
     lastVideoUrl = url;
   }
-  if (mode === vidMode) return;
   vidMode = mode;
   video.currentTime = 0;
   video.loop = false;
@@ -474,29 +475,9 @@ function pauseVideo(): void {
   lastVideoUrl = null;
 }
 
-function requestReplayVideo(): void {
-  if (replayFetchInFlight || replayFetchFailed || replayVideoUrl !== null) return;
-  replayFetchInFlight = true;
-  void playReplayVideo({
-    get currentSrc() {
-      return lastVideoUrl;
-    },
-    setSrc(url) {
-      if (!replaying()) return;
-      replayVideoUrl = url;
-      applyVideoSrc(url, "rec");
-    },
-    note,
-  }).finally(() => {
-    replayFetchInFlight = false;
-    if (replayVideoUrl === null) replayFetchFailed = true;
-  });
-}
-
 export function syncVideo(): void {
-  const live = S.phase === "fight" || S.phase === "bet";
-  if (live) {
-    clearReplayFetchState();
+  if (S.phase === "fight" || S.phase === "bet") {
+    VCR.loaded = "";
     const url = S.videoUrl;
     if (!url) {
       pauseVideo();
@@ -505,16 +486,13 @@ export function syncVideo(): void {
     applyVideoSrc(url, "live");
     return;
   }
-  if (replaying()) {
-    if (replayVideoUrl !== null) {
-      applyVideoSrc(replayVideoUrl, "rec");
-      return;
-    }
-    requestReplayVideo();
+  const tape = reelById(VCR.loaded);
+  if (tape === undefined) {
+    VCR.loaded = "";
+    pauseVideo();
     return;
   }
-  clearReplayFetchState();
-  pauseVideo();
+  applyVideoSrc(tape.videoUrl, "rec");
 }
 export function crop(
   sw0: number,
@@ -805,6 +783,24 @@ export function drawTV(): void {
       if (T.buf.length < 2) text("TYPE TWO DIGITS", 280, 24, COL.rust);
       else text("NO SUCH RESIDENT", 280, 28, COL.rust);
     }
+  } else if (vidMode === "rec") {
+    fill(COL.soot);
+    noise = 0.1;
+    if (video.readyState >= 2) videoFrame();
+    const tape = reelById(VCR.loaded);
+    g.fillStyle = COL.bone;
+    g.beginPath();
+    g.moveTo(32, 22);
+    g.lineTo(50, 33);
+    g.lineTo(32, 44);
+    g.fill();
+    g.textAlign = "left";
+    g.font = "700 26px Silkscreen";
+    g.fillText("PLAY", 60, 44);
+    if (tape) g.fillText(`BOUT ${num(boutNumber(tape))}`, 32, H - 32);
+    g.textAlign = "right";
+    g.fillText(mmss(Math.floor(video.currentTime)), W - 32, H - 32);
+    g.textAlign = "center";
   } else if (S.phase === "waiting" || S.phase === "pick") {
     fill(COL.soot);
     BARS.forEach((c, i) => {
