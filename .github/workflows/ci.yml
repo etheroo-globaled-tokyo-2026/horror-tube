@@ -53,6 +53,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/world-id build
       - run: pnpm --filter @horror-tube/world-id test
       - run: pnpm --filter @horror-tube/world-id typecheck
 
@@ -68,6 +69,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/world-id build
       - run: pnpm --filter @horror-tube/server test
       - run: pnpm --filter @horror-tube/server typecheck
 
@@ -78,6 +80,11 @@ jobs:
       # Build-time only for the Vite client (apps/web/game.ts). Not defaults in app source.
       ENS_LABEL: "ci"
       VITE_SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com"
+      # Runtime World ID gate (apps/server/src/index.ts). CI-only values; not production secrets.
+      WORLD_ID_APP_ID: "app_ci_docker"
+      WORLD_ID_RP_ID: "rp_ci_docker"
+      WORLD_ID_SIGNING_KEY: "0xabababababababababababababababababababababababababababababababab"
+      WORLD_ID_ENVIRONMENT: "production"
     steps:
       - uses: actions/checkout@v4
       - name: Build image
@@ -89,7 +96,13 @@ jobs:
       - name: Run container and check health + ffmpeg + index
         run: |
           set -euo pipefail
-          cid="$(docker run -d -e "GAME_PORT=${GAME_PORT}" -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
+          cid="$(docker run -d \
+            -e "GAME_PORT=${GAME_PORT}" \
+            -e "WORLD_ID_APP_ID=${WORLD_ID_APP_ID}" \
+            -e "WORLD_ID_RP_ID=${WORLD_ID_RP_ID}" \
+            -e "WORLD_ID_SIGNING_KEY=${WORLD_ID_SIGNING_KEY}" \
+            -e "WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT}" \
+            -p "${GAME_PORT}:${GAME_PORT}" horror-tube:ci)"
           cleanup() { docker rm -f "$cid" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           for i in $(seq 1 30); do
