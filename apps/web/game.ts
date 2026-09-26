@@ -291,7 +291,7 @@ export async function newSeason(): Promise<void> {
     ens: s.name,
     hue: HUES[id % 3],
     brief: s.brief,
-    injuries: s.injuries,
+    injuries: s.injuries.join(", "),
     icon: s.img,
     fights: 0,
     alive: s.alive,
