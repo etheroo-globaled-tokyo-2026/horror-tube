@@ -189,3 +189,8 @@ variable "settle_seconds" {
   description = "SETTLE_SECONDS game-loop timing (docs/game-loop.md). Required; no default."
   type        = number
 }
+
+variable "roster_ens_labels" {
+  description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
+  type        = string
+}
