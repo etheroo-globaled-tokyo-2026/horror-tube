@@ -227,3 +227,61 @@ variable "roster_ens_labels" {
   description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
   type        = string
 }
+
+variable "fal_key" {
+  description = "FAL_KEY for fal video generation. Set via TF_VAR_fal_key from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "fal_model" {
+  description = "FAL_MODEL text-to-video model id. Set via TF_VAR_fal_model from .env. Required; no default."
+  type        = string
+}
+
+variable "fal_image_to_video_model" {
+  description = "FAL_IMAGE_TO_VIDEO_MODEL for bouts that reuse a prior frame. Set via TF_VAR_fal_image_to_video_model from .env. May be blank for the first fight in a chain; fail closed when a prior frame exists and this is blank. No default — pass the value (empty string allowed)."
+  type        = string
+}
+
+variable "fight_video_seconds" {
+  description = "FIGHT_VIDEO_SECONDS for fal MiniMax duration. Set via TF_VAR_fight_video_seconds from .env. Required; no default."
+  type        = string
+}
+
+variable "fal_video_resolution" {
+  description = "FAL_VIDEO_RESOLUTION (480P | 768P | 1080P). Set via TF_VAR_fal_video_resolution from .env. Required; no default."
+  type        = string
+}
+
+variable "fal_prompt_expansion_mode" {
+  description = "FAL_PROMPT_EXPANSION_MODE (disabled | balanced | quality). Set via TF_VAR_fal_prompt_expansion_mode from .env. Required; no default."
+  type        = string
+}
+
+variable "fal_aspect_ratio" {
+  description = "FAL_ASPECT_RATIO. Set via TF_VAR_fal_aspect_ratio from .env. Required; no default."
+  type        = string
+}
+
+variable "narration_provider" {
+  description = "NARRATION_PROVIDER (anthropic | gemini). Set via TF_VAR_narration_provider from .env. Required; no default."
+  type        = string
+}
+
+variable "narration_model" {
+  description = "NARRATION_MODEL for the chosen narration provider. Set via TF_VAR_narration_model from .env. Required; no default."
+  type        = string
+}
+
+variable "anthropic_api_key" {
+  description = "ANTHROPIC_API_KEY. Required when NARRATION_PROVIDER=anthropic. Set via TF_VAR_anthropic_api_key from .env (empty string when unused). Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "gemini_api_key" {
+  description = "GEMINI_API_KEY. Required when NARRATION_PROVIDER=gemini. Set via TF_VAR_gemini_api_key from .env (empty string when unused). Never commit."
+  type        = string
+  sensitive   = true
+}
