@@ -171,6 +171,13 @@ export class GameLoop {
       this.settleInFlight = true;
       try {
         await this.enterSettle(now);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        console.error(`ENS settle failed: ${message}`);
+        this.error = message;
+        this.endsAt = null;
+        this.emit();
+        throw cause;
       } finally {
         this.settleInFlight = false;
       }
@@ -454,6 +461,25 @@ export class GameLoop {
     const loserChar = this.chars[loserId];
     if (winnerChar === undefined || loserChar === undefined) {
       throw new Error("enterSettle: fighter ids missing from chars.");
+    }
+    const winnerLabel = this.ensLabels[winnerId];
+    const loserLabel = this.ensLabels[loserId];
+    if (winnerLabel === undefined || loserLabel === undefined) {
+      throw new Error("enterSettle: fighter ids missing from ensLabels.");
+    }
+    const queued = await this.battleQueueStore.get(this.queuedAgentResultId);
+    if (queued === null) {
+      throw new Error(
+        `enterSettle: battle queue record ${JSON.stringify(this.queuedAgentResultId)} is missing from the store.`,
+      );
+    }
+    if (
+      queued.winnerSubname !== winnerLabel ||
+      queued.loserSubname !== loserLabel
+    ) {
+      throw new Error(
+        `enterSettle: agent result winner=${JSON.stringify(queued.winnerSubname)} loser=${JSON.stringify(queued.loserSubname)} does not match bout winner=${JSON.stringify(winnerLabel)} loser=${JSON.stringify(loserLabel)}.`,
+      );
     }
     loserChar.alive = false;
     winnerChar.kills += 1;
