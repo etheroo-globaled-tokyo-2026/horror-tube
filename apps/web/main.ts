@@ -7,6 +7,7 @@ import {
   $,
   S,
   char,
+  countdown,
   face,
   usd,
   film,
@@ -20,7 +21,13 @@ import {
   type Character,
 } from "./game.ts";
 import { blotch, burn, crack, css, ctx2d, drip, rgb, scratches, screw, seeded } from "./sprites.ts";
-import { type CoinBox, type CoinBoxPart, createCoinBox } from "./coinbox.ts";
+import {
+  COINS,
+  type CoinBox,
+  type CoinBoxPart,
+  type CoinBoxView,
+  createCoinBox,
+} from "./coinbox.ts";
 import { getGameWallet } from "./wallet.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -44,6 +51,20 @@ const COL = {
   bone: V("bone"),
 };
 const STAKES = [1, 3, 5];
+type Focus = { at: CoinBoxView | null; pick: boolean; hover: CoinBoxPart | null; error: string };
+const Z: Focus = {
+  at: null,
+  pick: false,
+  hover: null,
+  error: "",
+};
+type WalkStep = {
+  say: string;
+  view: () => [eye: THREE.Vector3, target: THREE.Vector3] | null;
+  remote: boolean;
+};
+let walk = -1;
+const esc = (text: string): string => text.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
 const num = (n: number): string => String(n).padStart(2, "0");
 const T = {
   buf: "",
@@ -350,7 +371,8 @@ const strut = (
   s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
   return s;
 };
-const legM = lambert({ color: COL.soot });
+const TV_Y = 1;
+const legM = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.45) });
 const brassM = lambert({
   color: new THREE.Color(COL.sulfur).lerp(new THREE.Color(COL.rustDeep), 0.45),
 });
@@ -358,15 +380,18 @@ const leg = (top: THREE.Vector3, foot: THREE.Vector3, r: number): void => {
   const tip = foot.clone().lerp(top, 0.08);
   scene.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
 };
-for (const sx of [-1, 1]) {
+const rails = [-1, 1].map((sx) => {
   const ends = [1, -1].map((sz): [THREE.Vector3, THREE.Vector3] => [
-    new THREE.Vector3(sx * 0.4, 0.72, -1.4 + sz * 0.24),
+    new THREE.Vector3(sx * 0.4, TV_Y - 0.4, -1.4 + sz * 0.24),
     new THREE.Vector3(sx * 0.53, 0, -1.4 + sz * 0.37),
   ]);
-  for (const [top, foot] of ends) leg(top, foot, 0.02);
+  for (const [top, foot] of ends) leg(top, foot, 0.028);
   const [[f0, f1], [b0, b1]] = ends;
-  scene.add(strut(f0.clone().lerp(f1, 0.62), b0.clone().lerp(b1, 0.62), 0.006, 0.006, legM));
-}
+  const [front, back] = [f0.clone().lerp(f1, 0.6), b0.clone().lerp(b1, 0.6)];
+  scene.add(strut(front, back, 0.009, 0.009, legM));
+  return front.clone().lerp(back, 0.5);
+});
+scene.add(strut(rails[0], rails[1], 0.009, 0.009, legM));
 const STOOL = { x: 0, z: -0.75, top: 0.45 };
 const cushion = cyl(
   0.18,
@@ -520,7 +545,7 @@ tvTex.colorSpace = THREE.SRGBColorSpace;
 tvTex.repeat.set(0.78 / 0.74, 0.585 / 0.545);
 tvTex.offset.set((1 - tvTex.repeat.x) / 2, (1 - tvTex.repeat.y) / 2);
 const tv = new THREE.Group();
-tv.position.set(0, 1.12, -1.4);
+tv.position.set(0, TV_Y, -1.4);
 scene.add(tv);
 const teak = rough(
   tex(128, 64, (g, w, h) => {
@@ -806,7 +831,7 @@ const smudge = new THREE.Mesh(
 smudge.position.set(-0.06, 0, 0.375);
 tv.add(smudge);
 const tvGlow = new THREE.PointLight(COL.body, 1.2, 0, 2);
-tvGlow.position.set(0, 1.1, -0.8);
+tvGlow.position.set(0, TV_Y - 0.02, -0.8);
 scene.add(tvGlow);
 const motes = new THREE.Points(
   new THREE.BufferGeometry().setAttribute(
@@ -1219,7 +1244,7 @@ function updateTape(now: number): void {
   const up = ch ? 1 : 0;
   TAPE.up = LOW ? up : TAPE.up + (up - TAPE.up) * 0.12;
   const flip = LOW ? 1 : Math.min(1, (now - TAPE.at) / 380);
-  tape.visible = TAPE.up > 0.01;
+  tape.visible = TAPE.up > 0.01 && Z.at === null && walk < 0;
   tape.position.set(-0.34, -0.48 + TAPE.up * 0.48, -0.62);
   tape.rotation.y = 0.26 + Math.PI * (1 - flip) * (1 - flip);
 }
@@ -1653,29 +1678,56 @@ function drawTV(): void {
 function hintText(): void {
   const h = $("#hint");
   const b = (s: string): string => `<b>${s}</b>`;
+  const step = WALK[walk];
+  if (step) {
+    h.innerHTML = `${step.say} <span class="hint-key">ENTER</span>`;
+    return;
+  }
   const hovered = S.chars[T.hover];
+  const credit = `${usd(coinBox?.credit() ?? 0)} USDC`;
+  const meter = Z.error
+    ? `${b("THE BOX SPAT IT OUT")} ${esc(Z.error)}`
+    : Z.pick
+      ? COINS.map((c, i) => `<button data-coin="${c}">${b(String(i + 1))} ${c} USDC</button>`).join(
+          " ",
+        )
+      : Z.at === "sticker"
+        ? `${b("PAY BY PHONE")} testnet USDC on Sui to <span class="addr">${coinBox?.address ?? ""}</span>`
+        : Z.at !== null && Z.hover === "slot"
+          ? b("COIN DIAL")
+          : Z.at !== null && Z.hover === "lock"
+            ? `${b("PADLOCK")} ${credit} inside`
+            : Z.at !== null && Z.hover === "sticker"
+              ? b("PAY BY PHONE")
+              : Z.at !== null || Z.hover !== null
+                ? `${b("COIN METER")} ${credit}`
+                : "";
+  if (meter) {
+    h.innerHTML = Z.at === null ? meter : `${meter} <span class="hint-key">ESC</span>`;
+    return;
+  }
   h.innerHTML = hovered
-    ? `${b(num(hovered.id + 1))} ${hovered.name}. Click to pull the tape.`
+    ? `${b(num(hovered.id + 1))} ${hovered.name}`
     : S.phase === "gate"
       ? W8.step === "read"
-        ? `Read the waiver. Press ${b("ENTER")} or click the line to sign with World ID.`
+        ? `SIGN WITH WORLD ID ${b("ENTER")}`
         : W8.step === "scan"
-          ? `Scan the code on the TV with ${b("World App")}. Orb only.`
+          ? `SCAN WITH ${b("WORLD APP")} · ORB ONLY`
           : W8.step === "done" && S.noteKind === "bad"
-            ? `${S.note.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`)} Reload to try again.`
+            ? `${esc(S.note.split("\n").filter(Boolean).slice(0, 2).join(" ").slice(0, 220))} · RELOAD`
             : W8.step === "done"
-              ? "The TV is warming up."
+              ? "WARMING UP"
               : ""
       : S.phase === "vote" && !S.cast
-        ? `Pull a tape off the shelf to read it. Type its number, then ${b("OK")}. You pick two.`
+        ? `PICK TWO · NUMBER ${b("OK")}`
         : S.phase === "bet" && !S.bet && S.credit > 0
-          ? `${b("VOL ±")} changes your stake. ${b("Hold A or B")} to bet.`
+          ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
           : S.claim
-            ? `${b("OK")} collects your winnings.`
+            ? `COLLECT ${b("OK")}`
             : S.phase === "over"
-              ? `${b("OK")} starts again.`
+              ? `AGAIN ${b("OK")}`
               : S.credit <= 0
-                ? `No stake. Turn the coin dial ${b("D")}, or scan the sticker ${b("P")} to pay by phone.`
+                ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")}`
                 : "";
 }
 
@@ -1761,7 +1813,7 @@ const hitAt = (e: MouseEvent): string | null => {
   return id ?? null;
 };
 const onShelf = (e: MouseEvent): THREE.Object3D | null => {
-  if (S.phase === "gate") return null;
+  if (S.phase === "gate" || Z.at !== null) return null;
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
@@ -1809,7 +1861,14 @@ let scanTimer = 0;
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
-  setTimeout(() => cut(enterRoom), 1400);
+  setTimeout(
+    () =>
+      cut(() => {
+        enterRoom();
+        walkTo(0);
+      }),
+    1400,
+  );
 }
 function enterRoom(): void {
   step("done");
@@ -1828,8 +1887,13 @@ void getGameWallet().then((wallet) => {
       hintText();
     },
     say,
+    (message) => {
+      Z.error = message;
+      Z.at ??= "meter";
+      hintText();
+    },
   );
-  coinBox.group.position.set(-0.574, 1.31, -1.105);
+  coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
   shade(coinBox.group);
   scene.add(coinBox.group);
 });
@@ -1837,8 +1901,8 @@ const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
     new THREE.CatmullRomCurve3(
       [
-        [-0.574, 1.12, -1.15],
-        [-0.59, 0.8, -1.2],
+        [-0.59, TV_Y, -1.1],
+        [-0.59, TV_Y - 0.32, -1.2],
         [-0.61, 0.3, -1.32],
         [-0.56, 0.008, -1.55],
         [-0.35, 0.008, -1.78],
@@ -1857,6 +1921,61 @@ const coinPartAt = (e: MouseEvent): CoinBoxPart | null => {
   ray.setFromCamera(ndc, camera);
   return coinBox.partAt(ray);
 };
+const WALK: WalkStep[] = [
+  {
+    say: "THE TV. EVERYTHING AIRS HERE.",
+    view: () => [
+      tv.localToWorld(new THREE.Vector3(-0.06, 0.02, 1.35)),
+      tv.localToWorld(new THREE.Vector3(-0.06, 0, 0.38)),
+    ],
+    remote: false,
+  },
+  {
+    say: "THE RESIDENTS. PULL A TAPE.",
+    view: () => [
+      shelf.localToWorld(new THREE.Vector3(0, 1.28, 1.05)),
+      shelf.localToWorld(new THREE.Vector3(0, 1.22, 0.1)),
+    ],
+    remote: false,
+  },
+  { say: "THE REMOTE. VOTE FOR TWO. THEY FIGHT.", view: () => null, remote: true },
+  { say: "THE METER. FEED IT TO BET.", view: () => coinBox?.view("meter") ?? null, remote: false },
+  { say: "HOLD A OR B. BET ON WHO WALKS OUT.", view: () => null, remote: true },
+];
+function walkTo(n: number): void {
+  walk = n < WALK.length ? n : -1;
+  countdown.hold = walk >= 0;
+  hintText();
+}
+function zoom(at: CoinBoxView | null, pick = false): void {
+  Z.at = at;
+  Z.pick = pick;
+  hintText();
+}
+function stepBack(): void {
+  if (Z.error) Z.error = "";
+  else if (Z.pick) Z.pick = false;
+  else if (Z.at === "sticker") Z.at = "meter";
+  else Z.at = null;
+  hintText();
+}
+function insertCoin(usdc: number): void {
+  coinBox?.insert(usdc);
+  zoom("meter");
+}
+function useCoinPart(part: CoinBoxPart): void {
+  Z.error = "";
+  if (part === "slot") zoom("meter", true);
+  else if (part === "sticker") zoom("sticker");
+  else if (part === "lock") {
+    zoom("meter");
+    coinBox?.open();
+  } else zoom(Z.at ?? "meter", Z.pick);
+}
+$("#hint").addEventListener("click", (e) => {
+  const coin = e.target instanceof Element ? e.target.closest("[data-coin]") : null;
+  if (coin instanceof HTMLElement) insertCoin(Number(coin.dataset.coin));
+});
 function noOrb(): void {
   if (W8.step !== "read" && W8.step !== "scan") return;
   clearTimeout(scanTimer);
@@ -1888,15 +2007,24 @@ function updateHover(): void {
 addEventListener("pointermove", (e) => {
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  canvas.classList.toggle(
-    "hot",
-    !!hitAt(e) || onPaper(e) || coinPartAt(e) !== null || !!onShelf(e),
-  );
+  const part = coinPartAt(e);
+  if (part !== Z.hover) {
+    Z.hover = part;
+    hintText();
+  }
+  canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e) || part !== null || !!onShelf(e));
+});
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (Z.at !== null) stepBack();
 });
 canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  if (walk >= 0) return walkTo(walk + 1);
   if (onPaper(e)) return sign();
   const part = coinPartAt(e);
-  if (part !== null) return coinBox?.use(part);
+  if (Z.at !== null) return part === null ? stepBack() : useCoinPart(part);
+  if (part !== null) return zoom("meter");
   const hit = onShelf(e);
   if (hit) {
     T.buf = "";
@@ -1914,7 +2042,8 @@ addEventListener("pointerup", holdEnd);
 addEventListener(
   "keydown",
   (e) => {
-    if (S.phase === "gate" && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
+    const waiverUp = S.phase === "gate" && W8.step !== "done";
+    if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
       else if (k === "enter" && W8.step === "dark") retry();
@@ -1924,14 +2053,28 @@ addEventListener(
       e.stopPropagation();
       return;
     }
-    if (S.phase === "gate" || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (document.querySelector("dialog[open]") !== null) return;
+    if (waiverUp || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
     const coinKey = COIN_KEYS.get(k);
+    if (walk >= 0) {
+      if (k === "escape") walkTo(WALK.length);
+      else if (k === "enter" || k === " " || k === "arrowright") walkTo(walk + 1);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (Z.at !== null) {
+      if (k === "escape" || k === "backspace") stepBack();
+      else if (Z.pick && /^[1-3]$/.test(k)) insertCoin(COINS[Number(k) - 1]);
+      else if (coinKey !== undefined) useCoinPart(coinKey);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (coinKey !== undefined && coinBox !== null) {
       e.preventDefault();
       e.stopPropagation();
-      return coinBox.use(coinKey);
+      return useCoinPart(coinKey);
     }
     let id: string | null = null;
     if (/^\d$/.test(k)) id = k;
@@ -1958,6 +2101,12 @@ shade(scene);
 const clock = new THREE.Clock();
 let lastPaint = 0;
 let gaze = 0;
+const eye = new THREE.Vector3(),
+  aim = new THREE.Vector3(),
+  wantEye = new THREE.Vector3(),
+  wantAim = new THREE.Vector3();
+let snap = true;
+let remoteUp = 0;
 renderer.setAnimationLoop(() => {
   const t = clock.getElapsedTime();
   const waiver = S.phase === "gate" && W8.step !== "done";
@@ -1966,16 +2115,40 @@ renderer.setAnimationLoop(() => {
     camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
     const up = W8.step === "scan" ? 1 : 0;
     gaze = LOW ? up : gaze + (up - gaze) * 0.06;
-    camera.lookAt(look.x * 0.06, 0.57 + gaze * 0.57 - look.y * 0.04, -0.86 - gaze * 0.54);
+    camera.lookAt(look.x * 0.06, 0.57 + gaze * (TV_Y - 0.55) - look.y * 0.04, -0.86 - gaze * 0.54);
+    snap = true;
   } else {
-    camera.position.set(
-      0.1 + look.x * 0.05 + Math.sin(t * 0.6) * 0.008,
-      1.2 - look.y * 0.03 + Math.sin(t * 1.0) * 0.006,
-      0.28,
-    );
-    camera.lookAt(0.16 + look.x * 0.12, 1.02 - look.y * 0.06, -1.4);
+    const walkView = WALK[walk]?.view() ?? null;
+    if (walkView !== null) {
+      wantEye.copy(walkView[0]);
+      wantAim.copy(walkView[1]);
+    } else if (Z.at !== null && coinBox !== null) {
+      const [e2, a2] = coinBox.view(Z.at);
+      wantEye.copy(e2);
+      wantAim.copy(a2);
+      wantEye.x += look.x * 0.004;
+      wantEye.y -= look.y * 0.004;
+    } else {
+      wantEye.set(
+        0.1 + look.x * 0.05 + Math.sin(t * 0.6) * 0.008,
+        1.2 - look.y * 0.03 + Math.sin(t * 1.0) * 0.006,
+        0.28,
+      );
+      wantAim.set(0.16 + look.x * 0.12, TV_Y - 0.1 - look.y * 0.06, -1.4);
+    }
+    const k = snap || LOW ? 1 : 0.1;
+    eye.lerp(wantEye, k);
+    aim.lerp(wantAim, k);
+    snap = false;
+    camera.position.copy(eye);
+    camera.lookAt(aim);
   }
-  remote.visible = !waiver;
+  const raise = WALK[walk]?.remote ? 1 : 0;
+  remoteUp = LOW ? raise : remoteUp + (raise - remoteUp) * 0.12;
+  remote.position.set(0.31 - 0.2 * remoteUp, -0.17 + 0.09 * remoteUp, -0.62 + 0.14 * remoteUp);
+  remote.rotation.set(-0.3 + 0.22 * remoteUp, -0.22 + 0.2 * remoteUp, -0.1 + 0.1 * remoteUp);
+  if (raise) led.material.color.set(Math.sin(t * 8) > 0 ? COL.blood : COL.bloodDeep);
+  remote.visible = !waiver && Z.at === null && (walk < 0 || raise === 1);
   updateTape(performance.now());
   updateHover();
   if (coinBox !== null) coinBox.group.visible = !waiver;
