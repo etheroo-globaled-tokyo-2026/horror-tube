@@ -1,25 +1,10 @@
 /** Same-origin RoundState client (docs/game-loop.md). No second host. */
 
+import type { RoundState } from "../server/src/types.ts";
+
 import { WALLET_SESSION_KEY, type SessionStore } from "./wallet.ts";
 
-export type ServerPhase = "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
-
-export type ServerRoundState = {
-  round: number;
-  phase: ServerPhase;
-  endsAt: number | null;
-  champion: number | null;
-  slots: 1 | 2;
-  voters: number;
-  quorum: number;
-  votes: Record<number, number>;
-  fighters: [number, number] | null;
-  pool: [number, number];
-  winner: 0 | 1 | null;
-  videoUrl: string | null;
-  error: string | null;
-  chars: { id: number; alive: boolean; kills: number; damage: number }[];
-};
+export type ServerRoundState = RoundState;
 
 export type RoundListener = (state: ServerRoundState) => void;
 
