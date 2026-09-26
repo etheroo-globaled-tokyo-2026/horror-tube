@@ -1,0 +1,13 @@
+---
+description: End-to-end ENS and CDN uploads must use real Fandom propose output
+alwaysApply: true
+---
+
+# E2E uploads use real data
+
+An end-to-end upload sends a character to ENS (`roster register`) or puts an icon on the CDN. The input must be JSON written by `python -m roster propose` from a live Fandom `api.php` read.
+
+- Do not pass `roster/fixtures/` or any other fixture file to `register` or to an icon upload.
+- Do not hand-write `look` or `brief` for that run.
+- Unit tests may keep saved API recordings and invented sheets. Those files must not be uploaded.
+- If propose fails, stop. Do not substitute a fixture so the upload can continue.
