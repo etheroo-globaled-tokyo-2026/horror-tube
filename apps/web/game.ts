@@ -304,7 +304,7 @@ function castInServerOrder(chars: ServerRoundState["chars"]): Character[] {
     injuries: s.injuries.join(", "),
     icon: s.img,
     fights: 0,
-    alive: s.alive,
+    alive: chars.find((c) => c.id === s.id)?.alive ?? s.alive,
     kills: 0,
     damage: 0,
   }));
