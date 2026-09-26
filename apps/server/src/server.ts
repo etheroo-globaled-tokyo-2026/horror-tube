@@ -102,15 +102,22 @@ function serveStatic(
   const type =
     CONTENT_TYPES[extname(resolved.path).toLowerCase()] ??
     "application/octet-stream";
-  res.writeHead(200, { "content-type": type });
+  // Open first; only send 200 after the fd is open so open/read errors can be 500.
   const stream = createReadStream(resolved.path);
+  stream.once("open", () => {
+    if (res.headersSent || res.writableEnded) {
+      stream.destroy();
+      return;
+    }
+    res.writeHead(200, { "content-type": type });
+    stream.pipe(res);
+  });
   stream.on("error", (err) => {
     console.error(
       `static file read failed for ${resolved.path}: ${err instanceof Error ? err.message : String(err)}`,
     );
     sendInternalError(res);
   });
-  stream.pipe(res);
 }
 
 export function createGameServer(options: GameServerOptions): Server {

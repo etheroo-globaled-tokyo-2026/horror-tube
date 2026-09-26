@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -147,6 +147,34 @@ describe("HTTP server", () => {
       assert.equal(await res.text(), "relative\n");
     } finally {
       process.chdir(prev);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns 500 for an unreadable static file and keeps serving /health", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "horror-tube-static-unreadable-"));
+    const denied = join(dir, "denied.txt");
+    try {
+      await writeFile(denied, "secret\n", "utf8");
+      await chmod(denied, 0o000);
+      const staticDir = readStaticDir({ STATIC_DIR: dir });
+      const server = createGameServer({
+        port: 0,
+        host: "127.0.0.1",
+        staticDir,
+      });
+      servers.push(server);
+      await listenGameServer(server, { port: 0, host: "127.0.0.1", staticDir });
+      const addr = server.address() as AddressInfo;
+      const base = `http://127.0.0.1:${String(addr.port)}`;
+      const deniedRes = await fetch(`${base}/denied.txt`);
+      assert.equal(deniedRes.status, 500);
+      assert.equal(await deniedRes.text(), "Internal Server Error");
+      const health = await fetch(`${base}/health`);
+      assert.equal(health.status, 200);
+      assert.deepEqual(await health.json(), { ok: true });
+    } finally {
+      await chmod(denied, 0o644).catch(() => undefined);
       await rm(dir, { recursive: true, force: true });
     }
   });
