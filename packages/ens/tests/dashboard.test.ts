@@ -46,7 +46,11 @@ describe("dashboard register calldata (unit, no network)", () => {
 });
 
 describe("dashboard recent log windows (unit, no network)", () => {
-  it("walks backward in chunks of at most 49999 blocks from head", () => {
+  it("keeps MAX_LOG_CHUNK_BLOCKS at or below 10000 for Infura eth_getLogs", () => {
+    assert.ok(MAX_LOG_CHUNK_BLOCKS <= 10000n);
+  });
+
+  it("walks backward in chunks of at most MAX_LOG_CHUNK_BLOCKS from head", () => {
     const latest = 11_785_000n;
     const chunks = recentLogScanChunks(latest);
     assert.equal(chunks.length, MAX_RECENT_LOG_CHUNKS);
@@ -65,7 +69,7 @@ describe("dashboard recent log windows (unit, no network)", () => {
   });
 
   it("never includes block 0 when head is near genesis", () => {
-    const chunks = recentLogScanChunks(100n, 4, 49999n);
+    const chunks = recentLogScanChunks(100n, 4, 10000n);
     assert.equal(chunks.length, 1);
     assert.equal(chunks[0]!.fromBlock, MIN_LOG_BLOCK);
     assert.equal(chunks[0]!.toBlock, 100n);
