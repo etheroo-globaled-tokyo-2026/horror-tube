@@ -19,6 +19,7 @@ REPO_ENV_PATH = REPO_ROOT / ".env"
 
 from roster.chain import (
     apply_register_plan,
+    apply_text_reset,
     list_registered,
     list_registered_labels,
     set_icons,
@@ -34,10 +35,13 @@ from roster.fandom import (
 )
 from roster.icons import (
     IconGenerationError,
+    build_icon_prompt_cache,
     generate_face_png,
+    load_icon_prompt_cache,
     required_env,
     spaces_store_from_env,
     sync_chain_icons,
+    write_cached_face_icons,
     write_face_icons,
 )
 from roster.plan import (
@@ -47,10 +51,17 @@ from roster.plan import (
     build_removal_plan,
 )
 from roster.propose import (
+    load_cast,
     propose_cast,
     propose_sheets,
     sheet_from_page_pair,
     sheets_payload,
+)
+from roster.text_snapshot import (
+    DEFAULT_ENS_TEXT_SNAPSHOT,
+    characters_from_registered,
+    load_text_snapshot,
+    require_labels_registered,
 )
 from roster.validate import (
     RosterValidationError,
@@ -132,6 +143,34 @@ def cmd_icons(args: argparse.Namespace) -> int:
     for path in written:
         print(path)
     print(f"Wrote character JSON with icon URLs: {out_path}")
+    for character in updated:
+        print(f"  {character['label']}: {character['icon']}")
+    return 0
+
+
+def cmd_icons_cache(args: argparse.Namespace) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    cache_path = Path(_require_flag(args.cache, name="--cache"))
+    out_dir = Path(_require_flag(args.out_dir, name="--out-dir"))
+    out_path = Path(_require_flag(args.out, name="--out"))
+    characters = load_icon_prompt_cache(cache_path)
+    cdn_host = required_env("SPACES_CDN_HOST", os.environ)
+    spaces = spaces_store_from_env(os.environ)
+    written, updated = write_cached_face_icons(
+        characters,
+        out_dir,
+        api_key=required_env("TOGETHER_API_KEY", os.environ),
+        model=required_env("TOGETHER_IMAGE_MODEL", os.environ),
+        api_url=required_env("TOGETHER_API_URL", os.environ),
+        spaces=spaces,
+        cdn_host=cdn_host,
+        override=bool(args.override),
+    )
+    _write_json(out_path, {"version": 1, "characters": updated})
+    print(f"Wrote {len(written)} cached-prompt face icon(s) to {out_dir}")
+    for path in written:
+        print(path)
+    print(f"Wrote cached character text with icon URLs: {out_path}")
     for character in updated:
         print(f"  {character['label']}: {character['icon']}")
     return 0
@@ -241,9 +280,32 @@ def cmd_propose(args: argparse.Namespace) -> int:
     _require_wiki_not_blank(args.wiki)
     look_source = _optional_page_flag(args.look_source, name="--look-source")
     brief_source = _optional_page_flag(args.brief_source, name="--brief-source")
-    if (look_source is None) != (brief_source is None):
+    if args.cast:
+        if args.n is not None:
+            raise FandomError("Do not pass --n with --cast; cast.json fixes the count.")
+        if (
+            list(args.source or [])
+            or args.sources_file is not None
+            or look_source is not None
+            or brief_source is not None
+        ):
+            raise FandomError(
+                "Do not pass --source, --sources-file, --look-source, or "
+                "--brief-source together with --cast."
+            )
+        characters = propose_cast()
+        if args.prompt_cache is not None:
+            cache_path = Path(
+                _require_flag(args.prompt_cache, name="--prompt-cache")
+            )
+            cache = build_icon_prompt_cache(characters, load_cast())
+            _write_json(cache_path, cache)
+            print(f"Wrote icon prompt cache: {cache_path}")
+    elif args.prompt_cache is not None:
+        raise FandomError("--prompt-cache requires --cast.")
+    elif (look_source is None) != (brief_source is None):
         raise FandomError("Pass both --look-source and --brief-source, or neither.")
-    if look_source is not None and brief_source is not None:
+    elif look_source is not None and brief_source is not None:
         if list(args.source or []) or args.sources_file is not None:
             raise FandomError(
                 "Do not pass --source or --sources-file together with "
@@ -260,6 +322,8 @@ def cmd_propose(args: argparse.Namespace) -> int:
             )
         ]
     else:
+        if args.n is None:
+            raise FandomError("--n is required unless --cast is passed.")
         sources: list[str] = list(args.source or [])
         if args.sources_file is not None:
             if args.sources_file.strip() == "":
@@ -471,6 +535,47 @@ def cmd_redeploy(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot_text(args: argparse.Namespace) -> int:
+    """Read every registered character's text records and write a local JSON copy."""
+    _require_chain_env()
+    out_raw = args.out
+    if out_raw is None or str(out_raw).strip() == "":
+        out_path = DEFAULT_ENS_TEXT_SNAPSHOT
+    else:
+        out_path = Path(_require_flag(str(out_raw), name="--out"))
+    registered = list_registered()
+    characters = characters_from_registered(registered)
+    _write_json(out_path, characters)
+    print(f"snapshot-text: wrote {len(characters)} sheet(s) to {out_path}")
+    for character in characters:
+        print(f"  {character['label']}")
+    return 0
+
+
+def cmd_reset_text(args: argparse.Namespace) -> int:
+    """setText snapshot fields onto existing subnames. Never unregisters or invents."""
+    _require_chain_env()
+    input_raw = args.input
+    if input_raw is None or str(input_raw).strip() == "":
+        input_path = DEFAULT_ENS_TEXT_SNAPSHOT
+    else:
+        input_path = Path(_require_flag(str(input_raw), name="--input"))
+    characters = load_text_snapshot(input_path)
+    registered_labels = list_registered_labels()
+    require_labels_registered(
+        characters, path=input_path, registered_labels=registered_labels
+    )
+    print(
+        f"reset-text: setText for {len(characters)} sheet(s) from {input_path} "
+        "(existing subnames only; no unregister)"
+    )
+    for character in characters:
+        print(f"  {character['label']}")
+    apply_text_reset(characters)
+    print("reset-text: chain writes complete")
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     _require_ens_label()
     input_path = Path(_require_flag(args.input, name="--input"))
@@ -536,6 +641,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     icons_p.set_defaults(func=cmd_icons)
 
+    icons_cache_p = sub.add_parser(
+        "icons-cache",
+        help=(
+            "Explicitly regenerate face icons from exact saved prompts in a "
+            "git-tracked icon prompt cache. Does not fetch Fandom or rebuild prompts."
+        ),
+    )
+    icons_cache_p.add_argument(
+        "--cache",
+        required=True,
+        help="Path to the checked-in icon prompt cache JSON.",
+    )
+    icons_cache_p.add_argument(
+        "--out-dir",
+        required=True,
+        help="Directory to write local <label>.png files when generated.",
+    )
+    icons_cache_p.add_argument(
+        "--out",
+        required=True,
+        help="Path to write cached character text with generated icon URLs.",
+    )
+    icons_cache_p.add_argument(
+        "--override",
+        action="store_true",
+        help=(
+            "When <label>.png exists on Spaces, regenerate and upload under "
+            "<label>-<unix-seconds>.png."
+        ),
+    )
+    icons_cache_p.set_defaults(func=cmd_icons_cache)
+
     icons_chain_p = sub.add_parser(
         "icons-chain",
         help=(
@@ -587,8 +724,29 @@ def build_parser() -> argparse.ArgumentParser:
     propose_p.add_argument(
         "--n",
         type=int,
-        required=True,
-        help="Exact number of characters to propose. Must equal the number of sources.",
+        required=False,
+        default=None,
+        help=(
+            "Exact number of characters to propose. Must equal the number of "
+            "sources. Required unless --cast is passed."
+        ),
+    )
+    propose_p.add_argument(
+        "--cast",
+        action="store_true",
+        help=(
+            "Propose the 10 fighters in roster/cast.json from their live Fandom "
+            "sources. Do not combine with source flags or --n."
+        ),
+    )
+    propose_p.add_argument(
+        "--prompt-cache",
+        required=False,
+        default=None,
+        help=(
+            "With --cast, also write a versioned cache containing label, "
+            "display_name, look, brief, exact image_prompt, and source URLs."
+        ),
     )
     propose_p.add_argument(
         "--source",
@@ -752,6 +910,45 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     redeploy_p.set_defaults(func=cmd_redeploy)
+
+    snapshot_text_p = sub.add_parser(
+        "snapshot-text",
+        help=(
+            "Read every registered character subname under ENS_LABEL and write a "
+            "JSON array of text fields only (label, display_name, look, brief, "
+            "injury_places, injuries, status, icon). Does not use Fandom or "
+            "icon-prompt-cache.json."
+        ),
+    )
+    snapshot_text_p.add_argument(
+        "--out",
+        required=False,
+        default=None,
+        help=(
+            "Path to write the text snapshot JSON. Defaults to "
+            f"{DEFAULT_ENS_TEXT_SNAPSHOT} (checked-in chain backup)."
+        ),
+    )
+    snapshot_text_p.set_defaults(func=cmd_snapshot_text)
+
+    reset_text_p = sub.add_parser(
+        "reset-text",
+        help=(
+            "Read an ENS text snapshot JSON and setText those fields onto the "
+            "existing registered subnames. Does not unregister, does not touch "
+            "the parent .eth name, and does not invent missing fields."
+        ),
+    )
+    reset_text_p.add_argument(
+        "--input",
+        required=False,
+        default=None,
+        help=(
+            "Path to the text snapshot JSON. Defaults to "
+            f"{DEFAULT_ENS_TEXT_SNAPSHOT}."
+        ),
+    )
+    reset_text_p.set_defaults(func=cmd_reset_text)
 
     return parser
 

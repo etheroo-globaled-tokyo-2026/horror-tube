@@ -259,9 +259,13 @@ h1 {
   font-size: 1.1rem;
   margin-bottom: 0.35rem;
 }
-.sheet h2 a,
+.sheet .name a,
 .addr a {
   color: var(--sulfur);
+}
+.name {
+  margin-bottom: 0.25rem;
+  word-break: break-all;
 }
 .addr {
   margin-bottom: 0.75rem;

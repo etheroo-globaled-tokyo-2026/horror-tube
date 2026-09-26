@@ -11,7 +11,6 @@ import {
   type GameWallet,
   SUI_TESTNET_GRPC,
   fromUsdcUnits,
-  getSuiBalance,
   getUsdcBalance,
   sendUsdc,
   toUsdcUnits,
@@ -29,7 +28,7 @@ export type CoinBox = {
   group: THREE.Group;
   address: string;
   credit: () => number;
-  partAt: (ray: THREE.Raycaster) => CoinBoxPart | null;
+  partAt: (hit: THREE.Intersection) => CoinBoxPart;
   view: (at: CoinBoxView) => [eye: THREE.Vector3, target: THREE.Vector3];
   insert: (usdc: number) => void;
   open: () => void;
@@ -521,8 +520,6 @@ export function createCoinBox(
   async function withdraw(): Promise<void> {
     const units = await getUsdcBalance(wallet);
     if (units === 0n) return say("Nothing to give back.");
-    if ((await getSuiBalance(wallet)) === 0n)
-      throw new Error("The coin return is jammed: the box has no testnet SUI to pay the gas.");
     const to = storedPayout() ?? (await connectBrowserWallet());
     if (to === null) throw new Error("No wallet connected to pay back to.");
     setStatus("RETURNING");
@@ -574,9 +571,7 @@ export function createCoinBox(
     group,
     address: wallet.address,
     credit: () => credit,
-    partAt: (ray) => {
-      const hit = ray.intersectObject(group, true)[0];
-      if (hit === undefined) return null;
+    partAt: (hit) => {
       if (hit.object.parent === handle) return "slot";
       if (hit.object === staple || hit.object.parent === lock || hit.object.parent === drawer)
         return "lock";

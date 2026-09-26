@@ -420,6 +420,95 @@ class ProposeTests(unittest.TestCase):
         self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
         self.assertEqual(lore.powers, "He transforms and controls minds.")
 
+    def test_anchor_section_keeps_text_under_a_subheading(self):
+        sections = {
+            "parse": {
+                "title": "Count Dracula",
+                "pageid": 917,
+                "properties": {},
+                "categories": [],
+                "sections": [
+                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
+                    {
+                        "line": "Powers and Abilities",
+                        "index": "",
+                        "anchor": "Powers_and_Abilities",
+                    },
+                ],
+            }
+        }
+        body = {
+            "parse": {
+                "text": (
+                    '<h2><span id="Appearance">Appearance</span></h2>'
+                    "<h3>Costume</h3>"
+                    "<p>A pale count in formal black clothes.</p>"
+                    '<h2><span id="Powers_and_Abilities">Powers and Abilities</span></h2>'
+                    "<p>He transforms and controls minds.</p>"
+                )
+            }
+        }
+
+        def fake(_host, params):
+            if str(params.get("prop", "")).startswith("sections"):
+                return sections
+            return body
+
+        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+            lore = fetch_page_lore(
+                resolve_page(
+                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
+                    wiki=None,
+                )
+            )
+        self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
+        self.assertEqual(lore.powers, "He transforms and controls minds.")
+
+    def test_anchor_on_subheading_after_a_higher_heading(self):
+        sections = {
+            "parse": {
+                "title": "Count Dracula",
+                "pageid": 917,
+                "properties": {},
+                "categories": [],
+                "sections": [
+                    {"line": "Appearance", "index": "", "anchor": "Appearance"},
+                    {
+                        "line": "Powers and Abilities",
+                        "index": "",
+                        "anchor": "Powers_and_Abilities",
+                    },
+                ],
+            }
+        }
+        body = {
+            "parse": {
+                "text": (
+                    '<h2><span id="Appearance">Appearance</span></h2>'
+                    "<p>A pale count in formal black clothes.</p>"
+                    '<h3><span id="Powers_and_Abilities">Powers and Abilities</span></h3>'
+                    "<p>He transforms and controls minds.</p>"
+                    '<h2><span id="Trivia">Trivia</span></h2>'
+                    "<p>Played by many actors.</p>"
+                )
+            }
+        }
+
+        def fake(_host, params):
+            if str(params.get("prop", "")).startswith("sections"):
+                return sections
+            return body
+
+        with mock.patch("roster.fandom.fetch_api", side_effect=fake):
+            lore = fetch_page_lore(
+                resolve_page(
+                    "https://movie-monster.fandom.com/wiki/Count_Dracula",
+                    wiki=None,
+                )
+            )
+        self.assertEqual(lore.appearance, "A pale count in formal black clothes.")
+        self.assertEqual(lore.powers, "He transforms and controls minds.")
+
     def test_missing_look_section_fails(self):
         parse = {
             "parse": {
@@ -606,6 +695,60 @@ class CliTests(unittest.TestCase):
                 )
             self.assertEqual(code, 1)
             self.assertFalse(out.exists())
+
+    def test_propose_cast_writes_sheet_and_prompt_cache(self):
+        source_url = "https://villains.fandom.com/wiki/Maskcoat"
+        sheet = _char(
+            label="maskcoat",
+            display_name="Maskcoat",
+            look="A killer in a dark coat carries a machete.",
+            brief="A relentless stalker.",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "cast.json"
+            cache = Path(tmp) / "icon-prompt-cache.json"
+            with mock.patch.object(cli, "propose_cast", return_value=[sheet]), mock.patch.object(
+                cli, "load_cast", return_value=[{"source": source_url}]
+            ):
+                code = cli.main(
+                    [
+                        "propose",
+                        "--cast",
+                        "--out",
+                        str(out),
+                        "--prompt-cache",
+                        str(cache),
+                    ]
+                )
+            proposed = json.loads(out.read_text(encoding="utf-8"))
+            cached = json.loads(cache.read_text(encoding="utf-8"))
+        self.assertEqual(code, 0)
+        self.assertEqual(proposed["look"], sheet["look"])
+        self.assertEqual(cached["characters"][0]["look"], sheet["look"])
+        self.assertNotIn("machete", cached["characters"][0]["image_prompt"].lower())
+        self.assertEqual(cached["characters"][0]["sources"]["look"], source_url)
+
+    def test_prompt_cache_requires_cast_mode(self):
+        stderr = StringIO()
+        with tempfile.TemporaryDirectory() as tmp:
+            with redirect_stderr(stderr):
+                code = cli.main(
+                    [
+                        "propose",
+                        "--n",
+                        "1",
+                        "--wiki",
+                        WIKI,
+                        "--source",
+                        "Pinhead (Hellraiser)",
+                        "--out",
+                        str(Path(tmp) / "out.json"),
+                        "--prompt-cache",
+                        str(Path(tmp) / "cache.json"),
+                    ]
+                )
+        self.assertEqual(code, 1)
+        self.assertIn("--prompt-cache requires --cast", stderr.getvalue())
 
 
 class TestRegisterRejectsFixtures(unittest.TestCase):

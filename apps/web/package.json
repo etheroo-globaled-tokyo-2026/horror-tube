@@ -13,9 +13,10 @@
     "@mysten/dapp-kit-core": "^1.6.32",
     "@mysten/sui": "^2.33.0",
     "@t3-oss/env-core": "^0.13.11",
+    "@worldcoin/idkit-core": "4.3.0",
     "qrcode": "^1.5.4",
     "three": "0.186.1",
-    "zod": "^4.6.5"
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
