@@ -53,6 +53,7 @@
       }
       .demo {
         position: fixed;
+        z-index: 10;
         left: 24px;
         top: 20px;
         display: flex;
@@ -86,21 +87,66 @@
       #film {
         display: none;
       }
+      .cut {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        background: var(--soot);
+      }
+      .dark {
+        position: fixed;
+        inset: 0;
+        z-index: 8;
+        display: grid;
+        place-content: center;
+        gap: 18px;
+        padding: 24px;
+        text-align: center;
+        font: 400 18px/1.5 var(--f-body);
+        color: var(--grime);
+      }
+      .dark h1 {
+        font: 700 clamp(32px, 6vw, 64px)/1 var(--f-osd);
+        color: var(--blood);
+      }
+      .dark b {
+        color: var(--bone);
+      }
     </style>
   </head>
   <body>
     <canvas id="view"></canvas>
-    <p id="hint" class="hint"></p>
-    <p class="demo">
+    <p id="hint" class="hint" aria-live="polite"></p>
+    <p id="demo-room" class="demo">
       <button data-act="view">RECORDS · V</button><button data-act="skip">DEMO · SKIP ▸ N</button>
     </p>
+    <p id="demo-gate" class="demo">
+      <button id="no-orb">DEMO · NO ORB ▸ X</button><button id="forget">DEMO · FORGET ME</button>
+    </p>
+    <div id="waiver-text" class="sr-only">
+      <h2>Horror Tube waiver</h2>
+      <p>
+        I am 18 or older. I am one person, with one vote. I will watch people die, and I will bet on
+        it. I watch at my own risk.
+      </p>
+      <p>Press Enter to sign with World ID. Only Orb-verified humans can enter.</p>
+    </div>
+    <div id="dark" class="dark" hidden role="alert">
+      <h1>NOT ELIGIBLE</h1>
+      <p>
+        Only Orb-verified humans can enter or vote.<br />Device and Selfie Check do not prove that
+        you are 18+.
+      </p>
+      <p>Press <b>ENTER</b> to try again.</p>
+    </div>
+    <div id="cut" class="cut" hidden></div>
     <canvas id="film"></canvas>
     <div hidden>
       <button data-act="cast" id="h-cast"></button><button data-act="bet" id="h-bet"></button
       ><button data-act="claim" id="h-claim"></button
       ><button data-act="reset" id="h-reset"></button>
     </div>
-    <div id="gate" class="gate"></div>
+    <div id="gate" class="gate" hidden></div>
 
     <script src="sprites.js"></script>
     <script src="game.js"></script>
@@ -265,7 +311,8 @@
       pipe.rotation.z = Math.PI / 2;
       pipe.position.set(0, 2.55, -1.7);
       scene.add(pipe);
-      scene.add(new THREE.AmbientLight(COL.rustDeep, 0.9));
+      const ambient = new THREE.AmbientLight(COL.rustDeep, 0.9);
+      scene.add(ambient);
       const bulbLight = new THREE.PointLight(0xffd6a0, 4, 0, 2);
       bulbLight.position.set(-0.5, 2.2, -0.6);
       scene.add(bulbLight);
@@ -281,6 +328,101 @@
       const table = box(1.4, 0.72, 0.8, lambert({ map: metalTex(COL.char) }));
       table.position.set(0, 0.36, -1.35);
       scene.add(table);
+
+      const PW = 384,
+        PH = 512;
+      const paperCanvas = document.createElement("canvas");
+      paperCanvas.width = PW;
+      paperCanvas.height = PH;
+      const pg = paperCanvas.getContext("2d");
+      const paperTex = new THREE.CanvasTexture(paperCanvas);
+      paperTex.colorSpace = THREE.SRGBColorSpace;
+      const paper = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.3, 0.4),
+        lambert({ map: paperTex, transparent: true, alphaTest: 0.5 }),
+      );
+      paper.position.set(0, 0.74, -0.86);
+      paper.rotation.x = -1.25;
+      scene.add(paper);
+      const burnLight = new THREE.PointLight(COL.sulfur, 0, 1.2, 2);
+      burnLight.position.set(0, 0.85, -0.8);
+      scene.add(burnLight);
+      const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const W8 = { step: "read", at: 0, ink: 0 };
+      const SCRIBBLE = Array.from({ length: 28 }, (_, i) => [
+        70 + i * 9,
+        388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
+      ]);
+      paper.renderOrder = 1;
+      function drawPaper(now) {
+        const g = pg;
+        g.globalCompositeOperation = "source-over";
+        g.clearRect(0, 0, PW, PH);
+        g.fillStyle = COL.bone;
+        g.fillRect(0, 0, PW, PH);
+        seedT = 11;
+        speckle(g, PW, PH, [COL.grime, COL.rust], 260);
+        g.textAlign = "left";
+        g.textBaseline = "alphabetic";
+        g.fillStyle = COL.blood;
+        g.font = "700 38px Silkscreen";
+        g.fillText("HORROR TUBE", 28, 62);
+        g.fillStyle = COL.rustDeep;
+        g.font = "700 16px Silkscreen";
+        g.fillText("READ BEFORE YOU WATCH", 28, 90);
+        g.fillStyle = COL.soot;
+        g.font = "24px DotGothic16";
+        [
+          "I am 18 or older.",
+          "I am one person,",
+          "with one vote.",
+          "I will watch people die,",
+          "and I will bet on it.",
+          "I watch at my own risk.",
+        ].forEach((l, i) => g.fillText(l, 28, 140 + i * 34));
+        g.fillStyle = COL.soot;
+        g.fillRect(28, 402, PW - 56, 3);
+        g.font = "700 26px Silkscreen";
+        g.fillText("X", 30, 394);
+        g.fillStyle = COL.rustDeep;
+        g.font = "700 14px Silkscreen";
+        g.fillText("SIGN WITH WORLD ID · ORB ONLY", 28, 428);
+        if (W8.ink > 0) {
+          g.strokeStyle = COL.soot;
+          g.lineWidth = 3;
+          g.beginPath();
+          SCRIBBLE.slice(0, Math.ceil(W8.ink * SCRIBBLE.length)).forEach(([x, y], i) =>
+            i ? g.lineTo(x, y) : g.moveTo(x, y),
+          );
+          g.stroke();
+        }
+        if (W8.step === "signed") {
+          g.save();
+          g.translate(270, 470);
+          g.rotate(-0.18);
+          g.strokeStyle = g.fillStyle = COL.blood;
+          g.lineWidth = 4;
+          g.strokeRect(-92, -28, 184, 48);
+          g.font = "700 26px Silkscreen";
+          g.textAlign = "center";
+          g.fillText("VERIFIED", 0, 6);
+          g.restore();
+        }
+        if (W8.step === "burn") {
+          const k = LOW ? 1 : Math.min(1, (now - W8.at) / 2400),
+            line = PH * (1 - k * 1.15);
+          for (let x = 0; x < PW; x += 4) {
+            const y = line + Math.sin(x * 0.07 + now * 0.004) * 14 + Math.sin(x * 0.23) * 8;
+            g.clearRect(x, y, 4, PH - y);
+            g.fillStyle = COL.soot;
+            g.fillRect(x, y - 14, 4, 10);
+            g.fillStyle = Math.random() < 0.5 ? COL.sulfur : COL.blood;
+            g.fillRect(x, y - 4, 4, 4);
+          }
+          burnLight.intensity = k < 1 ? 0.35 + Math.random() * 0.35 : 0;
+        }
+        paperTex.needsUpdate = true;
+      }
 
       const TW = 640,
         TH = 480;
@@ -586,6 +728,59 @@
         };
         if (S.phase === "gate") {
           noise = 0.5;
+          if (W8.step === "scan") {
+            noise = 0.1;
+            fill(COL.soot);
+            const cell = 12,
+              n = 25,
+              ox = (W - n * cell) / 2,
+              oy = 40;
+            seedT = 23;
+            g.fillStyle = COL.bone;
+            for (let y = 0; y < n; y++)
+              for (let x = 0; x < n; x++) {
+                const finder = [
+                  [0, 0],
+                  [n - 7, 0],
+                  [0, n - 7],
+                ].some(
+                  ([fx, fy]) =>
+                    x >= fx &&
+                    x < fx + 7 &&
+                    y >= fy &&
+                    y < fy + 7 &&
+                    (x === fx ||
+                      x === fx + 6 ||
+                      y === fy ||
+                      y === fy + 6 ||
+                      (x > fx + 1 && x < fx + 5 && y > fy + 1 && y < fy + 5)),
+                );
+                const inFinder = [
+                  [0, 0],
+                  [n - 7, 0],
+                  [0, n - 7],
+                ].some(([fx, fy]) => x >= fx && x < fx + 8 && y >= fy && y < fy + 8);
+                if (finder || (!inFinder && r() < 0.48))
+                  g.fillRect(ox + x * cell, oy + y * cell, cell, cell);
+              }
+            text("SCAN WITH WORLD APP", 380, 30, COL.sulfur);
+            text("Orb only. We check it on our side.", 420, 24, COL.bone, "DotGothic16", 400);
+          } else if (W8.step === "signed") {
+            noise = 0.1;
+            fill(COL.soot);
+            text("VERIFIED", 210, 48, COL.blood);
+            text("ONE HUMAN · 18+", 270, 26, COL.bone);
+          } else if (W8.step !== "read") {
+            noise = 0;
+            fill(COL.soot);
+            const k = LOW ? 1 : Math.min(1, (now - W8.at) / 320);
+            if (W8.step === "off" && k < 1) {
+              const h = Math.max(2, H * (1 - k * 2)),
+                w = k < 0.5 ? W : W * (1 - (k - 0.5) * 2);
+              g.fillStyle = COL.bone;
+              g.fillRect((W - w) / 2, (H - h) / 2, Math.max(4, w), h);
+            }
+          }
         } else if (S.view === 2) {
           fill(COL.char);
           text("RESIDENT RECORDS", 42, 26);
@@ -748,7 +943,11 @@
         const b = (s) => `<b>${s}</b>`;
         h.innerHTML =
           S.phase === "gate"
-            ? ""
+            ? W8.step === "read"
+              ? `Read the waiver. Press ${b("ENTER")} or click the line to sign with World ID.`
+              : W8.step === "scan"
+                ? `Scan the code on the TV with ${b("World App")}. Orb only.`
+                : ""
             : S.phase === "vote" && !S.cast
               ? `Type a resident number ${b("0–9")}, then ${b("OK")}. You pick two. ${b("VOL ±")} flips the guide.`
               : S.phase === "bet" && !S.bet && S.credit > 0
@@ -835,15 +1034,84 @@
       const hitAt = (e) => {
         ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
         ray.setFromCamera(ndc, camera);
+        if (!remote.visible) return null;
         const h = ray.intersectObjects(keys, false)[0];
         return h ? h.object.keyId : null;
       };
+      const onPaper = (e) => {
+        if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
+        ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+        ray.setFromCamera(ndc, camera);
+        return ray.intersectObject(paper, false).length > 0;
+      };
+
+      const store = (fn) => {
+        try {
+          return fn(localStorage);
+        } catch {
+          return null;
+        }
+      };
+      function cut(fn) {
+        $("#cut").hidden = false;
+        fn();
+        setTimeout(() => ($("#cut").hidden = true), LOW ? 0 : 160);
+      }
+      function step(name) {
+        W8.step = name;
+        W8.at = performance.now();
+        hintText();
+      }
+      function sign() {
+        if (W8.step !== "read") return;
+        step("ink");
+        const t0 = performance.now();
+        const inkTimer = setInterval(() => {
+          W8.ink = Math.min(1, (performance.now() - t0) / 700);
+          if (W8.ink < 1) return;
+          clearInterval(inkTimer);
+          step("scan");
+          scanTimer = setTimeout(verified, 2800);
+        }, 30);
+      }
+      let scanTimer = 0;
+      function verified() {
+        step("signed");
+        store((s) => s.setItem("ht.verified", "1"));
+        setTimeout(() => cut(enterWallet), 1400);
+      }
+      function enterWallet() {
+        step("done");
+        paper.visible = false;
+        gate("wallet");
+      }
+      function noOrb() {
+        if (W8.step !== "read" && W8.step !== "scan") return;
+        clearTimeout(scanTimer);
+        step("off");
+        setTimeout(() => step("burn"), LOW ? 0 : 500);
+        setTimeout(() => step("dark"), LOW ? 0 : 3100);
+      }
+      function retry() {
+        cut(() => {
+          W8.ink = 0;
+          burnLight.intensity = 0;
+          paper.drawn = false;
+          step("read");
+        });
+      }
+      $("#no-orb").addEventListener("click", noOrb);
+      $("#forget").addEventListener("click", () => {
+        store((s) => s.removeItem("ht.verified"));
+        location.reload();
+      });
       const look = new THREE.Vector2();
       addEventListener("pointermove", (e) => {
         look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-        canvas.classList.toggle("hot", !!hitAt(e));
+        canvas.classList.toggle("hot", !!hitAt(e) || onPaper(e));
       });
       canvas.addEventListener("pointerdown", (e) => {
+        if (onPaper(e)) return sign();
         const id = hitAt(e);
         if (!id) return;
         if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
@@ -853,6 +1121,16 @@
       addEventListener(
         "keydown",
         (e) => {
+          if (S.phase === "gate" && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
+            const k = e.key.toLowerCase();
+            if (k === "enter" && W8.step === "read") sign();
+            else if (k === "enter" && W8.step === "dark") retry();
+            else if (k === "x") noOrb();
+            else return;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
           if (S.phase === "gate" || e.metaKey || e.ctrlKey || e.altKey) return;
           const k = e.key.toLowerCase();
           let id = null;
@@ -880,13 +1158,46 @@
       let lastPaint = 0;
       renderer.setAnimationLoop(() => {
         const t = clock.getElapsedTime();
-        camera.position.set(0.1 + Math.sin(t * 0.6) * 0.008, 1.2 + Math.sin(t * 1.0) * 0.006, 0.28);
-        camera.lookAt(0.16 + look.x * 0.12, 1.02 - look.y * 0.06, -1.4);
-        const flick = Math.sin(t * 13) > 0.97 || Math.sin(t * 2.3 + 1) > 0.995 ? 0.3 : 1;
+        const waiver = S.phase === "gate" && W8.step !== "done";
+        const dark = waiver && W8.step === "dark";
+        if (waiver) {
+          camera.position.set(Math.sin(t * 0.6) * 0.006, 1.36 + Math.sin(t * 1.0) * 0.005, -0.12);
+          camera.lookAt(look.x * 0.06, 0.78 - look.y * 0.04, -0.98);
+        } else {
+          camera.position.set(
+            0.1 + Math.sin(t * 0.6) * 0.008,
+            1.2 + Math.sin(t * 1.0) * 0.006,
+            0.28,
+          );
+          camera.lookAt(0.16 + look.x * 0.12, 1.02 - look.y * 0.06, -1.4);
+        }
+        remote.visible = !waiver;
+        $("#demo-room").hidden = S.phase === "gate";
+        $("#demo-gate").hidden = S.phase !== "gate" || dark;
+        $("#no-orb").hidden = !waiver;
+        $("#waiver-text").hidden = !waiver || dark;
+        $("#dark").hidden = !dark;
+        paper.visible = waiver && !dark;
+        if (paper.visible && (W8.step !== "read" || !paper.drawn)) {
+          drawPaper(performance.now());
+          paper.drawn = true;
+        }
+        const lightsOut = waiver && (W8.step === "off" || W8.step === "burn" || dark);
+        const flick = lightsOut
+          ? 0
+          : Math.sin(t * 13) > 0.97 || Math.sin(t * 2.3 + 1) > 0.995
+            ? 0.3
+            : 1;
+        ambient.intensity = dark ? 0 : lightsOut ? 0.25 : 0.9;
         bulbLight.intensity = 4 * flick;
         bulb.material.color.set(flick < 1 ? COL.grime : COL.sulfur);
-        tvGlow.intensity =
-          S.phase === "fight" ? 1.4 + Math.random() * 0.7 : S.phase === "bet" ? 2.4 : 1.1;
+        tvGlow.intensity = lightsOut
+          ? 0
+          : S.phase === "fight"
+            ? 1.4 + Math.random() * 0.7
+            : S.phase === "bet"
+              ? 2.4
+              : 1.1;
         syncVideo();
         if (t - lastPaint > 0.083) {
           lastPaint = t;
@@ -909,7 +1220,12 @@
         }
         hintText();
       };
-      document.fonts.ready.then(drawTV);
+      document.fonts.ready.then(() => {
+        paper.drawn = false;
+        drawTV();
+      });
+      if (store((s) => s.getItem("ht.verified")) === "1") enterWallet();
+      hintText();
     </script>
   </body>
 </html>
