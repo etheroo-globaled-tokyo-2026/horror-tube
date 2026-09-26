@@ -34,6 +34,7 @@ COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/server/package.json ./apps/server/
 COPY --from=build /app/apps/server/dist ./apps/server/dist
+COPY --from=build /app/apps/server/migrations ./apps/server/migrations
 COPY --from=build /app/apps/server/node_modules ./apps/server/node_modules
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 WORKDIR /app/apps/server
