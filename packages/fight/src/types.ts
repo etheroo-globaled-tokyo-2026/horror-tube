@@ -43,6 +43,7 @@ export type FightTurnResult = {
   nextOpponentSubname: string;
   rationale: string;
   videoPrompt: string;
+  /** Durable Spaces CDN URL after upload. Never the expiring fal generator URL. */
   videoUrl: string;
   expandedPrompt: string | null;
 };
