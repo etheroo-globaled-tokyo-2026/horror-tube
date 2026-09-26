@@ -29,8 +29,8 @@
 
 **Files:** Modify `apps/web/wallet.ts`, `apps/web/coinbox.ts`, `apps/web/tests/wallet.test.ts`
 
-- [ ] Failing test: `usdcDeposit(to, units).getData()` has one `0x2::coin::send_funds` MoveCall, USDC type argument, `to` as the address input.
-- [ ] `wallet.ts`:
+- [x] Failing test: `usdcDeposit(to, units).getData()` has one `0x2::coin::send_funds` MoveCall, USDC type argument, `to` as the address input.
+- [x] `wallet.ts`:
 
 ```ts
 export function usdcDeposit(to: string, units: bigint): Transaction {
@@ -44,18 +44,19 @@ export function usdcDeposit(to: string, units: bigint): Transaction {
 }
 ```
 
-- [ ] `coinbox.ts` `deposit()`: `usdcDeposit(wallet.address, toUsdcUnits(dollars))`.
+- [x] `coinbox.ts` `deposit()`: `usdcDeposit(wallet.address, toUsdcUnits(dollars))`.
 - [ ] Manual: deposit 5 USDC from Slush, open the drawer → the coin return succeeds.
-- [ ] Commit: `fix: deposit USDC into the game wallet's address balance`.
+- [x] Commit: `fix: deposit USDC into the game wallet's address balance`.
 
 ### Task 2: `betting.ts`
 
 **Files:** Create `apps/web/betting.ts`, `apps/web/tests/betting.test.ts`; modify `apps/web/package.json`, `apps/web/wallet.ts`
 
-- [ ] `"@horror-tube/betting": "workspace:*"`.
-- [ ] `wallet.ts`: extract `sendUsdc`'s body into `export async function runKind(wallet: GameWallet, tx: Transaction, fetchImpl: typeof fetch = fetch): Promise<string>` (sender, `onlyTransactionKind`, `assumeSufficientAddressBalances`, POST `/tx`, wait, return the digest); `sendUsdc` calls it.
-- [ ] Failing tests (fake `fetch`): `placeBet` posts one `/tx` whose kind (`Transaction.fromKind`) calls `<package>::betting::bet` with the side; `claimable` sums `payout` over finished pools' tickets and ignores open ones.
-- [ ] `betting.ts`:
+- [x] `"@horror-tube/betting": "workspace:*"`.
+- [x] `wallet.ts`: extract `sendUsdc`'s body into `export async function runKind(wallet: GameWallet, tx: Transaction, fetchImpl: typeof fetch = fetch): Promise<string>` (sender, `onlyTransactionKind`, `assumeSufficientAddressBalances`, POST `/tx`, wait, return the digest); `sendUsdc` calls it.
+- [x] Failing tests (fake `fetch`): `placeBet` posts one `/tx` whose kind (`Transaction.fromKind`) calls `<package>::betting::bet` with the side.
+- [ ] Test: `claimable` sums `payout` over finished pools' tickets and ignores open ones.
+- [x] `betting.ts`:
 
 ```ts
 import { betTx, claimTx, getPool, listTickets, payout, PoolStatus, type ContractIds, type Ticket } from "@horror-tube/betting";
@@ -93,19 +94,19 @@ export const claimAll = (wallet: GameWallet, ids: ContractIds, tickets: Ticket[]
   runKind(wallet, claimTx(ids, tickets), fetchImpl);
 ```
 
-- [ ] Tests and typecheck pass. Commit: `feat: web betting calls through /tx`.
+- [x] Tests and typecheck pass. Commit: `feat: web betting calls through /tx`.
 
 ### Task 3: Real bets, odds and collect in the round
 
 **Files:** Modify `apps/web/game.ts`, `apps/web/main.ts`, `apps/web/round-client.ts`, `apps/web/odds.ts`, `apps/web/tests/round-client.test.ts`, `apps/web/DESIGN.md`
 
-- [ ] `round-client.ts`: `ServerRoundState` gains `battleId: string | null`, `poolId: string | null`; delete `postBet` and its tests.
-- [ ] `game.ts`: `S.poolId`, `S.battleId` set in `applyRoundState`; `setWallet(wallet)` and `setBettingIds(ids)` (called from `mountCoinBox` after `fetchBettingIds()`).
-- [ ] `act === "bet"`: guard `S.poolId`, wallet and IDs; `await placeBet(wallet, ids, S.poolId, side, toUsdcUnits(S.amt))`; set `S.bet` after it resolves; log `BET … · <digest first 8>`; errors → `note("BET REJECTED. …", "bad")`. Delete `S.credit -= S.amt`.
-- [ ] `main.ts` bet block and hint: while `S.poolId === null` show `OPENING THE BOOK` and ignore `holdStart`.
-- [ ] `odds.ts`: `formatPoolOdds(pool, side, feeBps)` = `(a + b − loser × feeBps / 10000) / side`; update its callers and test.
-- [ ] Collect: on `fight → settle` in `applyRoundState` and once after the wallet mounts, run `claimable` → `S.claim = fromUsdcUnits(units)`, `S.result = −fromUsdcUnits(lost)` when nothing is owed. `act === "claim"` → `claimAll(wallet, ids, tickets)`, then `S.claim = 0`; errors → `note`.
-- [ ] `main.ts` `chainCredit` sync: `S.credit = usdc`.
-- [ ] `DESIGN.md`: bets and claims are on Sui; delete "Bets simulated today".
+- [x] `round-client.ts`: `ServerRoundState` gains `battleId: string | null`, `poolId: string | null`; delete `postBet` and its tests.
+- [x] `game.ts`: `S.poolId`, `S.battleId` set in `applyRoundState`; `setWallet(wallet)` and `setBettingIds(ids)` (called from `mountCoinBox` after `fetchBettingIds()`).
+- [x] `act === "bet"`: guard `S.poolId`, wallet and IDs; `await placeBet(wallet, ids, S.poolId, side, toUsdcUnits(S.amt))`; set `S.bet` after it resolves; log `BET … · <digest first 8>`; errors → `note("BET REJECTED. …", "bad")`. Delete `S.credit -= S.amt`.
+- [x] `main.ts` bet block and hint: while `S.poolId === null` show `OPENING THE BOOK` and ignore `holdStart`.
+- [x] `odds.ts`: `formatPoolOdds(pool, side, feeBps)` = `(a + b − loser × feeBps / 10000) / side`; update its callers and test.
+- [x] Collect: on `fight → settle` in `applyRoundState` and once after the wallet mounts, run `claimable` → `S.claim = fromUsdcUnits(units)`, `S.result = −fromUsdcUnits(lost)` when nothing is owed. `act === "claim"` → `claimAll(wallet, ids, tickets)`, then `S.claim = 0`; errors → `note`.
+- [x] `main.ts` `chainCredit` sync: `S.credit = usdc`.
+- [x] `DESIGN.md`: bets and claims are on Sui; delete "Bets simulated today".
 - [ ] Manual on testnet: two browsers, two World ID sessions, one bet per side; the winner collects, the loser sees `YOU LOST`, the TV pool matches the pool object (`pnpm betting:pool <battleId>`).
-- [ ] Commit: `feat: bets and claims in the live round`.
+- [x] Commit: `feat: bets and claims in the live round`.

@@ -160,16 +160,16 @@ coin instead: `packages/test-usdc`, module `test_usdc::usdc`. It has no value.
 
 ## Blockers
 
-- **Battle ID in the loop**: `GameLoop` has no battle ID yet, and the battle queue isn't connected to
-  it. Plan 3 adds `battleId` when betting opens; the queue must use the same ID.
-- **Stranded deposits**: USDC deposited before the `send_funds` change sits in coin objects that `/tx`
-  can't spend (probably the coin return too, today).
+- **Battle ID check**: `GameLoop` opens the pool with a fresh `battleId` and the fight job uses it, but
+  `attachAgentResult` does not yet reject an insert for another battle (plan 3, Task 2).
+- **Stranded deposits**: deposits now use `send_funds`. USDC deposited before that change sits in coin
+  objects that `/tx` can't spend.
 
 ## Plans
 
 | # | Plan | Needs |
 | --- | --- | --- |
-| 1 | `2026-09-26-sui-betting-1-move.md`: CI and security review of the Move package | — |
+| 1 | Move package CI and security review (done) | — |
 | 2 | `2026-09-26-sui-betting-2-client.md`: TS client, CLIs, deploy, e2e gate | 1, your setup |
 | 3 | `2026-09-26-sui-betting-3-server.md`: operator in the game loop, settle port, policy tests | 2 |
 | 4 | `2026-09-26-sui-betting-4-web.md`: deposits, bets and claims in the web | 3 |

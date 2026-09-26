@@ -526,8 +526,8 @@ SUI_E2E_OPERATOR_CAP_ID=${e2eCap}`);
 
 ### Task 5: Deploy (after the operator's setup in the spec)
 
-- [ ] `.env`: `SUI_NETWORK=testnet`, `SUI_GRPC_URL=https://fullnode.testnet.sui.io:443`, `BET_FEE_BPS=200`, `SUI_MIN_BET=30000`.
-- [ ] `pnpm betting:deploy` → paste the five printed lines into `.env`.
+- [x] `.env`: `SUI_NETWORK=testnet`, `SUI_GRPC_URL=https://fullnode.testnet.sui.io:443`, `BET_FEE_BPS=200`, `SUI_MIN_BET=30000`.
+- [x] `pnpm betting:deploy` → paste the five printed lines into `.env`.
 
 ### Task 6: e2e gate
 
