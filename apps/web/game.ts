@@ -99,6 +99,7 @@ export type GameState = {
   voters: number;
   quorum: number;
   videoUrl: string | null;
+  frameUrl: string | null;
   error: string | null;
 };
 
@@ -134,6 +135,7 @@ export const S: GameState = {
   voters: 0,
   quorum: 1,
   videoUrl: null,
+  frameUrl: null,
   error: null,
 };
 const col = (ch: Character): string => C[ch.hue];
@@ -174,6 +176,7 @@ export function applyRoundState(state: ServerRoundState): void {
   S.pool = [...state.pool] as [number, number];
   S.winner = state.winner === null ? -1 : state.winner;
   S.videoUrl = state.videoUrl;
+  S.frameUrl = state.frameUrl;
   S.error = state.error;
   refreshTimer();
   for (const remote of state.chars) {
