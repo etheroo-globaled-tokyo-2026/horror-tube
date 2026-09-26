@@ -2,12 +2,18 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 
-import type { GameLoop } from "./game/loop.js";
+import * as v from "valibot";
+
+import { PlaybackStartStoreError, type GameLoop } from "./game/loop.js";
 import { HttpError } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
 import { handleWorldIdRequest, type WorldIdHandlerDeps } from "./world-id-handler.js";
+
+const PlaybackStartBody = v.object({
+  battleId: v.pipe(v.string(), v.trim(), v.minLength(1)),
+});
 
 export type GameServerOptions = {
   port: number;
@@ -182,6 +188,38 @@ function readBearerToken(req: IncomingMessage): string {
   return token;
 }
 
+/** Resolve the waiver session to a nullifier, or answer the request and return null. */
+function sessionNullifier(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pepper: string | undefined,
+): string | null {
+  if (pepper === undefined || pepper.trim() === "") {
+    sendJson(res, 500, {
+      ok: false,
+      error: "WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
+    });
+    return null;
+  }
+  try {
+    return readSession(readBearerToken(req), pepper);
+  } catch (err) {
+    const status = err instanceof HttpError ? err.status : 401;
+    const message = err instanceof Error ? err.message : String(err);
+    sendJson(res, status, { ok: false, error: message });
+    return null;
+  }
+}
+
+function sendState(res: ServerResponse, state: RoundState): void {
+  const payload = JSON.stringify({ ok: true, state });
+  res.writeHead(200, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
+}
+
 export function createGameServer(options: GameServerOptions): Server {
   const { staticDir, wallet, worldId, game, sessionPepper, betting } = options;
 
@@ -245,25 +283,39 @@ async function handleRequest(
         serveRoundStateSse(res, opts.game);
         return;
       }
-      if (method === "POST" && path === "/vote") {
-        const pepper = opts.sessionPepper;
-        if (pepper === undefined || pepper.trim() === "") {
-          sendJson(res, 500, {
+      if (method === "POST" && path === "/playback-start") {
+        if (sessionNullifier(req, res, opts.sessionPepper) === null) return;
+        let parsed;
+        try {
+          parsed = v.safeParse(PlaybackStartBody, JSON.parse(await readBody(req)));
+        } catch {
+          sendJson(res, 400, { ok: false, error: "playback-start body must be JSON." });
+          return;
+        }
+        if (!parsed.success) {
+          sendJson(res, 400, {
             ok: false,
-            error:
-              "WALLET_SECRET_PEPPER is required. Set it in .env. See .env.example.",
+            error: "playback-start.battleId must be the live RoundState.battleId.",
           });
           return;
         }
-        let nullifier: string;
         try {
-          nullifier = readSession(readBearerToken(req), pepper);
+          await opts.game.reportPlaybackStart(parsed.output.battleId);
         } catch (err) {
-          const status = err instanceof HttpError ? err.status : 401;
           const message = err instanceof Error ? err.message : String(err);
-          sendJson(res, status, { ok: false, error: message });
+          console.error(`POST /playback-start failed: ${message}`);
+          sendJson(res, err instanceof PlaybackStartStoreError ? 500 : 409, {
+            ok: false,
+            error: message,
+          });
           return;
         }
+        sendState(res, opts.game.getState());
+        return;
+      }
+      if (method === "POST" && path === "/vote") {
+        const nullifier = sessionNullifier(req, res, opts.sessionPepper);
+        if (nullifier === null) return;
         const raw = await readBody(req);
         let body: { picks?: unknown };
         try {
@@ -286,15 +338,7 @@ async function handleRequest(
         }
         try {
           opts.game.voteWithNullifier(nullifier, picks);
-          const payload = JSON.stringify({
-            ok: true,
-            state: opts.game.getState(),
-          });
-          res.writeHead(200, {
-            "content-type": "application/json; charset=utf-8",
-            "content-length": Buffer.byteLength(payload),
-          });
-          res.end(payload);
+          sendState(res, opts.game.getState());
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           sendJson(res, 400, { ok: false, error: message });

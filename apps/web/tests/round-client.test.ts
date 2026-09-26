@@ -59,6 +59,8 @@ describe("postVote", () => {
       pool: [0, 0],
       winner: null,
       videoUrl: null,
+      videoStartedAt: null,
+      bettingClosesAt: null,
       frameUrl: null,
       error: null,
       chars: [],
@@ -99,6 +101,8 @@ describe("RoundState client contract", () => {
       pool: [0, 0],
       winner: null,
       videoUrl: null,
+      videoStartedAt: null,
+      bettingClosesAt: null,
       frameUrl: null,
       error: null,
       chars: [
