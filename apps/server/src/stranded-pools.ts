@@ -132,8 +132,8 @@ async function recordResolution(
 export function recordPools(ports: BattleBettingPorts, ledger: PoolLedger): BattleBettingPorts {
   return {
     ...ports,
-    async openBattle(fighterA, fighterB, closesAtUnix) {
-      const battleId = await ports.openBattle(fighterA, fighterB, closesAtUnix);
+    async openBattle(battleId, closesAtUnix) {
+      await ports.openBattle(battleId, closesAtUnix);
       const poolId = ports.poolIdFor(battleId);
       try {
         await ledger.recordOpened(battleId, poolId);
@@ -144,7 +144,6 @@ export function recordPools(ports: BattleBettingPorts, ledger: PoolLedger): Batt
           { cause },
         );
       }
-      return battleId;
     },
     async cancelBattle(battleId) {
       await ports.cancelBattle(battleId);
