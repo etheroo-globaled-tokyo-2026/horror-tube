@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { verifyPersonalMessageSignature } from "@mysten/sui/verify";
 
 import {
-  BURNER_KEY_STORAGE_KEY,
-  type KeyStore,
+  WALLET_SESSION_KEY,
+  type SessionStore,
   fromUsdcUnits,
   getGameWallet,
-  loadBurnerKeypair,
+  openGameWallet,
   toUsdcUnits,
   usdcTransfer,
 } from "../wallet.ts";
 
-function memoryStore(): KeyStore {
+const ADDRESS = `0x${"11".repeat(32)}`;
+
+function memoryStore(): SessionStore {
   const items = new Map<string, string>();
   return {
     getItem: (key) => items.get(key) ?? null,
@@ -22,28 +23,51 @@ function memoryStore(): KeyStore {
   };
 }
 
-describe("sui burner wallet", () => {
-  it("creates one key and reuses it", async () => {
+function jsonResponse(
+  status: number,
+  body: { session: string } | { address: string } | { error: string },
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+describe("Shinami game wallet", () => {
+  it("stores the session from the waiver proof and reuses that address", async () => {
     const store = memoryStore();
-    const first = await getGameWallet(store);
-    const second = await getGameWallet(store);
-    assert.equal(second.address, first.address);
-    assert.match(store.getItem(BURNER_KEY_STORAGE_KEY) ?? "", /^suiprivkey1/u);
+    const seen: string[] = [];
+    const proof = JSON.stringify({ proof: "orb" });
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const path = String(input);
+      seen.push(path);
+      const headers = new Headers(init?.headers);
+      if (path === "/auth/world-id") {
+        assert.equal(headers.get("authorization"), null);
+        assert.equal(init?.body, proof);
+        return jsonResponse(200, { session: "signed-session" });
+      }
+      assert.equal(headers.get("authorization"), "Bearer signed-session");
+      return jsonResponse(200, { address: ADDRESS });
+    };
+    const opened = await openGameWallet(proof, store, fetchImpl);
+    const again = await getGameWallet(store, fetchImpl);
+    assert.equal(opened.address, ADDRESS);
+    assert.equal(again.address, ADDRESS);
+    assert.equal(store.getItem(WALLET_SESSION_KEY), "signed-session");
+    assert.deepEqual(seen, ["/auth/world-id", "/wallet", "/wallet"]);
   });
 
-  it("signs with no wallet prompt", async () => {
-    const wallet = await getGameWallet(memoryStore());
-    const message = new TextEncoder().encode("bet");
-    const { signature } = await wallet.signer.signPersonalMessage(message);
-    const publicKey = await verifyPersonalMessageSignature(message, signature);
-    assert.equal(publicKey.toSuiAddress(), wallet.address);
+  it("refuses to open a wallet before the waiver session exists", async () => {
+    await assert.rejects(() => getGameWallet(memoryStore(), fetch), /waiver scan/u);
   });
 
-  it("refuses to overwrite a broken stored key", () => {
+  it("surfaces the server error when the session is rejected", async () => {
     const store = memoryStore();
-    store.setItem(BURNER_KEY_STORAGE_KEY, "not-a-key");
-    assert.throws(() => loadBurnerKeypair(store), /Refusing to overwrite/u);
-    assert.equal(store.getItem(BURNER_KEY_STORAGE_KEY), "not-a-key");
+    store.setItem(WALLET_SESSION_KEY, "expired");
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse(401, { error: "Session is not valid. Call POST /auth/world-id." });
+    await assert.rejects(() => getGameWallet(store, fetchImpl), /Session is not valid/u);
   });
 
   it("converts dollars to USDC units and back", () => {
