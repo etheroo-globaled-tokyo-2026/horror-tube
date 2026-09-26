@@ -4,12 +4,7 @@ import { extname, resolve, sep } from "node:path";
 
 import * as v from "valibot";
 
-import {
-  FighterRejectedError,
-  StartRefusedError,
-  StoreWriteError,
-  type GameLoop,
-} from "./game/loop.js";
+import { FighterRejectedError, VoteRefusedError, type GameLoop } from "./game/loop.js";
 import { HttpError, type HttpErrorBody } from "./http-error.js";
 import { readSession } from "./human-session.js";
 import { isApiPath } from "./routes.js";
@@ -17,11 +12,6 @@ import type { RoundState, Tape } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
 import { handleWorldIdRequest, type WorldIdHandlerDeps } from "./world-id-handler.js";
 
-const PlaybackStartBody = v.object({
-  battleId: v.pipe(v.string(), v.trim(), v.minLength(1)),
-});
-
-const VoteBody = v.object({ pick: v.pipe(v.number(), v.integer()) });
 const FighterBody = v.object({ fighter: v.pipe(v.number(), v.integer(), v.minValue(0)) });
 
 export type GameServerOptions = {
@@ -57,7 +47,7 @@ const CONTENT_TYPES = new Map([
 export type JsonBody =
   | { ok: true }
   | { ok: false; error: string }
-  | { ok: false; error: string; code: "bout_open" | "start_failed" }
+  | { ok: false; error: string; code: "already_voted" | "not_voting" }
   | { tapes: Tape[] }
   | HttpErrorBody
   | { session: string }
@@ -320,84 +310,27 @@ async function handleRequest(
         serveRoundStateSse(res, opts.game);
         return;
       }
-      if (method === "POST" && path === "/playback-start") {
-        if (sessionNullifier(req, res, opts.sessionPepper) === null) return;
-        let parsed;
-        try {
-          parsed = v.safeParse(PlaybackStartBody, JSON.parse(await readBody(req)));
-        } catch {
-          sendJson(res, 400, { ok: false, error: "playback-start body must be JSON." });
-          return;
-        }
-        if (!parsed.success) {
-          sendJson(res, 400, {
-            ok: false,
-            error: "playback-start.battleId must be the live RoundState.battleId.",
-          });
-          return;
-        }
-        try {
-          await opts.game.reportPlaybackStart(parsed.output.battleId);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`POST /playback-start failed: ${message}`);
-          sendJson(res, err instanceof StoreWriteError ? 500 : 409, {
-            ok: false,
-            error: message,
-          });
-          return;
-        }
-        sendState(res, opts.game.getState());
-        return;
-      }
       if (method === "POST" && path === "/vote") {
         const nullifier = sessionNullifier(req, res, opts.sessionPepper);
         if (nullifier === null) return;
-        let body;
-        try {
-          body = v.safeParse(VoteBody, JSON.parse(await readBody(req)));
-        } catch {
-          sendJson(res, 400, { ok: false, error: "vote body must be JSON." });
-          return;
-        }
-        if (!body.success) {
-          sendJson(res, 400, {
-            ok: false,
-            error: "vote.pick must be the character id of one of this bout's two fighters.",
-          });
-          return;
-        }
-        try {
-          await opts.game.voteWithNullifier(nullifier, body.output.pick);
-          sendState(res, opts.game.getState());
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(`POST /vote failed: ${message}`);
-          sendJson(res, err instanceof StoreWriteError ? 500 : 400, { ok: false, error: message });
-        }
-        return;
-      }
-      if (method === "POST" && (path === "/start" || path === "/next-fighter")) {
-        if (sessionNullifier(req, res, opts.sessionPepper) === null) return;
         const fighter = await readFighterId(req, res, path);
         if (fighter === null) return;
         try {
-          if (path === "/start") await opts.game.start(fighter);
-          else await opts.game.chooseNextFighter(fighter);
+          await opts.game.voteWithNullifier(nullifier, fighter);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          if (err instanceof StartRefusedError) {
-            console.warn(`POST ${path} refused: ${message}`);
-            sendJson(res, 409, { ok: false, error: message, code: "bout_open" });
+          if (err instanceof VoteRefusedError) {
+            console.warn(`POST /vote refused: ${message}`);
+            sendJson(res, 409, { ok: false, error: message, code: err.code });
             return;
           }
           if (err instanceof FighterRejectedError) {
-            console.warn(`POST ${path} rejected: ${message}`);
+            console.warn(`POST /vote rejected: ${message}`);
             sendJson(res, 400, { ok: false, error: message });
             return;
           }
-          console.error(`POST ${path} failed: ${message}`);
-          sendJson(res, 500, { ok: false, error: message, code: "start_failed" });
+          console.error(`POST /vote failed: ${message}`);
+          sendJson(res, 500, { ok: false, error: message });
           return;
         }
         sendState(res, opts.game.getState());

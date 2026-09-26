@@ -55,6 +55,7 @@ const DRAWER_H = SIZE.drawer * PX;
 const WINDOW: Rect = [32, 22, 192, 64];
 const PLATE: Rect = [32, 92, 192, 96];
 const DRUM: Rect = [24, 194, 208, 40];
+const DRUM_SCALE = 4;
 const DIAL = { x: FW / 2, y: 336, r: 82 };
 const RULES: Rect = [40, 12, 176, 100];
 const STICKER: Rect = [12, 158, 232, 124];
@@ -249,6 +250,12 @@ export function createCoinBox(
   const [drawerCanvas, dg] = layer(FW, DRAWER_H);
   const topTex = pixelTexture(topCanvas);
   const drawerTex = pixelTexture(drawerCanvas);
+  const [drumCanvas, dr] = layer(DRUM[2] * DRUM_SCALE, DRUM[3] * DRUM_SCALE);
+  dr.scale(DRUM_SCALE, DRUM_SCALE);
+  dr.textAlign = "center";
+  dr.textBaseline = "middle";
+  const drumTex = pixelTexture(drumCanvas);
+  drumTex.userData.text = true;
   let link: { wallet: GameWallet; coinType: string } | null = null;
   const stickerSpace = (): void => {
     dg.translate(STICKER[0] + STICKER[2] / 2, STICKER[1] + STICKER[3] / 2);
@@ -447,7 +454,13 @@ export function createCoinBox(
   capGeo.rotateY(Math.PI / 2);
   const cap = new THREE.Mesh(capGeo, shell);
   cap.position.y = SIZE.drawer / 2 + SIZE.top / 2;
-  group.add(box, drawer, cap);
+  const [drumX, drumY] = at(DRUM[0] + DRUM[2] / 2, DRUM[1] + DRUM[3] / 2);
+  const drumFace = new THREE.Mesh(
+    new THREE.PlaneGeometry(DRUM[2] / PX, DRUM[3] / PX),
+    new THREE.MeshLambertMaterial({ map: drumTex, color: dim }),
+  );
+  drumFace.position.set(drumX, drumY + box.position.y, front + 0.0004);
+  group.add(box, drawer, cap, drumFace);
 
   const [dialX, dialY] = at(DIAL.x, DIAL.y);
   const bezel = new THREE.Mesh(new THREE.TorusGeometry(DIAL.r / PX + 0.003, 0.004, 4, 12), chrome);
@@ -681,34 +694,37 @@ export function createCoinBox(
     g.fillRect(nx - 1, wy + 2, 3, wh - 4);
     g.fillStyle = colors.soot;
     g.fillRect(nx - 3, wy + wh - 6, 7, 4);
-    const [dx, dy, dw, dh] = DRUM;
+    topTex.needsUpdate = true;
+    const [, , dw, dh] = DRUM;
     const drum =
       status || (slot.length === 0 ? "" : cue ? "TURN DIAL" : `+${String(coinTotal(slot))} USDC`);
+    dr.fillStyle = colors.soot;
+    dr.fillRect(0, 0, dw, dh);
     if (drum) {
-      g.fillStyle = colors.char;
-      g.fillRect(dx, dy, dw, dh);
-      g.fillStyle = colors.blood;
-      g.font = "700 18px Silkscreen";
-      g.fillText(drum, dx + dw / 2, dy + dh / 2 + 1);
+      dr.fillStyle = colors.char;
+      dr.fillRect(0, 0, dw, dh);
+      dr.fillStyle = colors.blood;
+      dr.font = "700 18px Silkscreen";
+      dr.fillText(drum, dw / 2, dh / 2 + 1, dw - 8);
     } else {
       const cell = (dw - 16) / 4;
-      let x = dx;
-      g.font = "700 34px Silkscreen";
+      let x = 0;
+      dr.font = "700 34px Silkscreen";
       [...credit.toFixed(2).padStart(5, "0")].forEach((d, i) => {
         if (d === ".") {
-          g.fillStyle = colors.blood;
-          g.fillRect(x + 5, dy + dh - 10, 6, 6);
+          dr.fillStyle = colors.blood;
+          dr.fillRect(x + 5, dh - 10, 6, 6);
           x += 16;
           return;
         }
-        g.fillStyle = i % 2 ? colors.char : colors.soot;
-        g.fillRect(x + 1, dy, cell - 2, dh);
-        g.fillStyle = colors.bone;
-        g.fillText(d, x + cell / 2, dy + dh / 2 + 2);
+        dr.fillStyle = i % 2 ? colors.char : colors.soot;
+        dr.fillRect(x + 1, 0, cell - 2, dh);
+        dr.fillStyle = colors.bone;
+        dr.fillText(d, x + cell / 2, dh / 2 + 2);
         x += cell;
       });
     }
-    topTex.needsUpdate = true;
+    drumTex.needsUpdate = true;
   }
 
   function setStatus(text: string): void {

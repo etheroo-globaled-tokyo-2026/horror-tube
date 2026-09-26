@@ -1,4 +1,4 @@
-export type Phase = "waiting" | "pick" | "vote" | "countdown" | "bet" | "fight" | "settle" | "over";
+export type Phase = "waiting" | "pick" | "bet" | "fight" | "settle" | "over";
 
 export type Tape = {
   battleId: string;
@@ -16,10 +16,10 @@ export type RoundState = {
   phase: Phase;
   endsAt: number | null;
   champion: number | null;
+  votes: number[];
   voters: number;
   quorum: number;
-  votes: [number, number];
-  tally: [number, number] | null;
+  bookError: string | null;
   fighters: [number, number] | null;
   selectable: number[];
   battleId: string | null;
@@ -33,7 +33,6 @@ export type RoundState = {
   error: string | null;
   bots: {
     address: string;
-    pick: number | null;
     bet: { side: 0 | 1; units: number; digest: string } | null;
     error: string | null;
   }[];

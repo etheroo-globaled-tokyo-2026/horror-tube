@@ -26,9 +26,9 @@ const TapesOk = v.object({ tapes: v.array(TapeSchema) });
 const TapesErr = v.object({ ok: v.literal(false), error: v.string() });
 
 const config = {
-  quorumVotes: 1,
-  voteCountdownSeconds: 1,
-  bettingCloseAfterVideoStartSeconds: 5,
+  quorumVotes: 2,
+  voteCountdownSeconds: 3,
+  bettingWindowSeconds: 5,
   videoTimeoutSeconds: 300,
   settleSeconds: 8,
 };
@@ -93,12 +93,12 @@ function testLoop(store: MemoryBattleQueueStore, now: () => number): GameLoop {
       poolIdFor(battleId) {
         return `0xpool-${battleId}`;
       },
-      async openBattle(battleId) {
-        return `0xpool-${battleId}`;
-      },
+      async openBattle() {},
       async cancelBattle() {},
       async closeBetting() {},
-      async settle() {},
+      async settle() {
+        return "digest";
+      },
       async readPoolTotals() {
         return [0n, 0n];
       },
@@ -152,11 +152,6 @@ describe("GET /tapes", () => {
     const base = await listen(game);
 
     await game.start(0);
-    const fighters = game.getState().fighters;
-    assert.ok(fighters);
-    await game.voteWithNullifier("voter-1", fighters[0]);
-    clock = 1_000;
-    await game.tick(clock);
     assert.equal(game.getState().phase, "bet");
     const liveBattleId = game.getState().battleId;
     assert.ok(liveBattleId);

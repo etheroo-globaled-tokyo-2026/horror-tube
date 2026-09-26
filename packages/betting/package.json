@@ -11,7 +11,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "sui move test --path move && tsx --test tests/*.test.ts",
+    "test": "sui move test --path move --build-env testnet && tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "tsx --env-file=../../.env src/cli/deploy.ts",
     "pool": "tsx --env-file=../../.env src/cli/pool.ts",
