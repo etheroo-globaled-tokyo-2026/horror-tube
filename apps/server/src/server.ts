@@ -2,6 +2,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 
+import type { GameLoop } from "./game/loop.js";
+import type { RoundState } from "./types.js";
 import type { WalletHandler } from "./wallet-handler.js";
 import { handleWorldIdRequest, type WorldIdHandlerDeps } from "./world-id-handler.js";
 
@@ -11,6 +13,7 @@ export type GameServerOptions = {
   staticDir?: string;
   wallet?: WalletHandler;
   worldId?: WorldIdHandlerDeps;
+  game?: GameLoop;
 };
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -28,6 +31,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 export type JsonBody =
   | { ok: true }
+  | { ok: false; error: string }
   | { error: string }
   | { session: string }
   | { address: string }
@@ -52,8 +56,8 @@ function sendNotFound(res: ServerResponse): void {
   sendText(res, 404, "Not Found");
 }
 
-function sendBadRequest(res: ServerResponse): void {
-  sendText(res, 400, "Bad Request");
+function sendBadRequest(res: ServerResponse, message = "Bad Request"): void {
+  sendText(res, 400, message);
 }
 
 function sendInternalError(res: ServerResponse): void {
@@ -118,38 +122,176 @@ function serveStatic(res: ServerResponse, staticDir: string, urlPath: string): v
   });
 }
 
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolveBody, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      resolveBody(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", reject);
+  });
+}
+
+function serveRoundStateSse(res: ServerResponse, game: GameLoop): void {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
+  const send = (state: RoundState): void => {
+    res.write(`event: round\ndata: ${JSON.stringify(state)}\n\n`);
+  };
+  const unsubscribe = game.subscribe(send);
+  const heartbeat = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 15000);
+  res.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+}
+
 export function createGameServer(options: GameServerOptions): Server {
-  const { staticDir, wallet, worldId } = options;
+  const { staticDir, wallet, worldId, game } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const method = req.method ?? "GET";
-    const url = req.url ?? "/";
-    const urlPath = url.split("?")[0] ?? "/";
+    void handleRequest(req, res, { staticDir, wallet, worldId, game });
+  });
 
-    if (method === "GET" && (url === "/health" || url.startsWith("/health?"))) {
+  return server;
+}
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  opts: {
+    staticDir?: string;
+    wallet?: WalletHandler;
+    worldId?: WorldIdHandlerDeps;
+    game?: GameLoop;
+  },
+): Promise<void> {
+  const method = req.method ?? "GET";
+  const url = req.url ?? "/";
+  const path = url.split("?")[0] ?? "/";
+
+  try {
+    if (method === "GET" && (path === "/health" || url.startsWith("/health?"))) {
       sendJson(res, 200, { ok: true });
       return;
     }
 
-    if (wallet !== undefined && wallet.matches(method, urlPath)) {
-      void wallet.handle(req, res, method, urlPath).catch((err: Error) => {
+    if (opts.wallet !== undefined && opts.wallet.matches(method, path)) {
+      try {
+        await opts.wallet.handle(req, res, method, path);
+      } catch (err) {
         console.error(err);
         if (!res.headersSent) sendJson(res, 500, { error: "Internal Server Error" });
-      });
+      }
       return;
     }
 
-    void handleWorldIdRequest(req, res, worldId ?? {}).then((handled) => {
-      if (handled || res.headersSent) return;
-      if (staticDir !== undefined && method === "GET") {
-        serveStatic(res, staticDir, url);
+    if (opts.game !== undefined) {
+      if (method === "GET" && path === "/round") {
+        const payload = JSON.stringify(opts.game.getState());
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": Buffer.byteLength(payload),
+        });
+        res.end(payload);
         return;
       }
-      sendNotFound(res);
-    });
-  });
+      if (method === "GET" && path === "/events") {
+        serveRoundStateSse(res, opts.game);
+        return;
+      }
+      if (method === "POST" && path === "/vote") {
+        const raw = await readBody(req);
+        let body: { proof?: unknown; picks?: unknown };
+        try {
+          body = JSON.parse(raw) as { proof?: unknown; picks?: unknown };
+        } catch {
+          sendBadRequest(res, "vote body must be JSON.");
+          return;
+        }
+        if (!Array.isArray(body.picks)) {
+          sendBadRequest(res, "vote.picks must be an array of character ids.");
+          return;
+        }
+        const picks = body.picks.map((p) => Number(p));
+        if (picks.some((p) => !Number.isInteger(p))) {
+          sendBadRequest(res, "vote.picks must be integers.");
+          return;
+        }
+        try {
+          await opts.game.vote(body.proof, picks);
+          const payload = JSON.stringify({
+            ok: true,
+            state: opts.game.getState(),
+          });
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": Buffer.byteLength(payload),
+          });
+          res.end(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+      if (method === "POST" && path === "/bet") {
+        const raw = await readBody(req);
+        let body: { side?: unknown; amount?: unknown };
+        try {
+          body = JSON.parse(raw) as { side?: unknown; amount?: unknown };
+        } catch {
+          sendBadRequest(res, "bet body must be JSON.");
+          return;
+        }
+        const side = Number(body.side);
+        const amount = Number(body.amount);
+        if (side !== 0 && side !== 1) {
+          sendBadRequest(res, "bet.side must be 0 or 1.");
+          return;
+        }
+        try {
+          opts.game.bet(side, amount);
+          const payload = JSON.stringify({
+            ok: true,
+            state: opts.game.getState(),
+          });
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "content-length": Buffer.byteLength(payload),
+          });
+          res.end(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+    }
 
-  return server;
+    const handled = await handleWorldIdRequest(req, res, opts.worldId ?? {});
+    if (handled || res.headersSent) return;
+
+    if (opts.staticDir !== undefined && method === "GET") {
+      serveStatic(res, opts.staticDir, url);
+      return;
+    }
+
+    sendNotFound(res);
+  } catch (err) {
+    console.error(
+      `request handler failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    sendInternalError(res);
+  }
 }
 
 export function listenGameServer(server: Server, options: GameServerOptions): Promise<Server> {
