@@ -178,6 +178,19 @@ variable "world_id_environment" {
   type        = string
 }
 
+variable "world_id_staging_token" {
+  description = "WORLD_ID_STAGING_TOKEN for staging verify. Set via TF_VAR_world_id_staging_token from .env. Required when WORLD_ID_ENVIRONMENT=staging. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+check "world_id_staging_token_required" {
+  assert {
+    condition     = var.world_id_environment != "staging" || trimspace(var.world_id_staging_token) != ""
+    error_message = "WORLD_ID_STAGING_TOKEN is required when WORLD_ID_ENVIRONMENT=staging. Set it in .env. See .env.example."
+  }
+}
+
 variable "sui_usdc_type" {
   description = "SUI_USDC_TYPE the /tx allowlist accepts. Set via TF_VAR_sui_usdc_type from .env. Required; no default."
   type        = string

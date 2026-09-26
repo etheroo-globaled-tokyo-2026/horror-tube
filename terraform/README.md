@@ -198,6 +198,7 @@ Apply must pass the App Platform runtime env as Terraform variables (sensitive, 
 | `WORLD_ID_RP_ID` | `TF_VAR_world_id_rp_id` | from `.env` |
 | `WORLD_ID_SIGNING_KEY` | `TF_VAR_world_id_signing_key` | from `.env` |
 | `WORLD_ID_ENVIRONMENT` | `TF_VAR_world_id_environment` | from `.env` (operator: `staging`) |
+| `WORLD_ID_STAGING_TOKEN` | `TF_VAR_world_id_staging_token` | from `.env` when environment is `staging`; empty string when `production` (not set on the app) |
 | `SHINAMI_ACCESS_KEY` | `TF_VAR_shinami_access_key` | from `.env` |
 | `WALLET_SECRET_PEPPER` | `TF_VAR_wallet_secret_pepper` | from `.env`. Losing it loses every Invisible Wallet |
 | `SUI_USDC_TYPE` | `TF_VAR_sui_usdc_type` | from `.env` |
@@ -250,6 +251,9 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   : "${WORLD_ID_RP_ID:?WORLD_ID_RP_ID is required. See .env.example.}"
   : "${WORLD_ID_SIGNING_KEY:?WORLD_ID_SIGNING_KEY is required. See .env.example.}"
   : "${WORLD_ID_ENVIRONMENT:?WORLD_ID_ENVIRONMENT is required. See .env.example.}"
+  if [ "$WORLD_ID_ENVIRONMENT" = "staging" ]; then
+    : "${WORLD_ID_STAGING_TOKEN:?WORLD_ID_STAGING_TOKEN is required. See .env.example.}"
+  fi
   : "${DATABASE_CA_CERT:?DATABASE_CA_CERT is required. See .env.example.}"
   : "${SHINAMI_ACCESS_KEY:?SHINAMI_ACCESS_KEY is required. See .env.example.}"
   : "${WALLET_SECRET_PEPPER:?WALLET_SECRET_PEPPER is required. See .env.example.}"
@@ -294,6 +298,11 @@ Example apply that passes `.env` into `TF_VAR_*`, uses `TF_STATE_SPACES_*` for t
   export TF_VAR_world_id_rp_id="$WORLD_ID_RP_ID"
   export TF_VAR_world_id_signing_key="$WORLD_ID_SIGNING_KEY"
   export TF_VAR_world_id_environment="$WORLD_ID_ENVIRONMENT"
+  if [ "$WORLD_ID_ENVIRONMENT" = "staging" ]; then
+    export TF_VAR_world_id_staging_token="$WORLD_ID_STAGING_TOKEN"
+  else
+    export TF_VAR_world_id_staging_token=""
+  fi
   export TF_VAR_shinami_access_key="$SHINAMI_ACCESS_KEY"
   export TF_VAR_wallet_secret_pepper="$WALLET_SECRET_PEPPER"
   export TF_VAR_sui_usdc_type="$SUI_USDC_TYPE"
