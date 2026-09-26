@@ -15,6 +15,12 @@ export type RoundState = {
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;
+  /**
+   * CDN URL of the most recent fight's last frame under frames/.
+   * Null before the first successful video. Kept across bout transitions so
+   * the next image-to-video job can read it after videoUrl is cleared.
+   */
+  frameUrl: string | null;
   error: string | null; // video failed, bets refunded
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
 };

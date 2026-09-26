@@ -1,4 +1,5 @@
 import {
+  uploadFightFrame,
   uploadFightVideo,
   type FightMediaConfig,
   type PutFightVideo,
@@ -10,6 +11,7 @@ import {
   type FalVideoConfig,
   type NarrationConfig,
 } from "./env.js";
+import { extractLastFrameJpeg, type RunFfmpeg } from "./extract-frame.js";
 import { generateFightVideo, type FalClient } from "./fal-video.js";
 import {
   narrateFight,
@@ -37,6 +39,7 @@ export * from "./fal-video.js";
 export * from "./rotation.js";
 export * from "./battle-queue.js";
 export * from "./store-video.js";
+export * from "./extract-frame.js";
 
 export { cryptoRandomInt };
 
@@ -95,8 +98,19 @@ export async function runFightTurn(
     fetch?: FetchLike;
     /** Override Spaces config instead of reading FIGHT_MEDIA_SPACES_* from env. */
     fightMediaConfig?: FightMediaConfig;
-    /** Injectable Spaces PUT. Defaults to the fight-media S3 client. */
+    /** Injectable Spaces PUT for video and frame. Defaults to the fight-media S3 client. */
     putObject?: PutFightVideo;
+    /**
+     * CDN URL of the previous fight's last frame. First bout in a chain omits
+     * this (text-to-video). Later bouts must pass it (image-to-video).
+     */
+    priorFrameUrl?: string;
+    /** Injectable last-frame extract. Defaults to ffmpeg. */
+    extractLastFrame?: (
+      mp4Bytes: Uint8Array,
+      runFfmpeg?: RunFfmpeg,
+    ) => Promise<Uint8Array>;
+    runFfmpeg?: RunFfmpeg;
   } = {},
 ): Promise<FightTurnResult> {
   const narrationConfig = deps.narrationConfig ?? loadNarrationConfig(env);
@@ -112,6 +126,7 @@ export async function runFightTurn(
     narrated.turn,
     falConfig,
     deps.fal,
+    { priorFrameUrl: deps.priorFrameUrl },
   );
   const body = await downloadFightVideoBytes(video.videoUrl, deps.fetch);
   const videoUrl = await uploadFightVideo({
@@ -120,13 +135,24 @@ export async function runFightTurn(
     config: deps.fightMediaConfig,
     putObject: deps.putObject,
   });
+
+  const extract = deps.extractLastFrame ?? extractLastFrameJpeg;
+  const frameBytes = await extract(body, deps.runFfmpeg);
+  const frameUrl = await uploadFightFrame({
+    body: frameBytes,
+    env,
+    config: deps.fightMediaConfig,
+    putObject: deps.putObject,
+  });
+
   return {
     turn: narrated.turn,
     ensLines: narrated.ensLines,
     nextOpponentSubname: narrated.nextOpponentSubname,
     rationale: narrated.rationale,
-    videoPrompt: narrated.videoPrompt,
+    videoPrompt: video.prompt,
     videoUrl,
+    frameUrl,
     expandedPrompt: video.expandedPrompt,
   };
 }
