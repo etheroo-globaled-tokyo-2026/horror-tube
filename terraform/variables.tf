@@ -252,11 +252,6 @@ variable "settle_seconds" {
   type        = number
 }
 
-variable "skip_battle_settlement" {
-  description = "SKIP_BATTLE_SETTLEMENT: 1 skips Sui pool settle until ENS writes are ready; 0 calls operator.settle. Required; no default."
-  type        = string
-}
-
 variable "roster_ens_labels" {
   description = "ROSTER_ENS_LABELS comma-separated ENS labels for the shared roster (at least two). Required; no default."
   type        = string

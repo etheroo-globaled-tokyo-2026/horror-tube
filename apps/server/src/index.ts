@@ -10,12 +10,7 @@ import { PostgresBattleQueueStore } from "./db/battle-results.js";
 import { PostgresRoundStore } from "./db/rounds.js";
 import { createPgPool } from "./db/pg-client.js";
 import { createEnsChainWritePorts, readRosterEnsStatuses } from "./ens-chain-write.js";
-import {
-  loadRepoDotenv,
-  readGamePort,
-  readSkipBattleSettlement,
-  readStaticDir,
-} from "./env.js";
+import { loadRepoDotenv, readGamePort, readStaticDir } from "./env.js";
 import { createFightJobRunner } from "./fight-job.js";
 import {
   readGameLoopConfig,
@@ -35,7 +30,6 @@ loadWorldIdEnv();
 const port = readGamePort();
 const staticDir = readStaticDir();
 const host = "0.0.0.0";
-const skipSettlement = readSkipBattleSettlement();
 const battleBetting = createBattleBettingPorts();
 const fightJob = createFightJobRunner({
   loadLivingCards: (subnames) => loadLivingCardsFromEns(subnames),
@@ -62,7 +56,6 @@ const game = new GameLoop({
   chainWritePorts,
   battleBetting,
   fightJob,
-  skipSettlement,
 });
 
 const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
@@ -118,6 +111,5 @@ setInterval(() => {
 console.log(
   `horror-tube server listening on http://${host}:${String(port)}` +
     (staticDir === undefined ? " (API only; no STATIC_DIR)" : ` (static: ${staticDir})`) +
-    ` · game loop quorum=${String(game.config.quorumVotes)} roster=${String(game.ensLabels.length)}` +
-    ` skipSettlement=${String(skipSettlement)}`,
+    ` · game loop quorum=${String(game.config.quorumVotes)} roster=${String(game.ensLabels.length)}`,
 );

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node 22, `node:http`, valibot (server convention), `@horror-tube/betting`, `tsx --test`.
 
-**Where things are on main:** `/bet` route `apps/server/src/server.ts` (`POST /bet` → `opts.game.bet`); `GameLoop.bet` in `src/game/loop.ts`; battle queue via `GameLoop.attachAgentResult(insert)` (the agent supplies `insert.battleId`) and `writeQueuedEns` → `settleQueuedBattle`; the settle port `settleBattle(battleId)` in `src/ens-chain-write.ts` throws "not implemented… Set SKIP_BATTLE_SETTLEMENT=1".
+**Where things are on main:** `/bet` route `apps/server/src/server.ts` (`POST /bet` → `opts.game.bet`); `GameLoop.bet` in `src/game/loop.ts`; battle queue via `GameLoop.attachAgentResult(insert)` (the agent supplies `insert.battleId`) and `writeQueuedEns` → `settleQueuedBattle`; the settle port `settleBattle(battleId, side)` in `src/ens-chain-write.ts` calls `operator.settle` after every bout's ENS writes.
 
 ---
 
@@ -61,8 +61,8 @@ SUI_OPERATOR_PRIVATE_KEY="$(docker run --rm --entrypoint node -w /app/apps/serve
 
 - [x] `ChainWritePorts.settleBattle(battleId)` → `settleBattle(battleId: string, winningSide: 0 | 1)`. `settleQueuedBattle` passes `record.winnerSubname === record.fighterASubname ? 0 : 1` and throws when the winner is neither fighter. Update fight tests.
 - [x] `ens-chain-write.ts` `settleBattle`: replace the "not implemented" throw with `operator.settle(battleId, side)`, returning the settle digest (stored in `settlement_tx_hash`). `operator.settle` returns the digest.
-- [ ] Delete `SKIP_BATTLE_SETTLEMENT` (`readSkipBattleSettlement`, the loop option, `.env.example`, logs).
-- [ ] Commit: `feat: settle Sui pools from the battle queue`.
+- [x] Delete `SKIP_BATTLE_SETTLEMENT` (`readSkipBattleSettlement`, the loop option, `.env.example`, logs).
+- [x] Commit: `feat: settle Sui pools from the battle queue`.
 
 ### Task 6: Policy accepts real bet and claim kinds
 

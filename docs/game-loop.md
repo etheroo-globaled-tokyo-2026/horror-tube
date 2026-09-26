@@ -103,13 +103,13 @@ fills the challenger slot from rotation after settle.
   means the video duration elapsed since `video_started_at`; the server has no
   playback-end callback. `betting_closes_at` does not stand in for playback
   finished. The room also shows the in-memory `chars` update (loser dead,
-  winner damage). With `SKIP_BATTLE_SETTLEMENT=1`, skip the Sui pool
-  `settle` call and leave that step pending; with `0`, call `operator.settle`
-  after the ENS writes. Then start the next bout from the stored rotation opponent
+  winner damage). After the ENS writes, call `operator.settle` on the Sui pool.
+  Then start the next bout from the stored rotation opponent
   (or `fightInputFromRotation`). If either signal is missing, stop and name it.
-  Do not invent those signals from the settle countdown. A failed ENS write stays
-  on the round error and does not start the next bout. `POST /retry-settle`
-  runs the pending ENS steps again.
+  Do not invent those signals from the settle countdown. A failed ENS write or
+  pool settle stays on the round error (with the battle ID, and the pool for a
+  settle) and does not start the next bout. `POST /retry-settle` runs the
+  pending steps again.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
@@ -132,7 +132,6 @@ Read from `.env`. Add each variable to `.env.example` with an empty value.
 | `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` | 5   | 5    |
 | `VIDEO_TIMEOUT_SECONDS`                   | 300 | 300  |
 | `SETTLE_SECONDS`                          | 8   | 8    |
-| `SKIP_BATTLE_SETTLEMENT`                  | 1   | 1    |
 
 The fight lasts as long as the video. It needs no variable.
 
@@ -172,8 +171,8 @@ type RoundState = {
 Character ids index the roster the client reads from ENS (sorted by label). The server must read the same roster.
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
 `chars[].alive` is the server's holding copy for the current season. Settle updates it when the fight duration
-elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue. With
-`SKIP_BATTLE_SETTLEMENT=1` the Sui pool `settle` call is skipped. Do not treat the holding copy as what
+elapses, then writes winner `injuries` and loser `status=dead` from the `battle_results` queue, then
+settles the Sui pool. Do not treat the holding copy as what
 pays out. Stakes are not defined here (no stake columns).
 
 **Actions from the client:**
