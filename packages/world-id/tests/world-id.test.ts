@@ -14,6 +14,7 @@ import {
   createIdkitRequestContext,
   loadWorldIdEnv,
   parseProofOfHumanResult,
+  enterRoomAction,
   stakeActionForBattle,
   verifyProofOfHuman,
   voteActionForRound,
@@ -85,6 +86,7 @@ const neverFetch: VerifyFetch = async () => {
 };
 
 test("action names are per round and per battle", () => {
+  assert.equal(enterRoomAction(), "enter-room");
   assert.equal(voteActionForRound("7"), "vote-round-7");
   assert.equal(stakeActionForBattle("42"), "stake-battle-42");
   assert.throws(() => voteActionForRound(" "), /roundId is required/);

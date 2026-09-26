@@ -139,6 +139,13 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "WORLD_ID_ENVIRONMENT"
+        value = var.world_id_environment
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "QUORUM_VOTES"
         value = tostring(var.quorum_votes)
         scope = "RUN_TIME"
