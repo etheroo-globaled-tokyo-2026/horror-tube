@@ -20,6 +20,10 @@ export type RoundState = {
   pool: [number, number];
   winner: 0 | 1 | null; // sent only at settle
   videoUrl: string | null;
+  /** ms epoch when a room reported the fight video playing (POST /playback-start). */
+  videoStartedAt: number | null;
+  /** ms epoch: videoStartedAt + BETTING_CLOSE_AFTER_VIDEO_START_SECONDS. Bets and votes at or after it are rejected. */
+  bettingClosesAt: number | null;
   /**
    * CDN URL of the most recent fight's last frame under frames/.
    * Null before the first successful video. Kept across bout transitions so

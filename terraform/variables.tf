@@ -242,8 +242,8 @@ variable "vote_countdown_seconds" {
   type        = number
 }
 
-variable "bet_min_seconds" {
-  description = "BET_MIN_SECONDS game-loop timing (docs/game-loop.md). Required; no default."
+variable "betting_close_after_video_start_seconds" {
+  description = "BETTING_CLOSE_AFTER_VIDEO_START_SECONDS: seconds after fight playback starts until betting closes (docs/game-loop.md). Required; no default."
   type        = number
 }
 

@@ -63,7 +63,7 @@ const game = new GameLoop({
   skipSettlement,
 });
 
-const wallet = createWalletHandlerFromEnv(process.env);
+const wallet = createWalletHandlerFromEnv(process.env, (poolId) => game.assertBetAllowed(poolId));
 const sessionPepper = requiredEnv("WALLET_SECRET_PEPPER");
 const feeBpsRaw = requiredEnv("BET_FEE_BPS");
 if (!/^[0-9]+$/u.test(feeBpsRaw)) {
