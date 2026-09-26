@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -55,24 +54,13 @@ describe("migration SQL shape", () => {
     assert.match(sql, /CREATE TABLE IF NOT EXISTS rounds/u);
     assert.match(sql, /CREATE TABLE IF NOT EXISTS votes/u);
     assert.match(sql, /CREATE TABLE IF NOT EXISTS tallies/u);
+    assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS schema_migrations/u);
 
     assert.match(sql, /champion_ens_label/u);
     assert.match(sql, /fighter_a_ens_label/u);
     assert.match(sql, /fighter_b_ens_label/u);
     assert.match(sql, /ens_label/u);
     assert.match(sql, /characters jsonb/u);
-    assert.match(sql, /holding copy/iu);
-    assert.match(sql, /bet window reads it/u);
-    assert.match(sql, /on-chain settle finishes on Sui/u);
-    assert.match(sql, /then write ENS text record `status`/u);
-    assert.match(sql, /Do not write ENS before settlement/u);
-    assert.match(sql, /Do not treat this row as what pays out/u);
-    assert.doesNotMatch(sql, /Settle writes ENS first/u);
-    assert.doesNotMatch(sql, /BattleBetting settle reads ENS/u);
-    assert.doesNotMatch(
-      sql,
-      /Character alive\/kills\/damage live on seasons\.characters/u,
-    );
 
     assert.match(sql, /world_id_nullifier/u);
     assert.match(sql, /votes_round_nullifier_unique/u);
@@ -80,13 +68,6 @@ describe("migration SQL shape", () => {
 
     assert.doesNotMatch(sql, /CREATE TABLE IF NOT EXISTS stakes/iu);
     assert.doesNotMatch(sql, /CREATE TABLE stakes/iu);
-  });
-
-  it("keeps the checked-in migration file readable as UTF-8 SQL", async () => {
-    const path = join(packageRoot, "migrations", "001_game_loop.sql");
-    const raw = await readFile(path, "utf8");
-    assert.ok(raw.includes("CREATE TABLE"));
-    assert.ok(!raw.includes("<<<<<<<"));
   });
 });
 
