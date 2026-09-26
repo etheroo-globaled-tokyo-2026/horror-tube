@@ -42,7 +42,12 @@ variable "app_region" {
 }
 
 variable "github_repo" {
-  description = "GitHub owner/name for App Platform deploy-on-push (main). Required; no default. The DigitalOcean team must already have GitHub connected."
+  description = "GitHub owner/name for App Platform deploy-on-push. Required; no default. The DigitalOcean team must already have GitHub connected."
+  type        = string
+}
+
+variable "github_branch" {
+  description = "Git branch App Platform builds and redeploys on push. Operator value is main. Required; no default. Override with -var for a one-off deploy of another branch; do not commit a non-main value in terraform.tfvars."
   type        = string
 }
 

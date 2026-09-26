@@ -2,6 +2,27 @@
 
 Provisions a Spaces bucket with CDN (character icons), a Managed PostgreSQL cluster (battle state) with a database firewall, and an App Platform service that serves the Vite client and the game Node process on one origin.
 
+## Remote state (private Spaces bucket)
+
+State is stored in a **private** DigitalOcean Spaces bucket via the Terraform `s3` backend (S3-compatible). That bucket is created once out-of-band — it cannot live in the same state it stores — and is not the icons bucket.
+
+1. Copy `backend.hcl.example` to `backend.hcl` (gitignored). Set `bucket` to the state bucket name and keep `key` / `endpoint` as shown.
+2. Put Spaces credentials that can read/write that bucket in the process environment as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for `terraform init` / plan / apply. Do **not** use the icons-only `ethtokyo-spaces` key. Do not commit those credentials.
+3. Init:
+
+```bash
+cd terraform
+terraform init -backend-config=backend.hcl
+```
+
+`versions.tf` sets `region = "us-east-1"` inside the backend block. That string is the **AWS SDK dummy** Spaces requires for the S3 client; the bucket itself is in **sgp1**. It is not `var.region`, not `var.app_region`, and not where App Platform runs.
+
+Skip flags (`skip_credentials_validation`, `skip_metadata_api_check`, `skip_region_validation`, `skip_requesting_account_id`, `skip_s3_checksum`) are required so Spaces accepts the state PUT (same checksum class of workaround as `request_checksum_calculation = when_required` for the AWS CLI profile above).
+
+**State locking:** Spaces has no DynamoDB. Terraform’s S3 `use_lockfile` needs Terraform **>= 1.10**. This module allows `>= 1.5.0`; on 1.9.x there is **no** state lock. Do not invent a second lock service. Avoid concurrent applies.
+
+`backend.hcl`, `*.tfstate`, and `.backend-credentials` are gitignored. Never commit state or Spaces keys.
+
 ## Auth (token never on disk, never pasted into shell history)
 
 Terraform’s DigitalOcean token is a **single** input: `var.do_token`, set only via `TF_VAR_do_token` (or the provider’s `DIGITALOCEAN_TOKEN` if you wire the provider that way). Do **not** put the token in `*.tfvars`, do **not** write it to a file in the repo, and do **not** `export` a pasted secret (that lands the secret in shell history).
@@ -86,6 +107,7 @@ Copy `terraform.tfvars.example` to `terraform.tfvars` (gitignored) and set every
 | `spaces_bucket_name` | globally unique name |
 | `app_name` | `horror-tube` |
 | `github_repo` | `etheroo-globaled-tokyo-2026/horror-tube` |
+| `github_branch` | `main` (override with `-var='github_branch=…'` for a one-off deploy of another branch; do not commit a non-main value) |
 | `instance_size_slug` | `apps-s-1vcpu-1gb` (from [App Platform pricing — Current Plans](https://docs.digitalocean.com/products/app-platform/details/pricing/); Node 22 + ffmpeg) |
 | `game_port` | `8080` |
 | `quorum_votes` / timings | see `docs/game-loop.md` (prod quorum 2, countdown 15, bet min 10, video timeout 300, settle 8) |
