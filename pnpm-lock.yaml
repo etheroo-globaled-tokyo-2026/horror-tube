@@ -136,6 +136,9 @@ importers:
       '@google/genai':
         specifier: ^1.46.0
         version: 1.52.0
+      '@horror-tube/fight-media':
+        specifier: workspace:*
+        version: link:../fight-media
     devDependencies:
       '@types/node':
         specifier: ^26.6.2
