@@ -31,7 +31,13 @@ import {
   type CoinBoxView,
   createCoinBox,
 } from "./coinbox.ts";
-import { getGameWallet } from "./wallet.ts";
+import QRCode from "qrcode";
+import { getGameWallet, hasWalletSession, openGameWallet } from "./wallet.ts";
+import {
+  fetchEnterRoomRequest,
+  startEnterRoomProof,
+  verifyEnterRoomProof,
+} from "./world-id.ts";
 import { ambience, isMuted, sfx, toggleMute } from "./sfx.ts";
 
 const COIN_KEYS = new Map<string, CoinBoxPart>([
@@ -510,9 +516,14 @@ const legM = lambert({ color: new THREE.Color(COL.bone).multiplyScalar(0.45) });
 const brassM = lambert({
   color: new THREE.Color(COL.sulfur).lerp(new THREE.Color(COL.rustDeep), 0.45),
 });
-const leg = (top: THREE.Vector3, foot: THREE.Vector3, r: number): void => {
+const leg = (
+  top: THREE.Vector3,
+  foot: THREE.Vector3,
+  r: number,
+  parent: THREE.Object3D = scene,
+): void => {
   const tip = foot.clone().lerp(top, 0.08);
-  scene.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
+  parent.add(strut(top, tip, r, r * 0.55, legM), strut(tip, foot, r * 0.55, r * 0.45, brassM));
 };
 const rails = [-1, 1].map((sx) => {
   const ends = [1, -1].map((sz): [THREE.Vector3, THREE.Vector3] => [
@@ -527,6 +538,8 @@ const rails = [-1, 1].map((sx) => {
 });
 scene.add(strut(rails[0], rails[1], 0.009, 0.009, legM));
 const STOOL = { x: 0, z: -0.75, top: 0.45 };
+const stool = new THREE.Group();
+scene.add(stool);
 const cushion = cyl(
   0.18,
   0.17,
@@ -551,13 +564,14 @@ const cushion = cyl(
   16,
 );
 cushion.position.set(STOOL.x, STOOL.top - 0.03, STOOL.z);
-scene.add(cushion);
+stool.add(cushion);
 for (let i = 0; i < 4; i++) {
   const a = Math.PI / 4 + (i * Math.PI) / 2;
   leg(
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.11, STOOL.top - 0.06, STOOL.z + Math.sin(a) * 0.11),
     new THREE.Vector3(STOOL.x + Math.cos(a) * 0.21, 0, STOOL.z + Math.sin(a) * 0.21),
     0.013,
+    stool,
   );
 }
 
@@ -582,8 +596,8 @@ burnLight.position.set(STOOL.x, STOOL.top + 0.11, STOOL.z + 0.05);
 scene.add(burnLight);
 const LOW = matchMedia("(prefers-reduced-motion: reduce)").matches;
 type Step = "read" | "ink" | "scan" | "signed" | "done" | "off" | "burn" | "dark";
-type Waiver = { step: Step; at: number; ink: number };
-const W8: Waiver = { step: "read", at: 0, ink: 0 };
+type Waiver = { step: Step; at: number; ink: number; qrUri: string };
+const W8: Waiver = { step: "read", at: 0, ink: 0, qrUri: "" };
 const SCRIBBLE = Array.from({ length: 28 }, (_, i): [number, number] => [
   70 + i * 9,
   388 + Math.sin(i * 1.7) * 14 + Math.sin(i * 0.5) * 6,
@@ -1076,7 +1090,6 @@ remote.add(faceLight);
 const led = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 4), basic({ color: COL.bloodDeep }));
 led.position.set(0, 0.165, 0.019);
 remote.add(led);
-const keys: THREE.Mesh[] = [];
 const keyById = new Map<string, THREE.Mesh>();
 const key = (
   id: string,
@@ -1103,7 +1116,6 @@ const key = (
   m.position.set(x, y, 0.022);
   m.userData.keyId = id;
   remote.add(m);
-  keys.push(m);
   keyById.set(id, m);
   return m;
 };
@@ -1669,40 +1681,26 @@ function drawTV(): void {
     if (W8.step === "scan") {
       noise = 0.1;
       fill(COL.soot);
-      const cell = 12,
-        n = 25,
-        ox = (W - n * cell) / 2,
-        oy = 40;
-      seedT = 23;
-      g.fillStyle = COL.bone;
-      for (let y = 0; y < n; y++)
-        for (let x = 0; x < n; x++) {
-          const finder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(
-            ([fx = 0, fy = 0]) =>
-              x >= fx &&
-              x < fx + 7 &&
-              y >= fy &&
-              y < fy + 7 &&
-              (x === fx ||
-                x === fx + 6 ||
-                y === fy ||
-                y === fy + 6 ||
-                (x > fx + 1 && x < fx + 5 && y > fy + 1 && y < fy + 5)),
-          );
-          const inFinder = [
-            [0, 0],
-            [n - 7, 0],
-            [0, n - 7],
-          ].some(([fx = 0, fy = 0]) => x >= fx && x < fx + 8 && y >= fy && y < fy + 8);
-          if (finder || (!inFinder && r() < 0.48))
-            g.fillRect(ox + x * cell, oy + y * cell, cell, cell);
-        }
-      text("SCAN WITH WORLD APP", 380, 30, COL.sulfur);
-      text("Orb only. We check it on our side.", 420, 24, COL.bone, "DotGothic16", 400);
+      if (W8.qrUri !== "") {
+        const { modules } = QRCode.create(W8.qrUri, { errorCorrectionLevel: "M" });
+        const pad = 36;
+        const cell = Math.floor(Math.min(W - pad * 2, 280) / modules.size);
+        const side = cell * modules.size;
+        const ox = Math.floor((W - side) / 2);
+        const oy = 28;
+        g.fillStyle = COL.bone;
+        g.fillRect(ox - 8, oy - 8, side + 16, side + 16);
+        g.fillStyle = COL.soot;
+        for (let row = 0; row < modules.size; row++)
+          for (let col = 0; col < modules.size; col++)
+            if (modules.get(row, col))
+              g.fillRect(ox + col * cell, oy + row * cell, cell, cell);
+        text("SCAN WITH WORLD APP", oy + side + 36, 28, COL.sulfur);
+        text("Orb only. We check it on our side.", oy + side + 68, 22, COL.bone, "DotGothic16", 400);
+      } else {
+        text("STARTING WORLD ID…", 210, 36, COL.sulfur);
+        text("Orb only. Waiting for a signed request.", 270, 24, COL.bone, "DotGothic16", 400);
+      }
     } else if (W8.step === "signed") {
       noise = 0.1;
       fill(COL.soot);
@@ -2033,32 +2031,6 @@ function holdEnd(): void {
   pressKey("B", 0.022);
 }
 
-const ray = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-const hitAt = (e: MouseEvent): string | null => {
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  if (!remote.visible) return null;
-  const h = ray.intersectObjects(keys, false)[0];
-  const id: string | undefined = h?.object.userData.keyId;
-  return id ?? null;
-};
-const onShelf = (e: MouseEvent): THREE.Object3D | null => {
-  if (S.phase === "gate" || Z.at !== null) return null;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  const targets = slots.filter((s) => s.mesh.visible).map((s) => s.mesh);
-  if (tape.visible) targets.push(tape);
-  return ray.intersectObjects(targets, false)[0]?.object ?? null;
-};
-const slotOf = (o: THREE.Object3D | null): Slot | undefined => slots.find((s) => s.mesh === o);
-const onPaper = (e: MouseEvent): boolean => {
-  if (S.phase !== "gate" || W8.step !== "read" || !$("#gate").hidden) return false;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  return ray.intersectObject(paper, false).length > 0;
-};
-
 const store = <T>(fn: (s: Storage) => T): T | null => {
   try {
     return fn(localStorage);
@@ -2087,6 +2059,7 @@ function step(name: Step): void {
   STEP_SOUND.get(name)?.();
   hintText();
 }
+let scanAbort: AbortController | null = null;
 function sign(): void {
   if (W8.step !== "read") return;
   step("ink");
@@ -2095,11 +2068,39 @@ function sign(): void {
     W8.ink = Math.min(1, (performance.now() - t0) / 700);
     if (W8.ink < 1) return;
     clearInterval(inkTimer);
-    step("scan");
-    scanTimer = window.setTimeout(verified, 2800);
+    void beginWorldIdScan();
   }, 30);
 }
-let scanTimer = 0;
+async function beginWorldIdScan(): Promise<void> {
+  if (W8.step !== "ink" && W8.step !== "scan") return;
+  scanAbort?.abort();
+  scanAbort = new AbortController();
+  const { signal } = scanAbort;
+  W8.qrUri = "";
+  step("scan");
+  try {
+    const context = await fetchEnterRoomRequest();
+    if (signal.aborted) return;
+    const proof = await startEnterRoomProof(context);
+    if (signal.aborted) return;
+    W8.qrUri = proof.connectorURI;
+    const idkitResult = await proof.wait();
+    if (signal.aborted) return;
+    await verifyEnterRoomProof(idkitResult);
+    if (signal.aborted) return;
+    await openGameWallet(JSON.stringify(idkitResult));
+    if (signal.aborted) return;
+    await mountCoinBox();
+    if (signal.aborted) return;
+    verified();
+  } catch (err) {
+    if (signal.aborted) return;
+    console.error(
+      `World ID enter-room failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    noOrb();
+  }
+}
 function verified(): void {
   step("signed");
   store((s) => s.setItem("ht.verified", "1"));
@@ -2115,12 +2116,15 @@ function verified(): void {
 function enterRoom(): void {
   step("done");
   paper.visible = false;
+  stool.visible = false;
   $("#gate").hidden = true;
   void newSeason();
 }
 let coinBox: CoinBox | null = null;
 let chainCredit = 0;
-void getGameWallet().then((wallet) => {
+async function mountCoinBox(): Promise<void> {
+  if (coinBox !== null) return;
+  const wallet = await getGameWallet();
   coinBox = createCoinBox(
     wallet,
     (usdc) => {
@@ -2138,7 +2142,14 @@ void getGameWallet().then((wallet) => {
   coinBox.group.position.set(-0.59, TV_Y + 0.19, -1.055);
   shade(coinBox.group);
   scene.add(coinBox.group);
-});
+}
+if (hasWalletSession()) {
+  void mountCoinBox().catch((err: Error) => {
+    console.error(
+      `Shinami wallet failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
 const cable = new THREE.Mesh(
   new THREE.TubeGeometry(
     new THREE.CatmullRomCurve3(
@@ -2157,11 +2168,34 @@ const cable = new THREE.Mesh(
   lambert({ color: COL.soot }),
 );
 scene.add(cable);
-const coinPartAt = (e: MouseEvent): CoinBoxPart | null => {
-  if (coinBox === null || !coinBox.group.visible) return null;
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+type Pick =
+  | { at: "paper" }
+  | { at: "coin"; part: CoinBoxPart }
+  | { at: "shelf"; slot: Slot | undefined }
+  | { at: "key"; id: string };
+const shown = (o: THREE.Object3D | null): boolean => o === null || (o.visible && shown(o.parent));
+const within = (o: THREE.Object3D | null, root: THREE.Object3D): boolean =>
+  o !== null && (o === root || within(o.parent, root));
+const pickAt = (e: MouseEvent): Pick | null => {
   ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  return coinBox.partAt(ray);
+  const hit = ray
+    .intersectObject(scene, true)
+    .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
+  if (hit === undefined) return null;
+  const o = hit.object;
+  if (o === paper)
+    return S.phase === "gate" && W8.step === "read" && $("#gate").hidden ? { at: "paper" } : null;
+  if (coinBox !== null && within(o, coinBox.group))
+    return { at: "coin", part: coinBox.partAt(hit) };
+  const id: string | undefined = o.userData.keyId;
+  if (id !== undefined) return { at: "key", id };
+  if (S.phase === "gate" || Z.at !== null) return null;
+  if (o === tape) return { at: "shelf", slot: undefined };
+  const slot = slots.find((s) => s.mesh === o);
+  return slot === undefined ? null : { at: "shelf", slot };
 };
 const WALK: WalkStep[] = [
   {
@@ -2220,7 +2254,9 @@ $("#hint").addEventListener("click", (e) => {
 });
 function noOrb(): void {
   if (W8.step !== "read" && W8.step !== "scan") return;
-  clearTimeout(scanTimer);
+  scanAbort?.abort();
+  scanAbort = null;
+  W8.qrUri = "";
   step("off");
   setTimeout(() => step("burn"), LOW ? 0 : 500);
   setTimeout(() => step("dark"), LOW ? 0 : 3100);
@@ -2228,6 +2264,7 @@ function noOrb(): void {
 function retry(): void {
   cut(() => {
     W8.ink = 0;
+    W8.qrUri = "";
     burnLight.intensity = 0;
     paperDrawn = false;
     step("read");
@@ -2241,7 +2278,8 @@ $("#forget").addEventListener("click", () => {
 const look = new THREE.Vector2();
 let pointer: MouseEvent | null = null;
 function updateHover(): void {
-  const hover = pointer ? (slotOf(onShelf(pointer))?.id ?? -1) : -1;
+  const pick = pointer ? pickAt(pointer) : null;
+  const hover = pick?.at === "shelf" ? (pick.slot?.id ?? -1) : -1;
   if (hover === T.hover) return;
   if (hover >= 0) sfx.slide();
   T.hover = hover;
@@ -2250,12 +2288,13 @@ function updateHover(): void {
 addEventListener("pointermove", (e) => {
   pointer = e;
   look.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1);
-  const part = coinPartAt(e);
+  const pick = pickAt(e);
+  const part = pick?.at === "coin" ? pick.part : null;
   if (part !== Z.hover) {
     Z.hover = part;
     hintText();
   }
-  canvas.dataset.cursor = cursorAt(e, part);
+  canvas.dataset.cursor = cursorFor(pick);
 });
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
@@ -2267,33 +2306,31 @@ const PART_CURSOR = {
   lock: "grab",
   body: "press",
 } satisfies Record<CoinBoxPart, string>;
-function cursorAt(e: MouseEvent, part: CoinBoxPart | null): string {
+function cursorFor(pick: Pick | null): string {
   if (walk >= 0) return "press";
-  if (onPaper(e)) return "pen";
-  if (part !== null) return PART_CURSOR[part];
-  if (onShelf(e)) return "grab";
-  return hitAt(e) ? "press" : "";
+  if (pick === null) return "";
+  if (pick.at === "paper") return "pen";
+  if (pick.at === "coin") return PART_CURSOR[pick.part];
+  return pick.at === "shelf" ? "grab" : "press";
 }
 canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
   if (walk >= 0) return walkTo(walk + 1);
-  if (onPaper(e)) return sign();
-  const part = coinPartAt(e);
-  if (Z.at !== null) return part === null ? stepBack() : useCoinPart(part);
-  if (part !== null) return zoom("meter");
-  const hit = onShelf(e);
-  if (hit) {
+  const pick = pickAt(e);
+  if (Z.at !== null) return pick?.at === "coin" ? useCoinPart(pick.part) : stepBack();
+  if (pick === null) return;
+  if (pick.at === "paper") return sign();
+  if (pick.at === "coin") return zoom("meter");
+  if (pick.at === "shelf") {
     sfx.tape();
     T.buf = "";
     T.reveal = -1;
-    T.held = slotOf(hit)?.id ?? -1;
+    T.held = pick.slot?.id ?? -1;
     T.hover = -1;
     return hintText();
   }
-  const id = hitAt(e);
-  if (!id) return;
-  if (id === "A" || id === "B") holdStart(id === "B" ? 1 : 0);
-  else press(id);
+  if (pick.id === "A" || pick.id === "B") holdStart(pick.id === "B" ? 1 : 0);
+  else press(pick.id);
 });
 addEventListener("pointerup", holdEnd);
 addEventListener(
