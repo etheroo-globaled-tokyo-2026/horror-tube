@@ -427,8 +427,8 @@ async function loadCharacterSheets(
 }
 
 /**
- * Browser-safe: no node imports. Concurrent reads go out as one Multicall3
- * call per tick and one JSON-RPC batch.
+ * Browser-safe: no node imports. Contract reads may multicall; eth_getLogs and
+ * eth_getTransaction stay unbatched so Infura does not return broken batch bodies.
  */
 export async function readRosterFromChain(
   ensLabel: string,
@@ -437,7 +437,7 @@ export async function readRosterFromChain(
 ): Promise<{ parentName: string; sheets: CharacterSheet[] }> {
   const publicClient = createPublicClient({
     chain: sepolia,
-    transport: http(rpcUrl, { batch: true }),
+    transport: http(rpcUrl),
     batch: { multicall: true },
   });
 
@@ -491,7 +491,7 @@ export async function readRegisteredLabels(
 ): Promise<string[]> {
   const publicClient = createPublicClient({
     chain: sepolia,
-    transport: http(rpcUrl, { batch: true }),
+    transport: http(rpcUrl),
     batch: { multicall: true },
   });
   let subregistry: Address;
