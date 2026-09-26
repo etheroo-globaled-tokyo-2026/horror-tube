@@ -24,6 +24,7 @@
         width: 100%;
         height: 100%;
         image-rendering: pixelated;
+        mask-image: radial-gradient(ellipse at 50% 45%, black 55%, var(--shade));
       }
       .hint {
         position: fixed;
@@ -45,6 +46,27 @@
         color: var(--sulfur);
         font-weight: 700;
       }
+      .hint button,
+      .hint .hint-key {
+        display: inline-block;
+        margin: 2px 4px 2px 0;
+        padding: 2px 8px;
+        box-shadow: inset 0 0 0 2px var(--grime);
+        font: inherit;
+        color: var(--bone);
+      }
+      .hint button {
+        pointer-events: auto;
+      }
+      .hint button:hover {
+        box-shadow: inset 0 0 0 2px var(--sulfur);
+      }
+      .hint .addr {
+        pointer-events: auto;
+        user-select: all;
+        overflow-wrap: anywhere;
+        color: var(--sulfur);
+      }
       .demo {
         position: fixed;
         z-index: 10;
@@ -60,6 +82,10 @@
       }
       .demo button:hover {
         color: var(--rust);
+      }
+      .demo.sound {
+        left: auto;
+        right: 24px;
       }
       .gate {
         position: fixed;
@@ -117,6 +143,7 @@
     <p id="demo-gate" class="demo">
       <button id="no-orb">DEMO · NO ORB ▸ X</button><button id="forget">DEMO · FORGET ME</button>
     </p>
+    <p class="demo sound"><button id="mute">SOUND ON · M</button></p>
     <div id="waiver-text" class="sr-only">
       <h2>Horror Tube waiver</h2>
       <p>

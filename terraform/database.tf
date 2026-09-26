@@ -26,4 +26,10 @@ resource "digitalocean_database_firewall" "battle_state" {
     type  = "ip_addr"
     value = "128.0.0.0/1"
   }
+
+  # App Platform as a trusted source (type app is supported by this provider).
+  rule {
+    type  = "app"
+    value = digitalocean_app.game.id
+  }
 }
