@@ -100,14 +100,14 @@ function hintText(): void {
           : S.phase === "bet" && !S.bet && S.poolId === null
             ? "OPENING THE BOOK"
             : S.phase === "bet" && !S.bet && S.credit > 0
-            ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
-            : S.claim
-              ? `COLLECT ${b("OK")}`
-              : S.phase === "over"
-                ? `AGAIN ${b("OK")}`
-                : S.credit <= 0
-                  ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
-                  : `NEXT ${b("N")}`;
+              ? `STAKE ${b("VOL ±")} · BET ${b("HOLD A / B")}`
+              : S.claim
+                ? `COLLECT ${b("OK")}`
+                : S.phase === "over"
+                  ? `AGAIN ${b("OK")}`
+                  : S.credit <= 0
+                    ? `NO STAKE · METER ${b("D")} · PHONE ${b("P")} · NEXT ${b("N")}`
+                    : `NEXT ${b("N")}`;
 }
 
 function press(id: string): void {
@@ -272,8 +272,7 @@ const pickAt = (e: MouseEvent): Pick | null => {
     .find((h) => h.object instanceof THREE.Mesh && shown(h.object));
   if (hit === undefined) return null;
   const o = hit.object;
-  if (o === paper)
-    return S.phase === "gate" && W8.step === "read" && $("#gate").hidden ? { at: "paper" } : null;
+  if (o === paper) return S.phase === "gate" && W8.step === "read" ? { at: "paper" } : null;
   if (coinBox !== null && within(o, coinBox.group))
     return { at: "coin", part: coinBox.partAt(hit) };
   const id: string | undefined = o.userData.keyId;
@@ -429,7 +428,7 @@ addEventListener(
   "keydown",
   (e) => {
     const waiverUp = S.phase === "gate" && W8.step !== "done";
-    if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey && $("#gate").hidden) {
+    if (waiverUp && !e.metaKey && !e.ctrlKey && !e.altKey) {
       const k = e.key.toLowerCase();
       if (k === "enter" && W8.step === "read") sign();
       else if (k === "enter") nextGateStep();
