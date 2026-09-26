@@ -23,6 +23,21 @@ jobs:
       - run: pnpm --filter @horror-tube/ens typecheck
       - run: python3 scripts/test_spaces_credential_process.py
 
+  fight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @horror-tube/fight test
+      - run: pnpm --filter @horror-tube/fight typecheck
+
   contracts:
     runs-on: ubuntu-latest
     defaults:
