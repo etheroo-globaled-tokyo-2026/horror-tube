@@ -44,7 +44,26 @@ export function readUnits(name: string, env: NodeJS.ProcessEnv = process.env): b
 
 // WARNING: the SDK's decode errors echo the key string. Replace them; never chain them as `cause`.
 export function readKeypair(name: string, env: NodeJS.ProcessEnv = process.env): Ed25519Keypair {
-  const raw = requiredEnv(name, env);
+  return parseKeypair(name, requiredEnv(name, env));
+}
+
+export function readKeypairs(name: string, env: NodeJS.ProcessEnv = process.env): Ed25519Keypair[] {
+  const entries = requiredEnv(name, env)
+    .split(",")
+    .map((s) => s.trim());
+  const keys = entries.map((raw, i) => {
+    if (raw === "")
+      throw new Error(`${name} entry ${i + 1} is empty. Set it in .env. See .env.example.`);
+    return parseKeypair(`${name} entry ${i + 1}`, raw);
+  });
+  const addresses = keys.map((k) => k.toSuiAddress());
+  const repeated = addresses.find((a, i) => addresses.indexOf(a) !== i);
+  if (repeated !== undefined)
+    throw new Error(`${name} lists the key for ${repeated} twice. See .env.example.`);
+  return keys;
+}
+
+function parseKeypair(name: string, raw: string): Ed25519Keypair {
   const fail = (reason: string): never => {
     throw new Error(
       `${name} ${reason}. Expected an Ed25519 ${SUI_PRIVATE_KEY_PREFIX}1… key. Set it in .env. See .env.example.`,

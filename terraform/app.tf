@@ -222,6 +222,20 @@ resource "digitalocean_app" "game" {
       }
 
       env {
+        key   = "HOUSE_BOT_SUI_PRIVATE_KEYS"
+        value = var.house_bot_sui_private_keys
+        scope = "RUN_TIME"
+        type  = "SECRET"
+      }
+
+      env {
+        key   = "HOUSE_BOT_STAKE_UNITS"
+        value = var.house_bot_stake_units
+        scope = "RUN_TIME"
+        type  = "GENERAL"
+      }
+
+      env {
         key   = "FIGHT_MEDIA_SPACES_ACCESS_KEY_ID"
         value = digitalocean_spaces_key.fight_media.access_key
         scope = "RUN_TIME"

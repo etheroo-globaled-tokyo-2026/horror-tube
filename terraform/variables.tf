@@ -227,6 +227,17 @@ variable "sui_operator_private_key" {
   sensitive   = true
 }
 
+variable "house_bot_sui_private_keys" {
+  description = "HOUSE_BOT_SUI_PRIVATE_KEYS: comma-separated suiprivkey1… keys, one per house bot. Server-only. Set via TF_VAR_house_bot_sui_private_keys from .env. Required; no default. Never commit."
+  type        = string
+  sensitive   = true
+}
+
+variable "house_bot_stake_units" {
+  description = "HOUSE_BOT_STAKE_UNITS: house bot stake per bout in USDC base units. Set via TF_VAR_house_bot_stake_units from .env. Required; no default."
+  type        = string
+}
+
 variable "quorum_votes" {
   description = "QUORUM_VOTES game-loop timing (docs/game-loop.md). Required; no default."
   type        = number

@@ -14,7 +14,9 @@ import {
   readRosterEnsLabels,
 } from "../src/game/config.js";
 import { MemoryRoundStore } from "../src/db/rounds.js";
+import { botPicks, botSide, type HouseBotChain } from "../src/game/house-bot.js";
 import { GameLoop, StoreWriteError } from "../src/game/loop.js";
+import { createHouseBotChains, readHouseBotStakeUnits } from "../src/house-bot-chain.js";
 import type { RoundState } from "../src/types.js";
 
 const baseConfig = {
@@ -31,6 +33,8 @@ const allAliveStatuses = (ensLabels: string[]): string[] =>
   ensLabels.map(() => "alive");
 
 const pickFirst = () => 0;
+
+const NO_HOUSE_BOTS = { chains: [], stakeUnits: 1n };
 
 function trackingPorts(calls: string[]): ChainWritePorts {
   return {
@@ -223,6 +227,7 @@ describe("GameLoop ENS status", () => {
   it("starts dead labels not alive and rejects votes for them", async () => {
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: baseConfig,
       ensLabels: labels,
       ensStatuses: ["alive", "dead", "alive", "alive"],
@@ -243,6 +248,7 @@ describe("GameLoop ENS status", () => {
   it("treats empty status as alive", () => {
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: baseConfig,
       ensLabels: labels,
       ensStatuses: ["", "alive", "alive", "alive"],
@@ -261,6 +267,7 @@ describe("GameLoop ENS status", () => {
     assert.throws(
       () =>
         new GameLoop({
+          houseBots: NO_HOUSE_BOTS,
           config: baseConfig,
           ensLabels: labels,
           ensStatuses: ["alive", "ghost", "alive", "alive"],
@@ -280,6 +287,7 @@ describe("GameLoop ENS status", () => {
     const settle = unusedSettleDeps();
     const trio = ["alpha", "bravo", "charlie"];
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -331,6 +339,7 @@ describe("GameLoop phases", () => {
     let now = 1_000_000;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 2,
@@ -430,6 +439,7 @@ describe("GameLoop phases", () => {
       return [50_000n, 25_000n];
     };
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 2,
@@ -486,6 +496,7 @@ describe("GameLoop phases", () => {
       return "0xsettle";
     };
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -557,6 +568,7 @@ describe("GameLoop phases", () => {
       },
     };
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -610,6 +622,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -651,6 +664,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -685,6 +699,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 2,
@@ -707,6 +722,7 @@ describe("GameLoop phases", () => {
 
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -749,6 +765,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle2 = unusedSettleDeps();
     const loop2 = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -785,6 +802,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -823,6 +841,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -862,6 +881,7 @@ describe("GameLoop phases", () => {
     const settle = unusedSettleDeps();
     const requests: FightJobRequest[] = [];
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -919,6 +939,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -958,6 +979,7 @@ describe("GameLoop phases", () => {
     const requests: FightJobRequest[] = [];
     const pending: Array<(result: FightJobResult) => void> = [];
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -1012,6 +1034,7 @@ describe("GameLoop phases", () => {
     const requests: FightJobRequest[] = [];
     let call = 0;
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -1107,6 +1130,7 @@ describe("GameLoop phases", () => {
     let now = 0;
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -1145,6 +1169,7 @@ describe("betting cutoff", () => {
     const clock = { now: 1_000_000 };
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: { ...baseConfig, quorumVotes: 1, voteCountdownSeconds: 1 },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -1261,6 +1286,7 @@ describe("stored vote and tally", () => {
     const clock = { now: 5_000_000 };
     const settle = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: { ...baseConfig, quorumVotes, voteCountdownSeconds: 1 },
       ensLabels: labels,
       ensStatuses: allAliveStatuses(labels),
@@ -1289,8 +1315,8 @@ describe("stored vote and tally", () => {
     await assert.rejects(() => loop.voteWithNullifier("111", [1, 3]), /already voted this round: 111/u);
     assert.equal(loop.getState().voters, 1);
     assert.deepEqual(
-      store.votes.map((v) => [v.nullifier, v.picks]),
-      [["111", ["alpha", "charlie"]]],
+      store.votes.map((v) => [v.voter, v.picks]),
+      [[{ kind: "human", nullifier: "111" }, ["alpha", "charlie"]]],
     );
     assert.equal(store.seasons.length, 1);
     assert.deepEqual([...store.rounds.values()].map((r) => r.roundNumber), [1]);
@@ -1384,6 +1410,7 @@ describe("chain call retries", () => {
     const clock = { now: 0 };
     const deps = unusedSettleDeps();
     const loop = new GameLoop({
+      houseBots: NO_HOUSE_BOTS,
       config: {
         ...baseConfig,
         quorumVotes: 1,
@@ -1558,5 +1585,198 @@ describe("chain call retries", () => {
       [`open-failed:${battleId}`],
     );
     assert.ok(calls.includes(`cancel:${battleId}`));
+  });
+});
+
+describe("house bot", () => {
+  const BOT = "0xb07";
+  const STAKE = 500_000n;
+
+  function botLoop(opts: { bet?: HouseBotChain["bet"]; quorumVotes?: number } = {}) {
+    const clock = { now: 1_000_000 };
+    const totals: [bigint, bigint] = [0n, 0n];
+    const botCalls: string[] = [];
+    const deps = unusedSettleDeps();
+    const chain: HouseBotChain = {
+      address: BOT,
+      bet:
+        opts.bet ??
+        (async (poolId, side, units) => {
+          botCalls.push(`bet:${poolId}:${String(side)}:${String(units)}`);
+          return "0xbotbet";
+        }),
+      claimFinished: async () => {
+        botCalls.push("claim");
+        return { digest: "0xbotclaim", tickets: 1 };
+      },
+    };
+    const loop = new GameLoop({
+      houseBots: { chains: [chain], stakeUnits: STAKE },
+      config: {
+        ...baseConfig,
+        quorumVotes: opts.quorumVotes ?? 2,
+        voteCountdownSeconds: 1,
+        bettingCloseAfterVideoStartSeconds: 5,
+        settleSeconds: 1,
+      },
+      ensLabels: labels,
+      ensStatuses: allAliveStatuses(labels),
+      now: () => clock.now,
+      randomInt: pickFirst,
+      battleQueueStore: deps.battleQueueStore,
+      roundStore: deps.roundStore,
+      chainWritePorts: deps.chainWritePorts,
+      battleBetting: { ...deps.battleBetting, readPoolTotals: async () => totals },
+      fightJob: deps.fightJob,
+    });
+    const step = async (ms = 0): Promise<void> => {
+      clock.now += ms;
+      await loop.tick(clock.now);
+      await flushFightJob();
+    };
+    return { loop, clock, totals, botCalls, deps, step };
+  }
+
+  async function openBout(harness: ReturnType<typeof botLoop>): Promise<void> {
+    await harness.loop.voteWithNullifier("human", [0, 1]);
+    await harness.step();
+    await harness.step(1_000);
+    assert.equal(harness.loop.getState().phase, "bet");
+    assert.ok(harness.loop.getState().poolId, "pool opens with the bout");
+  }
+
+  async function readyVideo(loop: GameLoop): Promise<void> {
+    await loop.attachAgentResult(agentInsertForAlphaWin({ id: "bot-row" }));
+    loop.setOutcome(0, 0);
+    loop.setVideoReady("https://cdn.example/v.mp4", 1, "https://cdn.example/frames/seed.jpg");
+  }
+
+  it("votes only after a human, reaching quorum, and its vote is stored under its address and tallied", async () => {
+    const h = botLoop();
+    await h.step();
+    assert.equal(h.loop.getState().voters, 0, "a bot never starts a round on its own");
+
+    await h.loop.voteWithNullifier("human", [0, 1]);
+    await h.step();
+    await h.step();
+    const state = h.loop.getState();
+    assert.equal(state.voters, 2);
+    assert.equal(state.phase, "countdown");
+    assert.deepEqual(state.bots.map((b) => [b.address, b.picks]), [[BOT, [2, 3]]]);
+    assert.deepEqual(
+      h.deps.roundStore.votes.map((v) => v.voter),
+      [{ kind: "human", nullifier: "human" }, { kind: "bot", address: BOT }],
+      "one bot vote per round, keyed by address",
+    );
+
+    await h.step(1_000);
+    assert.deepEqual(
+      h.loop.getState().tally?.map((t) => [labels[t.id], t.votes]),
+      [["alpha", 1], ["bravo", 1], ["charlie", 1], ["delta", 1]],
+    );
+    assert.deepEqual(h.loop.getState().fighters, [0, 1], "the earlier human picks win the tie");
+  });
+
+  it("keeps its vote apart from a World ID nullifier that spells its address", async () => {
+    const h = botLoop({ quorumVotes: 3 });
+    await h.loop.voteWithNullifier(BOT, [0, 1]);
+    await h.step();
+    assert.equal(h.loop.getState().voters, 2);
+    assert.equal(h.loop.getState().bots[0]?.error, null);
+    await assert.rejects(
+      () => h.deps.roundStore.insertVote({ roundId: "round-1", voter: { kind: "bot", address: BOT }, picks: ["alpha"], at: 0 }),
+      /House bot 0xb07 already voted this round/u,
+    );
+  });
+
+  it("bets against the human stake once the pool shows it, and claims after settle", async () => {
+    const h = botLoop();
+    await openBout(h);
+    await h.step(2_000);
+    assert.deepEqual(h.botCalls, [], "no human stake and no video yet: the bot waits");
+
+    h.totals[0] = 30_000n;
+    await h.step(2_000);
+    await h.step();
+    const poolId = h.loop.getState().poolId;
+    assert.deepEqual(h.botCalls, [`bet:${String(poolId)}:1:${String(STAKE)}`]);
+    const state = h.loop.getState();
+    assert.deepEqual(state.bots[0]?.bet, { side: 1, units: Number(STAKE), digest: "0xbotbet" });
+    assert.deepEqual(state.pool, [30_000, Number(STAKE)]);
+
+    await readyVideo(h.loop);
+    await startPlayback(h.loop);
+    await h.step(5_000);
+    await h.step(1);
+    assert.equal(h.loop.getState().phase, "settle");
+    await h.step();
+    assert.deepEqual(h.botCalls.slice(1), ["claim"]);
+  });
+
+  it("with no human stake, bets a coin-flip side once the video is ready", async () => {
+    const h = botLoop();
+    await openBout(h);
+    await readyVideo(h.loop);
+    await h.step();
+    assert.equal(h.botCalls.length, 1);
+    assert.match(h.botCalls[0] ?? "", /:0:500000$/u);
+  });
+
+  it("does not bet at or after betting_closes_at", async () => {
+    const h = botLoop();
+    await openBout(h);
+    await readyVideo(h.loop);
+    await startPlayback(h.loop);
+    await h.step(5_000);
+    assert.deepEqual(h.botCalls, []);
+    assert.equal(h.loop.getState().phase, "fight");
+  });
+
+  it("a failed bet shows on the bot, is not retried that bout, and the round goes on", async () => {
+    let attempts = 0;
+    const h = botLoop({
+      bet: async () => {
+        attempts += 1;
+        throw new Error("InsufficientGas");
+      },
+    });
+    await openBout(h);
+    await readyVideo(h.loop);
+    await h.step();
+    await h.step(10_000);
+    const state = h.loop.getState();
+    assert.equal(attempts, 1);
+    assert.match(
+      state.bots[0]?.error ?? "",
+      new RegExp(`House bot 0xb07 bet failed \\(battleId=${String(state.battleId)}, round 1\\): InsufficientGas`, "u"),
+    );
+    assert.equal(state.error, null, "a bot failure is not a round failure");
+    await startPlayback(h.loop);
+    await h.step(5_000);
+    assert.equal(h.loop.getState().phase, "fight");
+  });
+});
+
+describe("house bot choices", () => {
+  it("picks characters nobody voted for, then fills from voted ones", () => {
+    assert.deepEqual(botPicks([0, 1, 2, 3], new Set([0, 1]), 2, pickFirst), [2, 3]);
+    assert.deepEqual(botPicks([0, 1, 2], new Set([0, 1]), 2, pickFirst), [2, 0]);
+    assert.throws(() => botPicks([0], new Set(), 2, pickFirst), /needs 2 votable characters/u);
+  });
+
+  it("bets against the larger human side", () => {
+    assert.equal(botSide([10, 0], pickFirst), 1);
+    assert.equal(botSide([0, 10], pickFirst), 0);
+  });
+});
+
+describe("house bot config", () => {
+  const config = trackingBattleBetting([]).config;
+
+  it("names HOUSE_BOT_SUI_PRIVATE_KEYS and HOUSE_BOT_STAKE_UNITS when missing or invalid", () => {
+    assert.throws(() => createHouseBotChains(config, 1_000, {}), /HOUSE_BOT_SUI_PRIVATE_KEYS is required\. .*\.env\.example/u);
+    assert.throws(() => readHouseBotStakeUnits({}), /HOUSE_BOT_STAKE_UNITS is required\. .*\.env\.example/u);
+    assert.throws(() => readHouseBotStakeUnits({ HOUSE_BOT_STAKE_UNITS: "0" }), /HOUSE_BOT_STAKE_UNITS must be at least 1/u);
+    assert.throws(() => readHouseBotStakeUnits({ HOUSE_BOT_STAKE_UNITS: "0.5" }), /HOUSE_BOT_STAKE_UNITS must be a whole number/u);
   });
 });

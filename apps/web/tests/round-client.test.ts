@@ -54,6 +54,7 @@ const baseState: ServerRoundState = {
   bettingClosesAt: null,
   frameUrl: null,
   error: null,
+  bots: [],
   chars: [],
 };
 

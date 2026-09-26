@@ -16,6 +16,7 @@ import {
   type Character,
 } from "./game.ts";
 import { postPlaybackStart } from "./round-client.ts";
+import { fromUsdcUnits } from "./wallet.ts";
 import { blotch, burn, crack, ctx2d, drip, scratches, screw, seeded } from "./sprites.ts";
 import { BARS, COL, RAMP } from "./room-palette.ts";
 import { drawLogo } from "./logo.ts";
@@ -535,7 +536,13 @@ export function drawGuide(now: number): void {
     g.fillText(mmss(S.t), W / 2, 164);
     g.font = "24px DotGothic16";
     g.fillStyle = COL.bone;
-    g.fillText(`${S.voters} ${S.voters === 1 ? "human has" : "humans have"} voted`, W / 2, 206);
+    const bots = S.bots.filter((b) => b.picks !== null).length,
+      humans = S.voters - bots;
+    g.fillText(
+      `${humans} ${humans === 1 ? "human" : "humans"}${bots === 0 ? "" : ` + ${bots === 1 ? "house bot" : `${bots} house bots`}`} voted`,
+      W / 2,
+      206,
+    );
     const bar = W * Math.min(1, S.t / DUR.countdown);
     g.fillStyle = COL.blood;
     g.fillRect((W - bar) / 2, top - 8, bar, 8);
@@ -879,6 +886,16 @@ export function drawTV(): void {
         g.font = "24px DotGothic16";
         const pays = odds(i);
         g.fillText(pays === "no stake" ? "no stake" : `pays ×${pays}`, x, 264);
+        const house = S.bots.flatMap((bot) => (bot.bet?.side === i ? [bot.bet.units] : []));
+        if (house.length > 0) {
+          g.fillStyle = COL.soot;
+          g.font = "20px DotGothic16";
+          g.fillText(
+            `HOUSE BOT ${usd(fromUsdcUnits(BigInt(house.reduce((s, u) => s + u, 0))))} USDC`,
+            x,
+            306,
+          );
+        }
       });
       if (S.bet)
         text(

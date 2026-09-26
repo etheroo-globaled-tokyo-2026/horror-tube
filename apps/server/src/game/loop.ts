@@ -19,9 +19,10 @@ import { randomUUID } from "node:crypto";
 
 import type { BattleBettingPorts } from "../battle-betting.js";
 import type { FightJobRunner } from "../fight-job.js";
-import { DuplicateVoteError, type RoundStore } from "../db/rounds.js";
+import { DuplicateVoteError, type RoundStore, type Voter } from "../db/rounds.js";
 import type { Phase, RoundState } from "../types.js";
 import type { GameLoopConfig } from "./config.js";
+import { botPicks, botSide, type HouseBotChain, type HouseBots } from "./house-bot.js";
 
 export type CharRuntime = {
   id: number;
@@ -42,14 +43,31 @@ export type GameLoopOptions = {
   chainWritePorts: ChainWritePorts;
   battleBetting: BattleBettingPorts;
   fightJob: FightJobRunner;
+  houseBots: HouseBots;
 };
 
 type Listener = (state: RoundState) => void;
 type Tally = NonNullable<RoundState["tally"]>;
 type ChainRetry = { retryAt: number; delayMs: number };
+type BotRuntime = {
+  chain: HouseBotChain;
+  picks: number[] | null;
+  voteRetry: ChainRetry | null;
+  betTriedFor: string | null;
+  bet: { battleId: string; side: 0 | 1; units: bigint; digest: string } | null;
+  claimedFor: string | null;
+  claimRetry: ChainRetry | null;
+  error: string | null;
+};
 
 const CHAIN_RETRY_FIRST_MS = 5_000;
 const CHAIN_RETRY_MAX_MS = 60_000;
+
+const due = (retry: ChainRetry | null, now: number): boolean =>
+  retry === null || now >= retry.retryAt;
+
+const errorText = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
 
 function nextChainRetry(now: number, previous: ChainRetry | null): ChainRetry {
   const delayMs =
@@ -114,6 +132,9 @@ export class GameLoop {
   private readonly chainWritePorts: ChainWritePorts;
   private readonly battleBetting: BattleBettingPorts;
   private readonly fightJob: FightJobRunner;
+  private readonly bots: BotRuntime[];
+  private readonly botStakeUnits: bigint;
+  private botAction: Promise<void> | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly pendingCancels = new Map<string, ChainRetry>();
   private cancelRetryInFlight = false;
@@ -180,6 +201,17 @@ export class GameLoop {
     this.chainWritePorts = options.chainWritePorts;
     this.battleBetting = options.battleBetting;
     this.fightJob = options.fightJob;
+    this.bots = options.houseBots.chains.map((chain) => ({
+      chain,
+      picks: null,
+      voteRetry: null,
+      betTriedFor: null,
+      bet: null,
+      claimedFor: null,
+      claimRetry: null,
+      error: null,
+    }));
+    this.botStakeUnits = options.houseBots.stakeUnits;
     this.chars = buildChars(options.ensLabels, options.ensStatuses);
     this.initialAlive = this.chars.map((c) => c.alive);
     this.resetVoteTallies();
@@ -214,6 +246,15 @@ export class GameLoop {
       bettingClosesAt: this.bettingClosesAt,
       frameUrl: this.frameUrl,
       error: this.error,
+      bots: this.bots.map((bot) => ({
+        address: bot.chain.address,
+        picks: bot.picks === null ? null : [...bot.picks],
+        bet:
+          bot.bet === null || bot.bet.battleId !== this.onChainBattleId
+            ? null
+            : { side: bot.bet.side, units: Number(bot.bet.units), digest: bot.bet.digest },
+        error: bot.error,
+      })),
       chars: this.chars.map((c) => ({
         id: c.id,
         alive: c.alive,
@@ -232,6 +273,7 @@ export class GameLoop {
     if (this.settleInFlight) {
       return;
     }
+    this.kickHouseBot(now);
     if (this.phase === "countdown" && this.endsAt !== null && now >= this.endsAt) {
       await this.closeVoting(now);
       return;
@@ -252,6 +294,14 @@ export class GameLoop {
   }
 
   async voteWithNullifier(nullifier: string, picks: number[]): Promise<void> {
+    if (nullifier.trim() === "") {
+      throw new Error("World ID nullifier is empty.");
+    }
+    await this.castVote({ kind: "human", nullifier }, picks);
+    this.emit();
+  }
+
+  private async castVote(voter: Voter, picks: number[]): Promise<void> {
     this.assertBeforeCutoff("vote", this.now());
     if (this.phase !== "vote" && this.phase !== "countdown") {
       throw new Error(
@@ -274,11 +324,8 @@ export class GameLoop {
     for (const id of picks) {
       this.assertVotable(id);
     }
-    if (nullifier.trim() === "") {
-      throw new Error("World ID nullifier is empty.");
-    }
     const labels = picks.map((id) => this.labelOf(id));
-    const stored = this.storeVote(nullifier, labels);
+    const stored = this.storeVote(voter, labels);
     this.pendingVotes.add(stored);
     try {
       await stored;
@@ -297,15 +344,14 @@ export class GameLoop {
       this.phase = "countdown";
       this.endsAt = now + this.config.voteCountdownSeconds * 1000;
     }
-    this.emit();
   }
 
-  private async storeVote(nullifier: string, picks: string[]): Promise<void> {
+  private async storeVote(voter: Voter, picks: string[]): Promise<void> {
     const round = this.round;
     let roundId: string | null = null;
     try {
       roundId = await this.ensureRoundRow();
-      await this.roundStore.insertVote({ roundId, nullifier, picks, at: this.now() });
+      await this.roundStore.insertVote({ roundId, voter, picks, at: this.now() });
     } catch (cause) {
       if (cause instanceof DuplicateVoteError) throw cause;
       const detail = cause instanceof Error ? cause.message : String(cause);
@@ -669,6 +715,10 @@ export class GameLoop {
     this.roundId = null;
     this.votingClosed = false;
     this.tally = null;
+    for (const bot of this.bots) {
+      bot.picks = null;
+      bot.voteRetry = null;
+    }
   }
 
   private async closeVoting(now: number): Promise<void> {
@@ -1028,6 +1078,134 @@ export class GameLoop {
     console.log(
       `Sui betting openPool battleId=${battleId} poolId=${this.poolObjectId} closesAt=${String(latestCloseUnix)}`,
     );
+    this.emit();
+  }
+
+  private kickHouseBot(now: number): void {
+    if (this.botAction !== null) return;
+    let action: (() => Promise<void>) | null = null;
+    for (const bot of this.bots) {
+      if (this.wantsBotVote(bot, now)) action = () => this.botVote(bot, now);
+      else if (this.wantsBotBet(bot, now)) action = () => this.botBet(bot);
+      else if (this.wantsBotClaim(bot, now)) action = () => this.botClaim(bot, now);
+      if (action !== null) break;
+    }
+    if (action === null) return;
+    this.botAction = action()
+      .catch((cause: unknown) => {
+        console.error(`house bot action failed unexpectedly: ${errorText(cause)}`);
+      })
+      .finally(() => {
+        this.botAction = null;
+      });
+  }
+
+  private wantsBotVote(bot: BotRuntime, now: number): boolean {
+    const botVoters = this.bots.filter((b) => b.picks !== null).length;
+    return (
+      (this.phase === "vote" || this.phase === "countdown") &&
+      !this.votingClosed &&
+      bot.picks === null &&
+      this.voters - botVoters > 0 &&
+      due(bot.voteRetry, now)
+    );
+  }
+
+  private async botVote(bot: BotRuntime, now: number): Promise<void> {
+    const round = this.round;
+    const address = bot.chain.address;
+    try {
+      const votable = this.chars
+        .filter((c) => c.alive && c.id !== this.champion)
+        .map((c) => c.id);
+      const voted = new Set(votable.filter((id) => (this.votes[id] ?? 0) > 0));
+      const picks = botPicks(votable, voted, this.slots(), this.randomInt);
+      await this.castVote({ kind: "bot", address }, picks);
+      bot.picks = picks;
+      bot.voteRetry = null;
+      bot.error = null;
+      console.log(
+        `house bot ${address} voted round=${String(round)} picks=${picks.map((id) => this.labelOf(id)).join(",")}`,
+      );
+    } catch (cause) {
+      bot.voteRetry = nextChainRetry(now, bot.voteRetry);
+      bot.error = `House bot ${address} vote failed (round ${String(round)}): ${errorText(cause)}. Retrying in ${String(bot.voteRetry.delayMs)} ms.`;
+      console.error(bot.error);
+    }
+    this.emit();
+  }
+
+  private humanStake(battleId: string): [number, number] {
+    const stake: [number, number] = [this.pool[0], this.pool[1]];
+    for (const bot of this.bots) {
+      if (bot.bet?.battleId === battleId) stake[bot.bet.side] -= Number(bot.bet.units);
+    }
+    return [Math.max(0, stake[0]), Math.max(0, stake[1])];
+  }
+
+  private wantsBotBet(bot: BotRuntime, now: number): boolean {
+    const battleId = this.onChainBattleId;
+    if (this.phase !== "bet" || this.error !== null || battleId === null) return false;
+    if (this.poolObjectId === null || bot.betTriedFor === battleId) return false;
+    if (this.bettingClosesAt !== null && now >= this.bettingClosesAt) return false;
+    const human = this.humanStake(battleId);
+    return human[0] + human[1] > 0 || this.videoUrl !== null;
+  }
+
+  private async botBet(bot: BotRuntime): Promise<void> {
+    const battleId = this.onChainBattleId;
+    const poolId = this.poolObjectId;
+    if (battleId === null || poolId === null) return;
+    const round = this.round;
+    const address = bot.chain.address;
+    const units = this.botStakeUnits;
+    // WARNING: one bet attempt per bout. A timed-out bet may still land, so a retry could stake twice.
+    bot.betTriedFor = battleId;
+    const side = botSide(this.humanStake(battleId), this.randomInt);
+    try {
+      const digest = await bot.chain.bet(poolId, side, units);
+      bot.bet = { battleId, side, units, digest };
+      bot.error = null;
+      if (this.onChainBattleId === battleId) this.pool[side] += Number(units);
+      console.log(
+        `house bot ${address} bet battleId=${battleId} round=${String(round)} side=${String(side)} units=${String(units)} digest=${digest}`,
+      );
+    } catch (cause) {
+      bot.error = `House bot ${address} bet failed (battleId=${battleId}, round ${String(round)}): ${errorText(cause)}. It sits this bout out.`;
+      console.error(bot.error);
+    }
+    this.emit();
+  }
+
+  private wantsBotClaim(bot: BotRuntime, now: number): boolean {
+    return (
+      this.phase === "settle" &&
+      this.error === null &&
+      bot.bet !== null &&
+      bot.claimedFor !== bot.bet.battleId &&
+      due(bot.claimRetry, now)
+    );
+  }
+
+  private async botClaim(bot: BotRuntime, now: number): Promise<void> {
+    if (bot.bet === null) return;
+    const battleId = bot.bet.battleId;
+    const address = bot.chain.address;
+    try {
+      const claimed = await bot.chain.claimFinished();
+      bot.claimedFor = battleId;
+      bot.claimRetry = null;
+      bot.error = null;
+      console.log(
+        claimed === null
+          ? `house bot ${address} has no finished tickets after battleId=${battleId}`
+          : `house bot ${address} claimed ${String(claimed.tickets)} ticket(s) after battleId=${battleId} digest=${claimed.digest}`,
+      );
+    } catch (cause) {
+      bot.claimRetry = nextChainRetry(now, bot.claimRetry);
+      bot.error = `House bot ${address} claim failed after battleId=${battleId} (round ${String(this.round)}): ${errorText(cause)}. Retrying in ${String(bot.claimRetry.delayMs)} ms.`;
+      console.error(bot.error);
+    }
     this.emit();
   }
 

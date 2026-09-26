@@ -39,6 +39,7 @@ fills the challenger slot from rotation after settle.
 
 - The vote has no timer. It waits until the quorum is reached.
 - 1 human = 1 vote. Count World ID nullifiers, not picks. One nullifier votes one time per round.
+- House bots also vote and count toward the quorum (see [House bots](#house-bots)).
 - Stage 1 only: a voter picks exactly 2 characters.
 - Dead characters are not on the vote list.
 - A vote is final. The voter cannot change their picks.
@@ -62,7 +63,7 @@ fills the challenger slot from rotation after settle.
 ### Bet
 
 - Betting opens when voting closes (stage 1) or when the next rotation pair is ready (stage 2+).
-- Bets are optional. A fight happens with zero bets. Do not seed a house or robot stake.
+- Bets are optional. A fight happens with zero bets. The only non-human stake is a house bot's (see [House bots](#house-bots)).
 - Odds are only meaningful when both sides have stake; do not block the video on an empty pool.
 - When betting opens, the server starts `runFightTurn` for the bout pair (stage 1
   vote pair, or stage 2+ champion + random living challenger). On success it
@@ -128,15 +129,39 @@ fills the challenger slot from rotation after settle.
 
 ## Config
 
+### House bots
+
+World ID staging has one test identity, so a room with one tester never reaches `QUORUM_VOTES` = 2 and has no one
+on the other side of a bet. Each house bot is a server-side participant with its own Sui key, one per entry in
+`HOUSE_BOT_SUI_PRIVATE_KEYS`. A second bot is a second key.
+
+- **Identity:** a bot has no World ID. Its vote row has `bot_address` set and `world_id_nullifier` null, so it can
+  never collide with a nullifier. `votes_round_bot_unique` is its one-vote-per-round rule.
+- **Vote:** only after at least one human has voted in the round, so bots never start a round alone. It picks
+  random living, votable characters that nobody has voted for yet, then fills from voted ones if too few are left.
+  Its vote counts toward the quorum and the stored tally. Humans vote first, so their picks win a 1–1 tie.
+- **Bet:** once per bout, after the pool opens and before `betting_closes_at`. It bets `HOUSE_BOT_STAKE_UNITS`
+  against the larger human stake as soon as the pool shows one. With no human stake, it bets a random side once the
+  video is ready. It signs with its own key and pays its own gas (no Shinami, no `POST /tx`).
+- **Claim:** when the round reaches `settle` without an error, it claims every finished ticket it holds, including
+  refunds from cancelled pools.
+- **Failures:** bot actions run from the game tick, one at a time, in the background. A failure is logged with the
+  battle id and round and shown on `RoundState.bots[].error`, not `RoundState.error`, so it never blocks the round.
+  Votes and claims retry with backoff; a failed or timed-out bet is not retried that bout, since it may still land.
+- **Room:** the countdown shows humans and house bots separately, the bet screen labels a side the house bot backs,
+  and the log names each bot vote and bet.
+
 Read from `.env`. Add each variable to `.env.example` with an empty value.
 
-| Variable                                  | Dev | Prod |
-| ----------------------------------------- | --- | ---- |
-| `QUORUM_VOTES`                            | 1   | 2    |
-| `VOTE_COUNTDOWN_SECONDS`                  | 15  | 15   |
-| `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` | 5   | 5    |
-| `VIDEO_TIMEOUT_SECONDS`                   | 300 | 300  |
-| `SETTLE_SECONDS`                          | 8   | 8    |
+| Variable                                  | Dev                 | Prod                |
+| ----------------------------------------- | ------------------- | ------------------- |
+| `QUORUM_VOTES`                            | 1                   | 2                   |
+| `VOTE_COUNTDOWN_SECONDS`                  | 15                  | 15                  |
+| `BETTING_CLOSE_AFTER_VIDEO_START_SECONDS` | 5                   | 5                   |
+| `VIDEO_TIMEOUT_SECONDS`                   | 300                 | 300                 |
+| `SETTLE_SECONDS`                          | 8                   | 8                   |
+| `HOUSE_BOT_SUI_PRIVATE_KEYS`              | one funded test key | one funded test key |
+| `HOUSE_BOT_STAKE_UNITS`                   | 500000              | 500000              |
 
 The fight lasts as long as the video. It needs no variable.
 
@@ -155,7 +180,7 @@ type RoundState = {
   endsAt: number | null; // ms timestamp; null while vote waits or bet waits for video
   champion: number | null; // character id; null in stage 1
   slots: 1 | 2; // stage 1 vote picks (2); unused in stage 2+ (no challenger ballot)
-  voters: number; // humans who voted (quorum check; stage 1)
+  voters: number; // humans and house bots who voted (quorum check; stage 1)
   quorum: number;
   votes: Record<number, number>; // counts of stored votes
   tally: { id: number; votes: number; reachedAt: number }[] | null; // stored tallies rows, ranked; set before bet
@@ -169,6 +194,12 @@ type RoundState = {
   bettingClosesAt: number | null; // ms; bets and votes at or after it are rejected
   frameUrl: string | null; // last-frame CDN URL; seeds the next image-to-video bout
   error: string | null; // video failed, bets refunded
+  bots: {
+    address: string; // the bot's Sui address
+    picks: number[] | null; // its vote this round
+    bet: { side: 0 | 1; units: number; digest: string } | null; // its bet on the live bout
+    error: string | null; // last bot failure; does not stop the round
+  }[];
   chars: { id: number; alive: boolean; kills: number; damage: number }[];
 };
 ```
@@ -184,7 +215,7 @@ pays out. Stakes are not defined here (no stake columns).
 
 - `POST /vote` with `Authorization: Bearer <waiver session>` and `{ picks }`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server resolves the session to a nullifier (same pepper as `/auth/world-id`). `400` names a refused vote; `500` means the `votes` row could not be stored. Stage 2+ has no vote.
 - `POST /playback-start` with `Authorization: Bearer <waiver session>` and `{ battleId }`: the room's fight video started playing. Accepted only in `bet`, for the live battle, once the video is ready; the first report wins. `409` names why a report was refused; `500` means the `battle_results` write failed and betting stays open.
-- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, or `SUI_OPERATOR_CAP_ID` is missing. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
+- `GET /betting`: public Sui IDs (`packageId`, `houseId`, `coinType`, `network`, `feeBps`). Players bet through `POST /tx` (Shinami) against the open pool; `RoundState.battleId` / `poolId` / `pool` mirror the Sui pool. Fails closed if `BETTING_PACKAGE_ID`, `BETTING_HOUSE_ID`, `SUI_OPERATOR_PRIVATE_KEY`, `SUI_OPERATOR_CAP_ID`, `HOUSE_BOT_SUI_PRIVATE_KEYS`, or `HOUSE_BOT_STAKE_UNITS` is missing, or if the bot stake is below the House `min_bet`. Zero bets is a valid fight. Pools, keys and payouts: `docs/sui-betting.md`.
 
 ## Client
 

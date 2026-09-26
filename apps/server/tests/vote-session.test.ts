@@ -10,6 +10,7 @@ import { issueSession } from "../src/human-session.js";
 import { createGameServer, listenGameServer } from "../src/server.js";
 import { baseUrl } from "./base-url.js";
 
+const NO_HOUSE_BOTS = { chains: [], stakeUnits: 1n };
 const PEPPER = "vote-test-pepper";
 const NULLIFIER = "12345678901234567890";
 
@@ -26,6 +27,7 @@ const config = {
 
 function testLoop(roundStore = new MemoryRoundStore()): GameLoop {
   return new GameLoop({
+    houseBots: NO_HOUSE_BOTS,
     config,
     ensLabels: ["jason", "freddy", "chucky"],
     ensStatuses: ["alive", "alive", "alive"],

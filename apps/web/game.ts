@@ -125,6 +125,7 @@ export type GameState = {
   bettingClosesAt: number | null;
   frameUrl: string | null;
   error: string | null;
+  bots: ServerRoundState["bots"];
 };
 
 export const S: GameState = {
@@ -167,6 +168,7 @@ export const S: GameState = {
   bettingClosesAt: null,
   frameUrl: null,
   error: null,
+  bots: [],
 };
 
 let gameWallet: GameWallet | null = null;
@@ -272,6 +274,21 @@ export function refreshTimer(now = Date.now()): void {
 
 let stopRoundStream: (() => void) | null = null;
 
+function logHouseBots(prev: GameState["bots"], next: GameState["bots"]): void {
+  for (const bot of next) {
+    const was = prev.find((b) => b.address === bot.address);
+    const tag = `HOUSE BOT ${bot.address.slice(0, 6)}`;
+    if (bot.picks !== null && was?.picks == null)
+      log(`${tag} VOTED ${bot.picks.map((id) => S.chars[id]?.short ?? `#${String(id)}`).join(" + ")}`, "t-house");
+    if (bot.bet !== null && bot.bet.digest !== was?.bet?.digest)
+      log(
+        `${tag} BET ${usd(fromUsdcUnits(BigInt(bot.bet.units)))} ON ${bot.bet.side === 0 ? "A" : "B"} · ${bot.bet.digest.slice(0, 8)}`,
+        "t-house",
+      );
+    if (bot.error !== null && bot.error !== was?.error) note(bot.error, "bad");
+  }
+}
+
 export function applyRoundState(state: ServerRoundState): void {
   const prevPhase = S.phase;
   const prevRound = S.round;
@@ -293,6 +310,8 @@ export function applyRoundState(state: ServerRoundState): void {
   S.bettingClosesAt = state.bettingClosesAt;
   S.frameUrl = state.frameUrl;
   S.error = state.error;
+  logHouseBots(S.bots, state.bots);
+  S.bots = state.bots;
   if (state.round !== prevRound) {
     S.bet = null;
   }
