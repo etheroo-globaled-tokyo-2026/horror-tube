@@ -37,8 +37,8 @@ reads the meter:
 - `Ed25519Keypair` from `@mysten/sui` (v2). Keep `getSecretKey()` (`suiprivkey…`) in `localStorage` (`horror-tube.sui-burner-key`), load with
   `Ed25519Keypair.fromSecretKey`. Talk to the chain with `SuiGrpcClient` (`@mysten/sui/grpc`). The old `SuiClient` is
   gone, and JSON-RPC is already off on public testnet nodes.
-- Bets and claims: `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`.
-  No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
+- Bets and claims (**not built**: no Move contract yet, bets are simulated in `game.ts`): the plan is
+  `client.signAndExecuteTransaction({ transaction, signer: keypair })` with `tx.coin({ type: USDC })`. No popup. Check `result.$kind === 'FailedTransaction'`. Send one transaction at a time (two at once fight over the gas
   coin).
 - USDC on Sui testnet: `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`, 6 decimals.
   Circle faucet: `faucet.circle.com`, 20 USDC per address every 2 hours.
@@ -46,15 +46,16 @@ reads the meter:
   `0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI`, 6 decimals. It is **not on
   testnet** (checked 2026-09-26: no coin metadata there). So testnet uses Circle USDC. Moving to USDsui changes one
   constant, `USDC_TYPE`.
-- Gas: the burner needs a little SUI. After World ID verifies, the server sends testnet SUI and the first USDC coin, one
-  time per nullifier. Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
+- Gas: the burner needs a little SUI to send anything. **Not built:** a faucet that sends testnet SUI and the first
+  USDC after World ID, one time per nullifier (needs a backend). Later: our backend sponsors gas with `@mysten-incubation/sponsor` (the client builds, the backend checks and
   co-signs), so users hold only USDC.
 - The game only calls one function that returns the signer and the client. Only that function changes later.
 
 **Deposits (the coin box):**
 
-- Coin slot: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Clicking the slot opens
-  `<mysten-dapp-kit-connect-modal>` (`modal.show()`), then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
+- Coin slot: `@mysten/dapp-kit-core` (no React), `createDAppKit` with `SuiGrpcClient`. Clicking the slot opens the
+  INSERT A COIN panel. After a coin is picked: if no wallet is connected, `<mysten-dapp-kit-connect-modal>` opens; the game
+  checks that the paying wallet has SUI for gas; then `dAppKit.signAndExecuteTransaction({ transaction })`. Pass the
   `Transaction`, not built bytes: the wallet picks the gas. Do not call the Wallet Standard directly. It signs one transfer: `coinWithBalance({ type: USDC, balance })` to the in-game address. Use Slush.
   Phantom dropped Sui on 2026-09-24.
 - PAY BY PHONE: a QR code of the in-game address. Mysten Payment Kit has a `sui:pay?receiver=…&amount=…&coinType=…` URI,
@@ -62,7 +63,10 @@ reads the meter:
 - The meter: `client.core.getBalance` for the USDC type. After our own transaction, `waitForTransaction` first, then
   read. For deposits from outside: poll every few seconds now, gRPC streaming later. Websocket subscriptions are gone. The public node allows 100
   requests per 30 seconds, so keep a spare RPC URL for the demo.
-- Coin return: the in-game wallet sends USDC back with `tx.coin` + `transferObjects`.
+- Coin return: the in-game wallet sends all its USDC back (`coinWithBalance` + `transferObjects`) to the wallet that
+  last paid in (`horror-tube.payout-address`), or to the connected wallet.
+- **Tested 2026-09-26:** a 5 USDC deposit from a Slush wallet landed on Sui testnet and the meter showed it. The coin
+  return is not tested yet (the in-game wallet has no SUI).
 
 **Known limit:** if the user clears the browser, or an XSS bug reads the key, the funds are lost. The Sui skills say
 never keep keys in the browser. We break that rule on purpose, for testnet only. The server wallet fixes it.
@@ -126,13 +130,16 @@ Rules from review:
 Old motel TVs took coins: pay to keep watching, pull the lever to get your coins back. Ours sits on the table, next to
 the TV. Everyone knows how it works, so it needs no explanation. The money is USDC on Sui testnet.
 
-- **The meter:** your credit, `CREDIT 12.50`. It counts up when money lands and down when you bet. You watch it drain.
-- **The coin slot:** deposit from a browser wallet. Click the slot, pick a coin ($5 / $10 / $20). Your wallet extension
-  opens once to approve. A coin drops, the meter counts up.
+- **The meter:** the in-game wallet's real USDC balance on Sui testnet, `CREDIT 5.00`, read every 4 seconds. It counts
+  up when money lands. Bets are simulated today, so the meter does not move when you bet; the TV credit
+  (`… LEFT · 5.00 USDC`) is the real balance plus simulated wins and losses.
+- **The coin slot:** deposit from a browser wallet. Click the slot, pick a coin (5 / 10 / 20 USDC). Your wallet extension
+  opens once to approve, and the meter counts up.
 - **The sticker, PAY BY PHONE:** deposit from a phone wallet. A QR code on a peeling sticker. Scan it and send USDC. The
   meter counts up when the money lands.
 - **The coin return lever:** withdraw. The credit goes back to the wallet that paid in.
-- **Empty:** the meter reads `CREDIT 0.00`. You can vote. A and B on the remote do nothing, and the TV says `NO STAKE`.
+- **Empty:** the meter reads `CREDIT 0.00`. You can vote. A and B on the remote do nothing, the TV says
+  `NO STAKE. FEED THE COIN BOX.`, and the hint names the keys.
 - A wallet popup at deposit time is fine: real money should feel serious. Bets and claims never open a popup. The
   in-game wallet signs them.
 - Keys: `D` the coin slot, `P` the sticker, `W` the coin return. Stakes are 1, 3 and 5 USDC.
@@ -140,8 +147,6 @@ the TV. Everyone knows how it works, so it needs no explanation. The money is US
   return. Errors stay in a panel ("THE BOX SPAT IT OUT") until closed.
 - **Gas later (planned):** a sponsor server pays all gas (Sui sponsored transactions), so players need only USDC.
   Gasless stablecoin transfers would also cover deposits, but they are mainnet only.
-- The coin return needs a little SUI for gas in the in-game wallet. Until the faucet exists it says the return is
-  jammed.
 - Demo (not built yet): the house drops the first coin, one time per World ID human (the faucet).
 
 ## Colour

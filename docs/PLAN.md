@@ -21,9 +21,9 @@ See `apps/web/DESIGN.md`.
 
 1. **Log in**: the user logs in to the web app with World ID. This proves that they are a real human and 18+.
    This happens in the room: the user signs a waiver on the table, and the TV shows the World ID QR code. With no Orb, the waiver burns and the user sees "not eligible". See "Onboarding: the waiver" in `apps/web/DESIGN.md`.
-2. **Wallet**: the app makes a burner wallet for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
-   Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Demo: the backend sends testnet SUI (gas) and the first USDC, one time per World ID nullifier.
-   Open: this step is still a full-screen panel. It must move into the room too.
+2. **Wallet**: the app makes a burner wallet (Sui testnet) for the user. There is no wallet popup, now or at bet time. `check_funds(wallet)` checks that the wallet has enough USDC to bet.
+   Deposits go through the coin box (see `apps/web/DESIGN.md`). Later: a gas sponsor (a small server with a SUI key) pays the gas for deposits, bets and withdrawals, so players need only USDC, never SUI. Not built yet: a faucet (the backend sends testnet SUI for gas and the first USDC, one time per World ID nullifier).
+   There is no wallet screen: after World ID, the user goes straight to the TV. Money lives on the coin box in the room. A real deposit is tested; the coin return is not.
 3. **Vote (free)**: everyone votes for the next fighters. The two living characters with the most votes fight. Dead characters cannot get votes.
 4. **Load characters**: the two fighters load from their ENS subnames.
 5. **Permission check**: do the fighters miss capabilities from past battles? (Open: see question 2.)
@@ -31,7 +31,7 @@ See `apps/web/DESIGN.md`.
    The LLM picks the winner and the winner's damage, and writes them as the last line of the turn.
    The server stores the winner and damage in the database, **not onchain**.
 7. **Open betting**: the contract state changes. Voting closes and betting opens for the next battle. (Open: see question 1.)
-8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends.
+8. **Countdown and bet**: users bet on the outcome (paid) until the countdown ends. Today bets are simulated in `apps/web/game.ts`: there is no Move contract yet.
    The video model makes the video from the LLM text **during** the countdown, so it is ready when betting ends.
 9. **Show video**: the fight video plays.
 10. **Update ENS**:
