@@ -3,11 +3,14 @@ import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { encodeFunctionData, type Hex } from "viem";
+import { encodeFunctionData, type Address, type Hex, type PublicClient } from "viem";
 
 import { userRegistryAbi } from "../scripts/abis.js";
 import {
   decodeRegisterLabel,
+  findContractBirthBlock,
+  findTransferLogStartBlock,
+  isPrunedHistoricalStateError,
   renderDashboardHtml,
   type CharacterSheet,
 } from "../scripts/dashboard.js";
@@ -85,5 +88,94 @@ describe("dashboard env (unit, no network)", () => {
     });
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /DASHBOARD_PORT/u);
+  });
+});
+
+const SUBREGISTRY = "0x0000000000000000000000000000000000000001" as Address;
+
+function discoveryClient(behavior: {
+  latest: bigint;
+  codeFrom?: bigint;
+  failBelow?: bigint;
+  failMessage?: string;
+  logsInRange?: { from: bigint; to: bigint; hash: Hex }[];
+}): PublicClient {
+  return {
+    async getBlockNumber() {
+      return behavior.latest;
+    },
+    async getBytecode(args: { blockNumber?: bigint }) {
+      const block = args.blockNumber ?? behavior.latest;
+      if (behavior.failBelow !== undefined && block < behavior.failBelow) {
+        throw new Error(behavior.failMessage ?? "historical state is not available");
+      }
+      if (behavior.codeFrom !== undefined && block >= behavior.codeFrom) {
+        return "0x1234" as Hex;
+      }
+      return "0x";
+    },
+    async getLogs(args: { fromBlock?: bigint; toBlock?: bigint }) {
+      const from = args.fromBlock ?? 0n;
+      const to = args.toBlock ?? behavior.latest;
+      return (behavior.logsInRange ?? [])
+        .filter((log) => log.from <= to && log.to >= from)
+        .map((log) => ({ transactionHash: log.hash }));
+    },
+  } as PublicClient;
+}
+
+describe("pruned historical state (unit, no network)", () => {
+  it("recognizes pruned-state errors and rejects unrelated RPC failures", () => {
+    assert.equal(
+      isPrunedHistoricalStateError("missing trie node: historical state is not available"),
+      true,
+    );
+    assert.equal(isPrunedHistoricalStateError("state pruned"), true);
+    assert.equal(isPrunedHistoricalStateError("history has been pruned"), true);
+    assert.equal(isPrunedHistoricalStateError("RPC method is not available"), false);
+    assert.equal(isPrunedHistoricalStateError("Unknown block 10"), false);
+  });
+
+  it("finds the birth block when historical bytecode reads succeed", async () => {
+    const birth = await findContractBirthBlock(
+      discoveryClient({ latest: 100n, codeFrom: 40n }),
+      SUBREGISTRY,
+    );
+    assert.equal(birth, 40n);
+    const start = await findTransferLogStartBlock(
+      discoveryClient({ latest: 100n, codeFrom: 40n }),
+      SUBREGISTRY,
+    );
+    assert.equal(start, 40n);
+  });
+
+  it("propagates a getBytecode failure that is not pruned state", async () => {
+    await assert.rejects(
+      () =>
+        findContractBirthBlock(
+          discoveryClient({
+            latest: 100n,
+            failBelow: 101n,
+            failMessage: "RPC method is not available",
+          }),
+          SUBREGISTRY,
+        ),
+      /RPC method is not available/u,
+    );
+  });
+
+  it("walks TransferSingle logs backward when history is pruned", async () => {
+    const hash =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Hex;
+    const start = await findTransferLogStartBlock(
+      discoveryClient({
+        latest: 50000n,
+        codeFrom: 50000n,
+        failBelow: 50000n,
+        logsInRange: [{ from: 10000n, to: 49999n, hash }],
+      }),
+      SUBREGISTRY,
+    );
+    assert.equal(start, 10000n);
   });
 });
