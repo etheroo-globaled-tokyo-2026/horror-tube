@@ -69,10 +69,20 @@ export function createBattleBettingPorts(
       await operator.closeBetting(battleId);
     },
     async settle(battleId, side) {
-      const digest = await operator.settle(battleId, side);
+      const pool = operator.poolId(battleId);
+      let digest: string | null;
+      try {
+        digest = await operator.settle(battleId, side);
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(
+          `Battle ${battleId}: settle on pool ${pool} for side ${String(side)} failed. ${detail}`,
+          { cause },
+        );
+      }
       if (digest === null) {
         throw new Error(
-          `Battle ${battleId}: pool ${operator.poolId(battleId)} was already settled for side ${String(side)} before this call, so this process has no settle digest to record. Find the settle transaction on the explorer and record it by hand.`,
+          `Battle ${battleId}: pool ${pool} was already settled for side ${String(side)} before this call, so this process has no settle digest to record. Find the settle transaction on the explorer and record it by hand.`,
         );
       }
       return digest;

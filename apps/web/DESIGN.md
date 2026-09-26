@@ -31,13 +31,13 @@ At page load, `game.ts` reads every subname under `<ENS_LABEL>.eth` on Sepolia w
 - `status=dead` shows the character crossed off and in black and white. It cannot get votes.
 - `status` is `alive` or `""` (alive), or `dead`. Any other value, or an empty or broken icon, stops the game with an
   error on the TV that names the character. There is no fallback face.
-- A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`. `SKIP_BATTLE_SETTLEMENT=1` skips the betting-contract settle.
+- A new season starts from chain state. During a season the room shows server `RoundState` `chars`. After the fight duration, the server writes winner `injuries` and loser `status=dead`, then settles the Sui pool.
 - **Limit:** the shelf has 10 slots and the guide has 10 rows. Characters after the tenth do not show. The layout must
   change before the roster batches (issues 11–13) go on chain.
 
 ## The flow (game.ts)
 
-World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`; `SKIP_BATTLE_SETTLEMENT=1` skips `settleBattle`) → next bout, until one is left.
+World ID (Orb, 18+) → the TV (the coin box holds your USDC; empty means vote only) → **vote** (free; server tallies; stage 1 picks the top two) → **countdown** → **bet** (while the video is made; hold A/B builds a Sui `betting::bet` kind and sends it through `/tx`; OK claims finished tickets the same way) → **fight** (`RoundState.videoUrl` plays) → **settle** (server marks loser dead and winner damage, then writes winner `injuries` and loser `status=dead`, then calls `settleBattle` on the Sui pool) → next bout, until one is left.
 
 ## The wallet
 
