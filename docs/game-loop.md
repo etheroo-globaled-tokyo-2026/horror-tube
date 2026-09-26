@@ -23,9 +23,14 @@ The winner stays on and fights the next challenger ("winner stays on", or king o
 ## Stages
 
 - **Stage 1:** nobody has fought yet. Each voter picks 2 characters. The top 2 fight.
-- **Stage 2:** the winner of the last fight is the champion and stays on. Each voter picks 1 challenger.
+- **Stage 2+:** the winner of the last fight stays on. The next challenger is a
+  **random living** roster character who is not the winner (`nextRotationPair` /
+  `fightInputFromRotation`). There is no challenger ballot — do not display or
+  collect votes whose result the server would discard. Dead characters are never
+  chosen. Narration does not pick a different opponent.
 
-Both stages use one rule: fill the empty slots. Stage 1 has 2 empty slots. Stage 2 has 1.
+Both stages fill empty fight slots. Stage 1 uses votes for both slots. Stage 2+
+fills the challenger slot from rotation after settle.
 
 ## Rules
 
@@ -33,21 +38,23 @@ Both stages use one rule: fill the empty slots. Stage 1 has 2 empty slots. Stage
 
 - The vote has no timer. It waits until the quorum is reached.
 - 1 human = 1 vote. Count World ID nullifiers, not picks. One nullifier votes one time per round.
-- A voter picks exactly `slots` characters: 2 in stage 1, 1 in stage 2.
-- The champion and dead characters are not on the vote list.
+- Stage 1 only: a voter picks exactly 2 characters.
+- Dead characters are not on the vote list.
 - A vote is final. The voter cannot change their picks.
 - When the quorum is reached, a 15s countdown starts. People can still vote during it. Voting closes when it ends.
 - **Ties:** the character that got to its vote total first wins the tie.
 - While the vote waits, the TV replays the last fight.
+- Stage 2+ has no vote. After settle, the next bout opens with the champion and a random living challenger.
 
 ### Bet
 
-- Betting opens when voting closes.
-- Bets are optional. A fight happens with no bets.
+- Betting opens when voting closes (stage 1) or when the next rotation pair is ready (stage 2+).
+- Bets are optional. A fight happens with zero bets. Do not seed a house or robot stake.
+- Odds are only meaningful when both sides have stake; do not block the video on an empty pool.
 - The story and the video are made during betting. The LLM picks the winner and the damage.
 - Betting closes when the video is ready, and never earlier than 10s.
 - Winners share the pool in proportion to their bets.
-- If nobody bet on the winner, all bets are refunded.
+- If either side has no stake at settle, stakes are refunded (BattleBetting claim path).
 
 ### Errors
 
@@ -57,6 +64,12 @@ Both stages use one rule: fill the empty slots. Stage 1 has 2 empty slots. Stage
 
 ### Settle
 
+- After betting is closed **and** the fight video has finished playing, apply the
+  queued ENS writes (winner `injuries` first, then loser `status=dead`), then the
+  BattleBetting settlement transaction, then start the next bout from the stored
+  rotation opponent (or `fightInputFromRotation`). If either the betting-closed
+  or playback-finished signal is missing, stop and name it. Do not use a timer
+  fallback for those gates.
 - The loser dies. The winner takes damage and becomes the champion.
 - If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
 
@@ -95,8 +108,8 @@ type RoundState = {
   phase: Phase;
   endsAt: number | null; // ms timestamp; null while vote waits or bet waits for video
   champion: number | null; // character id; null in stage 1
-  slots: 1 | 2; // picks per voter this round
-  voters: number; // humans who voted (quorum check)
+  slots: 1 | 2; // stage 1 vote picks (2); unused in stage 2+ (no challenger ballot)
+  voters: number; // humans who voted (quorum check; stage 1)
   quorum: number;
   votes: Record<number, number>;
   fighters: [number, number] | null;
@@ -112,14 +125,15 @@ Character ids index the roster the client reads from ENS (sorted by label). The 
 `look`, `brief`, `injuries`, `status`, and `icon` come from ENS, not from this state.
 `chars[].alive` (and `seasons.characters` in Postgres) is a holding copy for the current
 season/bet window: the app updates it when the fight result is known so the bet window can
-run; on-chain settle finishes on Sui; only then is ENS text `status` written. Do not write
-ENS before settlement. Do not treat the holding copy as what pays out. After the ENS write,
-ENS is the authority. Stakes are not defined here (no stake columns).
+run; ENS text writes and BattleBetting settle run from the battle-result queue after
+betting-closed and playback-finished. Do not write ENS before those gates. Do not treat the
+holding copy as what pays out. After the ENS write, ENS is the authority. Stakes are not
+defined here (no stake columns).
 
 **Actions from the client:**
 
-- `vote(proof, picks)`: `picks.length` must equal `slots`. The champion and dead characters are rejected. The server verifies the World ID proof.
-- `bet(side, amount)`: allowed only in the `bet` phase.
+- `vote(proof, picks)`: stage 1 only; `picks.length` must equal 2. Dead characters are rejected. The server verifies the World ID proof. Stage 2+ has no vote.
+- `bet(side, amount)`: allowed only in the `bet` phase. Zero bets is a valid fight.
 
 ## Client changes
 

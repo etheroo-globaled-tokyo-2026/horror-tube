@@ -26,6 +26,7 @@ export * from "./render.js";
 export * from "./narrate.js";
 export * from "./fal-video.js";
 export * from "./rotation.js";
+export * from "./battle-queue.js";
 
 /** Production random source for pairing. Tests inject their own. */
 export function cryptoRandomInt(maxExclusive: number): number {
