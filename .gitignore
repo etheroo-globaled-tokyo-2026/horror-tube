@@ -146,6 +146,9 @@ vite.config.ts.timestamp-*
 .DS_Store
 .turbo
 
+# pnpm db:local CA and server cert
+.local-db/
+
 # ENS commit-reveal local state (contains secret)
 packages/ens/scripts/.ens-commit-state/
 

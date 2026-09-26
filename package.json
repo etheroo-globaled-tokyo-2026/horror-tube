@@ -8,6 +8,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "oxlint",
     "format": "oxfmt",
+    "db:local": "bash scripts/local-db.sh",
     "ens:check": "pnpm --filter @horror-tube/ens check",
     "ens:roles": "pnpm --filter @horror-tube/ens roles",
     "ens:register": "pnpm --filter @horror-tube/ens register",
