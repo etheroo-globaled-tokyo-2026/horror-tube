@@ -46,6 +46,8 @@ class Gore:
     min_score: float = 0.3                  # a blood or light find's score floor
     min_px: int = 20                        # a blood find smaller than this is noise
     green_hue: tuple[int, int] = (25, 90)   # OpenCV hue (0-180) of acid-green blood; any other hue is red
+    hue_min_saturation: int = 60            # a patch's hue is measured over its pixels this saturated (0-255)
+    hue_min_value: int = 50                 # and this bright (0-255); a patch with none of them is red
     light_cover: float = 0.5                # blood with this share under a higher-scoring light find is the light
     speckle: int = 5                        # speckle pixels: (x + 2y) % speckle == 0
 

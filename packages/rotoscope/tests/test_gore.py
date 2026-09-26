@@ -23,6 +23,20 @@ def test_each_patch_is_drawn_in_the_blood_colour_of_its_own_hue():
     assert [b.colour for b in got] == [BLOOD_GREEN, BLOOD_RED]
 
 
+def test_a_wound_on_dark_cloth_takes_the_hue_of_its_blood_not_the_cloth():
+    f = frame()
+    wound = rect(100, 300, 300, 350)
+    f[wound] = (30, 36, 28)                     # a greenish-black coat: dark, grey, hue in the green range
+    f[100:110, 300:350] = (170, 20, 30)         # the bleeding cut across it: a tenth of the patch
+    assert [b.colour for b in gore.blood([find("blood", "green blood", wound, 0.6)], f, CFG)] == [BLOOD_RED]
+
+
+def test_a_patch_with_no_coloured_pixels_is_red():
+    f = frame()
+    f[GREEN] = (30, 36, 28)
+    assert [b.colour for b in gore.blood([find("blood", "green blood", GREEN, 0.6)], f, CFG)] == [BLOOD_RED]
+
+
 def test_blood_a_light_outscores_is_the_light():
     blood = find("blood", "blood", RED, 0.6)
     lamp = rect(90, 90, 210, 210)
