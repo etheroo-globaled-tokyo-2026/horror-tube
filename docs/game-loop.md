@@ -117,7 +117,7 @@ fills the challenger slot from rotation after settle.
   settle) and does not start the next bout. `POST /retry-settle` runs the
   pending steps again.
 - The loser dies. The winner takes damage and becomes the champion.
-- If only 1 character is alive, the season is over. The `OVER` screen shows, and the reset button starts a new season.
+- If only 1 character is alive, the season is over. The `OVER` screen shows for one tick; the next tick calls `resetFromOver` and starts a new season at `vote`. The same path runs after `failVideo`.
 
 ## Video continuity
 
